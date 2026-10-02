@@ -9,7 +9,7 @@ npm ci
 npm start
 ```
 
-Open on an iOS or Android device with the matching Expo Go version, or use a development build. `npm run web` runs a browser preview. No backend or API key is needed for the branding screen.
+Open on an iOS or Android device with the matching Expo Go version, or use a development build. `npm run web` runs a browser preview. The sign-in screen can be previewed without backend credentials. GitHub login needs the configured backend and an iOS/Android development build; Expo Go and web are visual previews only.
 
 ## Verification
 
@@ -27,11 +27,12 @@ npx expo export --platform all
 Adapted from [Bulletproof React](https://github.com/alan2207/bulletproof-react/blob/master/docs/project-structure.md):
 
 - `src/app`: app entry and provider composition.
-- `src/features/branding/components`: the branding preview screen.
+- `src/features/auth`: login page, API flow and secure session storage.
+- `src/features/branding/components`: preserved branding preview component.
 - `src/components`: shared vector mark and accessible animated loader.
 - `src/hooks`: platform accessibility hooks.
 - `src/lib`: theme state and preference resolution.
-- `src/config/branding.ts`: central colors, geometry, animation settings and storage key.
+- `src/config`: centralized branding and public authentication configuration.
 - `assets/branding`: generated SVG masters and native PNG exports.
 - `scripts`: repeatable asset generation from shared geometry.
 
@@ -39,7 +40,7 @@ Shared code cannot import features or the app; features cannot import the app. C
 
 ## Implemented
 
-Saved System / Dark / Light appearance selection; adaptive Android and light/dark/tinted iOS icon assets; themed Android splash; minimal iOS launch background; and a shared Bracket Navigator loader with a pulsing needle, accessible loading status, and a static Reduce Motion fallback. The loader stops when unmounted. The preview button demonstrates loading without pretending to perform a search.
+Saved System / Dark / Light appearance selection; adaptive Android and light/dark/tinted iOS icon assets; themed Android splash; minimal iOS launch background; and a shared Bracket Navigator loader with a pulsing needle, accessible loading status, and a static Reduce Motion fallback. The loader stops when unmounted. The sign-in page uses this loader while restoring, signing in or signing out.
 
 Native splash uses the OS appearance at launch; a saved in-app override is applied after JavaScript restores preferences. There are no artificial launch delays. Native asset changes require rebuilding the app binary. Expo Go and web previews cannot validate release splash screens.
 
@@ -50,3 +51,19 @@ Build release binaries for both platforms and check launcher masks, native splas
 ## Dependency audit
 
 Initial npm audit: 13 inherited Expo tooling advisories (9 moderate, 4 high), rooted in uuid and node-forge. No patched node-forge release was available when checked. Do not apply npm audit fix --force blindly: its suggested Expo downgrade is incompatible with this SDK. Reassess upstream fixes before signing or shipping a release.
+
+## Authentication setup and end-to-end checks
+
+Copy `.env.example` to ignored `.env` and set `EXPO_PUBLIC_API_URL` to your reachable HTTPS backend. This is a public URL, never a GitHub secret. The native callback is `reporadar://auth/callback`; the backend allowlist must include it. Register GitHub's callback to the backend URL, not the device scheme. Configure native bundle/package identifiers and build with the project's Expo SDK before device validation. Rebuild after scheme/native-plugin changes. See [backend setup](../backend/README.md).
+
+Authentication follows system/saved appearance and provides System/Dark/Light controls. Native tokens use SecureStore; no tokens use AsyncStorage. Browser login is outside this mobile phase.
+
+Run the real HTTP cross-layer test after installing backend dependencies:
+
+```powershell
+$env:RUN_AUTH_E2E='1'
+npm test
+Remove-Item Env:RUN_AUTH_E2E
+```
+
+On Unix: `RUN_AUTH_E2E=1 npm test`. The test launches a temporary FastAPI server using backend/.venv by default; set `PYTHON_EXECUTABLE` to override. Only GitHub, native browser and device storage are simulated.

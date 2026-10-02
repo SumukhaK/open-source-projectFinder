@@ -4,7 +4,7 @@ Turn a project idea into a search for existing open-source implementations.
 
 RepoRadar is a planned AI-driven discovery service with a React-based mobile client and a Python FastAPI backend. Users describe an idea by text or voice; the backend combines semantic retrieval from Milvus with GitHub public repository search to find similar projects.
 
-**Status:** mobile branding foundation implemented in Expo / React Native. Backend search, repository ingestion, and voice submission remain planned.
+**Status:** mobile branding and GitHub-only signup/login implemented with Expo / React Native and FastAPI. Live OAuth setup and native device validation remain required. Search, repository ingestion and voice remain planned.
 
 ## Planned architecture
 
@@ -15,7 +15,16 @@ RepoRadar is a planned AI-driven discovery service with a React-based mobile cli
 
 The backend and ingestion worker share integration code and one central backend configuration module. Provider choices, corpus boundaries, ingestion cadence, and ranking strategy remain open.
 
-## Planned tools
+## Implemented authentication
+
+![RepoRadar authentication](docs/authentication-light.svg#gh-light-mode-only)
+![RepoRadar authentication](docs/authentication-dark.svg#gh-dark-mode-only)
+
+[Authentication flow and security](docs/AUTHENTICATION.md) · [Editable source](docs/authentication.mmd)
+
+GitHub credentials stay encrypted on the backend; the app uses a separate revocable session. Persistent rate limits and bounded provider retries are implemented.
+
+## Tools
 
 | Component | Technology | Decision |
 | --- | --- | --- |
@@ -24,7 +33,7 @@ The backend and ingestion worker share integration code and one central backend 
 | Semantic index | Milvus | Confirmed |
 | Live repository retrieval | GitHub Search API | Confirmed |
 | Embeddings, language model, voice transcription | Pending | Select after requirements |
-| Tests | Unit and integration tests with TDD | Frameworks pending |
+| Tests | Unit and integration tests with TDD | pytest, Jest / React Native Testing Library |
 
 ## Repository layout
 
@@ -32,7 +41,8 @@ The backend and ingestion worker share integration code and one central backend 
 backend/
   app/
     api/           # HTTP endpoints
-    core/          # Central backend configuration
+    main.py        # Authentication HTTP API and app factory
+    core/          # Configuration and transactional SQLite store
     services/      # Idea processing, retrieval, ranking
     integrations/  # GitHub, Milvus, AI provider adapters
     workers/       # Periodic ingestion
@@ -52,12 +62,13 @@ PROJECT_TRACKER.md # Phases, decisions, original prompts
 
 ## Development
 
-See [mobile setup and checks](mobile/README.md) to run the implemented client. Keep secrets in ignored environment files, use a central configuration module, and develop each feature through tests, a feature branch, a pull request, review, and merge.
+See [backend setup and checks](backend/README.md) and [mobile setup and checks](mobile/README.md) to run the implemented client. Keep secrets in ignored environment files, use a central configuration module, and develop each feature through tests, a feature branch, a pull request, review, and merge.
 
 ## Phase progress
 
 - Phase 0: initial folder scaffold and documentation prepared.
 - Mobile branding: implemented vector icon assets, themed launch configuration, saved appearance preferences, and accessible shared loading animation.
+- GitHub authentication: implemented OAuth/PKCE, encrypted credentials, revocable sessions, rate limiting, mobile sign-in and automated cross-layer tests.
 - Search, ingestion, and voice implementation: pending further brainstorming and requirements.
 
 See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md), and [project tracker](PROJECT_TRACKER.md).

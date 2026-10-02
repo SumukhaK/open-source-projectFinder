@@ -5,6 +5,7 @@ import { branding } from './src/config/branding';
 const config: ExpoConfig = {
   name: branding.name,
   slug: 'reporadar',
+  scheme: 'reporadar',
   version: '0.1.0',
   orientation: 'default',
   userInterfaceStyle: 'automatic',
@@ -23,6 +24,7 @@ const config: ExpoConfig = {
   web: { favicon: './assets/branding/icon-light.png' },
   plugins: [
     'expo-system-ui',
+    'expo-secure-store',
     ['expo-splash-screen', {
       backgroundColor: branding.themes.light.background,
       image: './assets/branding/splash-light.png',

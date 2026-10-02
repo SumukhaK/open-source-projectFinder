@@ -1,0 +1,5 @@
+flowchart LR
+    Mobile[React Native app] -->|PKCE login and app session| API[FastAPI authentication]
+    API -->|OAuth with state and PKCE| GitHub[GitHub OAuth / user]
+    API --> Database[(SQLite: encrypted credentials / hashed sessions)]
+    Mobile --> SecureStore[Device SecureStore: app session]

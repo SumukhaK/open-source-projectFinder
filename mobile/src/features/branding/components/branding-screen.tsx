@@ -3,14 +3,14 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandMark } from '../../../components/brand-mark';
 import { BrandLoader } from '../../../components/brand-loader';
-import { branding, ThemePreference } from '../../../config/branding';
+import { AppearanceControls } from '../../../components/appearance-controls';
+import { branding } from '../../../config/branding';
 import { useTheme } from '../../../lib/theme';
 
 export function BrandingScreen() {
-  const { mode, preference, setPreference } = useTheme();
+  const { mode } = useTheme();
   const colors = branding.themes[mode];
   const [preview, setPreview] = useState(false);
-  const options: ThemePreference[] = ['system', 'dark', 'light'];
   return <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]}>
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.header}><BrandMark mode={mode} size={38} />
@@ -24,15 +24,7 @@ export function BrandingScreen() {
       <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text accessibilityRole="header" style={[styles.cardTitle, { color: colors.text }]}>Make it yours</Text>
         <Text style={[styles.caption, { color: colors.muted }]}>Appearance</Text>
-        <View style={styles.options}>
-          {options.map(option => <Pressable key={option} accessibilityRole="radio"
-            accessibilityLabel={`${option.charAt(0).toUpperCase() + option.slice(1)} appearance`}
-            accessibilityState={{ checked: preference === option }} aria-checked={preference === option} onPress={() => setPreference(option)}
-            style={[styles.option, { backgroundColor: preference === option ? colors.accent : colors.background }]}>
-            <Text style={{ fontWeight: '600', color: preference === option ? colors.onAccent : colors.text }}>
-              {option.charAt(0).toUpperCase() + option.slice(1)}</Text>
-          </Pressable>)}
-        </View>
+        <AppearanceControls />
       </View>
       <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text accessibilityRole="header" style={[styles.cardTitle, { color: colors.text }]}>A compass for discovery</Text>
@@ -56,8 +48,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 32, lineHeight: 39, fontWeight: '700', textAlign: 'center' },
   description: { fontSize: 16, lineHeight: 25, textAlign: 'center', maxWidth: 360 },
   card: { borderWidth: 1, borderRadius: 20, padding: 20, gap: 12 }, cardTitle: { fontSize: 18, fontWeight: '600' },
-  caption: { fontSize: 14, lineHeight: 22 }, options: { flexDirection: 'row', gap: 8 },
-  option: { flex: 1, minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', padding: 8 },
+  caption: { fontSize: 14, lineHeight: 22 },
   preview: { minHeight: 130, alignItems: 'center', justifyContent: 'center' },
   previewButton: { minHeight: 48, borderWidth: 1, borderRadius: 12, padding: 12, alignItems: 'center', justifyContent: 'center' },
   footer: { textAlign: 'center', fontSize: 12, paddingVertical: 8 },
