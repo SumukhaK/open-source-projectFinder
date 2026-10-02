@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="610" viewBox="0 0 920 610" role="img" aria-labelledby="title desc">
+<title id="title">RepoRadar planned architecture</title>
+<desc id="desc">The mobile app sends text or voice ideas to FastAPI and idea processing. Hybrid search retrieves from Milvus and GitHub Search API, returning explained repository matches to the app. A periodic worker normalizes and embeds public GitHub repository content into Milvus.</desc>
+<rect width="920" height="610" fill="#0D1117"/>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#8B949E"/></marker></defs>
+<g fill="none" stroke="#8B949E" stroke-width="1.7" stroke-linejoin="round" marker-end="url(#arrow)">
+<path d="M230 114 V162"/>
+<path d="M230 226 V274"/>
+<path d="M230 338 V386"/>
+<path d="M230 450 V498"/>
+<path d="M710 114 V162"/>
+<path d="M710 226 V274"/>
+<path d="M710 338 V386"/>
+<path d="M370 418 H570"/>
+<path d="M370 434 H470 V530 H570"/>
+<path d="M90 530 H40 V82 H90"/>
+</g>
+<rect x="90" y="50" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="230" y="77" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Mobile app</text>
+<text x="230" y="98" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Text or voice idea</text>
+<rect x="90" y="162" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="230" y="189" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">FastAPI backend</text>
+<text x="230" y="210" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">API requests</text>
+<rect x="90" y="274" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="230" y="301" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Idea processing</text>
+<text x="230" y="322" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Interpretation and transcription</text>
+<rect x="90" y="386" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="230" y="413" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Hybrid search</text>
+<text x="230" y="434" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Retrieval and ranking</text>
+<rect x="90" y="498" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="230" y="525" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Repository matches</text>
+<text x="230" y="546" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Similarity explanations</text>
+<rect x="570" y="50" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="710" y="77" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Public GitHub repos</text>
+<text x="710" y="98" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Repository corpus</text>
+<rect x="570" y="162" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="710" y="189" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Ingestion worker</text>
+<text x="710" y="210" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Periodic updates</text>
+<rect x="570" y="274" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="710" y="301" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Embeddings</text>
+<text x="710" y="322" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Normalize and embed content</text>
+<rect x="570" y="386" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="710" y="413" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Milvus</text>
+<text x="710" y="434" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Semantic vector index</text>
+<rect x="570" y="498" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="710" y="525" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">GitHub Search API</text>
+<text x="710" y="546" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Live repository search</text>
+<text x="460" y="590" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Planned architecture · Mobile branding is implemented; search services are pending</text>
+</svg>

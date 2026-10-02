@@ -8,20 +8,10 @@ RepoRadar is a planned AI-driven discovery service with a React-based mobile cli
 
 ## Planned architecture
 
-```mermaid
-flowchart LR
-    User[User: text or voice] --> Mobile[React mobile app]
-    Mobile --> API[Python FastAPI backend]
-    API --> Interpret[Idea interpretation / voice transcription]
-    Interpret --> Search[Hybrid retrieval and ranking]
-    Search --> Milvus[(Milvus vector database)]
-    Search --> GitHub[GitHub Search API]
-    Search --> Results[Repository matches and similarity explanations]
-    Results --> Mobile
-    Public[GitHub public repositories] --> Worker[Periodic ingestion worker]
-    Worker --> Embed[Normalize repository content and generate embeddings]
-    Embed --> Milvus
-```
+![RepoRadar planned architecture](docs/architecture-light.svg#gh-light-mode-only)
+![RepoRadar planned architecture](docs/architecture-dark.svg#gh-dark-mode-only)
+
+[Editable Mermaid source](docs/architecture.mmd) · [Diagram styling](docs/DIAGRAMS.md)
 
 The backend and ingestion worker share integration code and one central backend configuration module. Provider choices, corpus boundaries, ingestion cadence, and ranking strategy remain open.
 
