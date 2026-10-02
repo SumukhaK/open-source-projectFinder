@@ -23,6 +23,9 @@ class Store:
                     key TEXT PRIMARY KEY, github_id INTEGER, challenge TEXT, expires REAL, session_ttl INTEGER);
                 CREATE TABLE IF NOT EXISTS sessions (
                     key TEXT PRIMARY KEY, github_id INTEGER, expires REAL);
+                CREATE TABLE IF NOT EXISTS favourites (
+                    github_id INTEGER, full_name TEXT COLLATE NOCASE, metadata TEXT, saved_at REAL,
+                    PRIMARY KEY (github_id, full_name));
                 CREATE TABLE IF NOT EXISTS limits (
                     key TEXT PRIMARY KEY, count INTEGER, expires REAL);
             """)

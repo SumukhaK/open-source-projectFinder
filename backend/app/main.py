@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from app.core.config import Settings
 from app.core.store import Store, digest
+from app.discovery import discovery_router
 from app.integrations.github import GitHubProvider, ProviderError
 
 
@@ -57,17 +58,20 @@ def create_app(settings=None, transport=None, sleep=time.sleep):
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
 
     @app.middleware("http")
     async def protection(request, call_next):
-        if request.url.path.startswith("/auth/"):
+        discovery = request.url.path.startswith(("/projects/", "/favourites"))
+        if request.url.path.startswith("/auth/") or discovery:
             # Trust the actual connection, not user-supplied forwarding headers.
             ip = request.client.host if request.client else "unknown"
             retry = store.throttle(
-                digest(ip), settings.rate_limit, settings.rate_window
+                digest(("discovery:" if discovery else "auth:") + ip),
+                settings.discovery_rate_limit if discovery else settings.rate_limit,
+                settings.rate_window,
             )
             if retry:
                 return JSONResponse(
@@ -265,4 +269,5 @@ def create_app(settings=None, transport=None, sleep=time.sleep):
             )
         return Response(status_code=204)
 
+    app.include_router(discovery_router(store, provider, cipher, current, settings))
     return app

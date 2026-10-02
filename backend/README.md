@@ -44,3 +44,8 @@ See [authentication design](../docs/AUTHENTICATION.md). Do not use GitHub access
 ## Quality pipeline
 
 The lock includes patched cryptography and pinned free test/security tools. pytest-cov enforces the application coverage policy through scripts/quality.py; Ruff and Bandit check code. pip-audit scans the pinned dependency graph. Unhandled request crashes emit only a sanitized event, declared route template and exception class, without private error/request data. See [quality pipeline](../docs/QUALITY_PIPELINE.md) for local commands, coverage gates and limits of local crash capture.
+
+## Discovery integration
+Authenticated endpoints: `POST /projects/search` accepts `{idea, page}`; `GET /projects/{owner}/{name}` assembles public repository metadata, up to three releases, languages, README and twelve contributors. `GET /favourites`, `PUT /favourites/{owner}/{name}` and `DELETE /favourites/{owner}/{name}` persist app-local favourites per GitHub identity. Saving a favourite does not star it on GitHub.
+
+The keyword search adapter is wired but feature/relevance/live search validation is deferred at the user's request. This is not semantic similarity. Milvus is the next search phase. Missing GitHub sections return empty collections so the UI can omit them. Provider errors remain explicit errors rather than zero results. Favourite cards are saved snapshots; details fetch current public data. Limits and response/README size settings are centralized in Settings.

@@ -22,3 +22,8 @@ class Settings(BaseSettings):
     retry_jitter: float = Field(default=0.2, ge=0)
     retry_max_delay: float = Field(default=5, gt=0, le=10)
     max_auth_body: int = Field(default=4096, ge=1024, le=65536)
+    discovery_rate_limit: int = Field(default=30, ge=1)
+    search_page_size: int = Field(default=20, ge=1, le=50)
+    max_github_response: int = Field(default=524288, ge=1024, le=2097152)
+    max_readme_chars: int = Field(default=60000, ge=1000)
+    max_favourites: int = Field(default=500, ge=1)
