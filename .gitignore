@@ -13,3 +13,5 @@ build/
 coverage/
 *.log
 .DS_Store
+
+backend/data/

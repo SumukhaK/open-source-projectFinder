@@ -7,3 +7,7 @@ It will combine a periodically refreshed collection of repository information wi
 The initial scope is idea submission and discovery of similar public repositories. Detailed screens, result presentation, and additional features will be defined during brainstorming. A match does not prove that an idea is unique, that a repository is suitable, or that its code is ready to reuse.
 
 Current progress: an initial project structure and documentation. The app and search service are not implemented yet.
+
+## Account access
+
+Users sign up or log in with a single GitHub button. RepoRadar does not request private repository access. The app saves its own secure session; GitHub credentials stay on the backend. Signing out ends that app session. Authentication is implemented and automatically tested, while live GitHub and device validation need the app's OAuth setup. Discovery and voice remain future features.

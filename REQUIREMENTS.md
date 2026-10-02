@@ -21,7 +21,7 @@
 - Corpus selection and whether to index metadata, README content, documentation, or source code.
 - Ingestion cadence, scale targets, retention, storage beyond vectors, and GitHub API budget.
 - Similarity criteria, ranking, result explanations, latency targets, and measurable relevance evaluation.
-- Authentication, voice and text privacy, retention, accessibility, and deployment requirements.
+- Voice and text privacy, retention, accessibility and deployment requirements. GitHub-only authentication is confirmed below.
 
 This document records initial requirements, not a finalized implementation contract. No multi-agent architecture is currently required.
 
@@ -35,3 +35,13 @@ This document records initial requirements, not a finalized implementation contr
 ## Mobile architecture
 
 Follow Bulletproof React feature-based organization, adapted for Expo / React Native: compose at the app layer, keep feature-specific code in features, and share independent components, hooks, libraries and centralized configuration.
+
+## GitHub-only authentication
+
+- One signup/login action after launch; valid sessions skip sign-in.
+- GitHub OAuth without private-repository permission; stable GitHub ID identifies accounts.
+- Separate app sessions; encrypted GitHub credentials backend-side for future user-scoped search.
+- State, provider/app PKCE, expiring one-use handoff, revocation and secure native storage.
+- Persistent IP quotas, bounded safe retries, provider timeouts and payload limits.
+- Backend tests before implementation, mobile tests before implementation, automated real-HTTP cross-layer verification.
+- Live GitHub/device checks require OAuth registration and native development builds. See docs/AUTHENTICATION.md.

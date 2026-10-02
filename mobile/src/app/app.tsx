@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { branding } from '../config/branding';
 import { BrandLoader } from '../components/brand-loader';
-import { BrandingScreen } from '../features/branding/components/branding-screen';
+import { AuthScreen } from '../features/auth/components/auth-screen';
 import { useTheme } from '../lib/theme';
 import { AppProvider } from './provider';
 
@@ -14,7 +14,7 @@ function AppContent() {
   useEffect(() => { void SystemUI.setBackgroundColorAsync(backgroundColor); }, [backgroundColor]);
   return <View style={[styles.root, { backgroundColor }]}>
     <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
-    {ready ? <BrandingScreen /> : <View style={styles.startup}><BrandLoader mode={mode} label="Opening RepoRadar" /></View>}
+    {ready ? <AuthScreen /> : <View style={styles.startup}><BrandLoader mode={mode} label="Opening RepoRadar" /></View>}
   </View>;
 }
 export default function App() { return <AppProvider><AppContent /></AppProvider>; }
