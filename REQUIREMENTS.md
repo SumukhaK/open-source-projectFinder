@@ -54,3 +54,5 @@ Follow Bulletproof React feature-based organization, adapted for Expo / React Na
 - Agent self-review of the exact head is mandatory before a workflow-controlled merge; repository restrictions must still apply.
 - Sanitized local crash capture and retry, with centralized/native crash reporting deferred until deployment is defined.
 - Bounded/cached jobs and minimal report retention; hosted runner quotas are not unlimited.
+
+Discovery API integration now exposes account-scoped app favourites and GitHub public repository details. Keyword search is connected but search validation is deferred; Milvus semantic matching remains planned. Optional details must be omitted when GitHub supplies no data.

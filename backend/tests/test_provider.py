@@ -89,3 +89,61 @@ def test_rate_limit_without_retry_headers_does_not_retry_early():
     with pytest.raises(ProviderError):
         provider.user("token")
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(200, json={"id": "bad"}),
+        httpx.Response(200, text="not-json"),
+        httpx.Response(404),
+        httpx.Response(200, text="x" * 524289),
+    ],
+)
+def test_provider_rejects_invalid_missing_and_oversized_identity(response):
+    provider = GitHubProvider(
+        "id",
+        "secret",
+        "https://example.test/callback",
+        httpx.MockTransport(lambda _: response),
+        lambda _: None,
+    )
+    with pytest.raises(ProviderError):
+        provider.user("token")
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"Retry-After": "bad"},
+        {"Retry-After": "Thu, 01 Jan 2099 00:00:00 GMT"},
+        {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "99999999999"},
+    ],
+)
+def test_provider_respects_unusable_or_distant_retry_headers(headers):
+    provider = GitHubProvider(
+        "id",
+        "secret",
+        "https://example.test/callback",
+        httpx.MockTransport(lambda _: httpx.Response(403, headers=headers)),
+        lambda _: pytest.fail("must not retry"),
+    )
+    with pytest.raises(ProviderError):
+        provider.user("token")
+
+
+def test_provider_network_failure_is_bounded():
+    def response(request):
+        raise httpx.ConnectError("offline", request=request)
+
+    waits = []
+    provider = GitHubProvider(
+        "id",
+        "secret",
+        "https://example.test/callback",
+        httpx.MockTransport(response),
+        waits.append,
+    )
+    with pytest.raises(ProviderError):
+        provider.user("token")
+    assert len(waits) == 2

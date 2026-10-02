@@ -57,6 +57,16 @@ class GitHubProvider:
             raise ProviderError() from error
 
     def user(self, token):
+        data = self.read(token, "/user")
+        if (
+            not isinstance(data, dict)
+            or type(data.get("id")) is not int
+            or not isinstance(data.get("login"), str)
+        ):
+            raise ProviderError()
+        return data
+
+    def read(self, token, path, params=None, raw=False, optional=False):
         with httpx.Client(
             transport=self.transport,
             timeout=self.settings.github_timeout,
@@ -66,22 +76,24 @@ class GitHubProvider:
                 response = None
                 try:
                     response = client.get(
-                        "https://api.github.com/user",
+                        "https://api.github.com" + path,
+                        params=params,
                         headers={
                             "Authorization": "Bearer " + token,
-                            "Accept": "application/vnd.github+json",
+                            "Accept": "application/vnd.github.raw+json"
+                            if raw
+                            else "application/vnd.github+json",
                             "X-GitHub-Api-Version": "2022-11-28",
                         },
                     )
+                    if response.status_code == 404:
+                        if optional:
+                            return None
+                        raise ProviderError()
                     if response.status_code == 200:
-                        data = response.json()
-                        if (
-                            not isinstance(data, dict)
-                            or type(data.get("id")) is not int
-                            or not isinstance(data.get("login"), str)
-                        ):
+                        if len(response.content) > self.settings.max_github_response:
                             raise ProviderError()
-                        return data
+                        return response.text if raw else response.json()
                     retryable = response.status_code in (429, 500, 502, 503, 504) or (
                         response.status_code == 403
                         and (
