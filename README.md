@@ -70,3 +70,7 @@ Runtime setup instructions will be added when dependencies and the first runnabl
 - Application implementation: pending further brainstorming and requirements.
 
 See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md), and [project tracker](PROJECT_TRACKER.md).
+
+## Visual direction
+
+**Bracket Navigator** is the selected icon and splash concept: rounded code brackets around a blue compass needle, with a navy dark theme and cool off-white light theme. See [branding guidance and concept board](docs/BRANDING.md). Production mobile assets are pending.
