@@ -24,3 +24,10 @@
 - Authentication, voice and text privacy, retention, accessibility, and deployment requirements.
 
 This document records initial requirements, not a finalized implementation contract. No multi-agent architecture is currently required.
+
+## Confirmed visual requirements
+
+- Use Bracket Navigator for the app icon and as the shared animated in-app loading indicator.
+- Support dark and light appearances and system appearance preference.
+- Loading indicators must respect Reduce Motion and expose accessible loading status.
+- Detailed animation, export, and platform rules are recorded in docs/BRANDING.md.

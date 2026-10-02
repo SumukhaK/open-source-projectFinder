@@ -39,3 +39,7 @@ Create a RepoRadar brand concept board in electric blue on deep navy, with cool 
 ## Remaining work
 
 Vector master, production exports, theme tokens, mobile integration, and device validation are pending. No mobile runtime or launch screen has been implemented.
+
+## App-wide loading indicator
+
+Use the Bracket Navigator mark as the shared loading animation throughout the app. Implement one reusable loader for search, voice processing, result retrieval, and other asynchronous operations. Keep brackets stationary with a gentle needle rotation or pulse as the proposed motion; final timing remains pending. Match the active dark/light theme, preserve legibility at small sizes, and respect Reduce Motion with a static mark and an accessible loading label. Announce loading status without announcing every animation cycle. Use actual progress when available; do not imply measurable progress with an indefinite animation. End the loader when the operation completes or fails, and show the result or a clear retry/error state. This requirement applies to in-app loading; native launch behavior remains platform-specific.
