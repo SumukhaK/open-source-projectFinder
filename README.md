@@ -69,6 +69,7 @@ See [backend setup and checks](backend/README.md) and [mobile setup and checks](
 - Phase 0: initial folder scaffold and documentation prepared.
 - Mobile branding: implemented vector icon assets, themed launch configuration, saved appearance preferences, and accessible shared loading animation.
 - GitHub authentication: implemented OAuth/PKCE, encrypted credentials, revocable sessions, rate limiting, mobile sign-in and automated cross-layer tests.
+- Quality pipeline: free open-source validation, explicit coverage/security gates and review-controlled delivery.
 - Search, ingestion, and voice implementation: pending further brainstorming and requirements.
 
 See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md), and [project tracker](PROJECT_TRACKER.md).
@@ -76,3 +77,14 @@ See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md),
 ## Visual direction
 
 **Bracket Navigator** is the selected icon and splash concept: rounded code brackets around a blue compass needle, with a navy dark theme and cool off-white light theme. See [branding guidance and concept board](docs/BRANDING.md). Native icon exports, theme settings, and the shared loader are implemented; release-device validation remains pending.
+
+## Quality and delivery
+
+![Quality pipeline](docs/quality-pipeline-light.svg#gh-light-mode-only)
+![Quality pipeline](docs/quality-pipeline-dark.svg#gh-dark-mode-only)
+
+[Editable pipeline diagram](docs/quality-pipeline.mmd)
+
+The free-tool pipeline runs pytest/Jest with coverage gates, Ruff/ESLint/TypeScript, Bandit and TypeScript security rules, dependency auditing, redacted full-history secret scans and platform bundle exports. A reviewed merge must match the exact reviewed commit and have successful CI. No manually configured scanner keys or paid services. See [quality pipeline, local commands and limitations](docs/QUALITY_PIPELINE.md).
+
+Sanitized local crash events and a mobile retry screen are implemented; production crash aggregation and deployment remain planned. One narrowly scoped Expo CLI dependency exception expires on 2026-11-01.

@@ -1,5 +1,5 @@
 import * as WebBrowser from 'expo-web-browser';
-import { signIn } from '../src/features/auth/api/auth';
+import { signIn, getUser, logout } from '../src/features/auth/api/auth';
 jest.mock('expo-web-browser', () => ({ openAuthSessionAsync: jest.fn(), WebBrowserResultType: { CANCEL: 'cancel' } }));
 jest.mock('expo-crypto', () => ({ getRandomBytesAsync: jest.fn(async () => new Uint8Array(32).fill(1)), digestStringAsync: jest.fn(async () => 'challenge'), CryptoDigestAlgorithm: { SHA256: 'SHA-256' }, CryptoEncoding: { BASE64: 'base64' } }));
 beforeEach(() => { jest.clearAllMocks(); });
@@ -21,4 +21,15 @@ test('browser cancellation does not exchange a token', async () => {
   jest.mocked(WebBrowser.openAuthSessionAsync).mockResolvedValue({ type: WebBrowser.WebBrowserResultType.CANCEL });
   await expect(signIn()).rejects.toThrow('Sign-in cancelled');
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+test.each([401, 429, 503, 500])('HTTP %s produces a safe error without leaking response content', async status => {
+  global.fetch = jest.fn().mockResolvedValue({ ok: false, status, headers: { get: () => '60' }, json: async () => ({ detail: 'private provider data' }) });
+  await expect(getUser('session')).rejects.toThrow(status === 401 ? 'session expired' : status === 429 ? 'Too many requests' : status === 503 ? 'not available yet' : 'Sign-in failed');
+});
+test('network failure is safe and logout accepts an empty 204 response', async () => {
+  global.fetch = jest.fn().mockRejectedValue(new Error('private transport details'));
+  await expect(getUser('session')).rejects.toThrow('Unable to connect');
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 204 });
+  await expect(logout('session')).resolves.toBeUndefined();
 });

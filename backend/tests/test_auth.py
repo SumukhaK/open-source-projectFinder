@@ -237,3 +237,9 @@ def test_store_rate_limits_survive_reopening_and_consumption_is_atomic(setup):
             executor.map(lambda _: store.consume("transactions", state), range(2))
         )
     assert sum(result is not None for result in results) == 1
+
+
+def test_one_use_store_rejects_non_allowlisted_tables(setup):
+    _, app, _ = setup
+    with pytest.raises(ValueError, match="Unknown one-use table"):
+        app.state.store.consume("users", "unused")

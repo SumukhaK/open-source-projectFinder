@@ -1,11 +1,11 @@
 import React from 'react';
 import Svg, { Path, Polygon } from 'react-native-svg';
-import { branding, ThemeMode } from '../config/branding';
+import { branding, getThemeColors, ThemeMode } from '../config/branding';
 
 type Props = { mode: ThemeMode; size?: number; part?: 'all' | 'brackets' | 'needle' };
 
 export function BrandMark({ mode, size = 64, part = 'all' }: Props) {
-  const colors = branding.themes[mode];
+  const colors = getThemeColors(mode);
   const mark = branding.mark;
   return <Svg width={size} height={size} viewBox="0 0 100 100" accessible={false}>
     {part !== 'needle' && <>

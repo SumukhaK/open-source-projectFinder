@@ -50,7 +50,7 @@ Build release binaries for both platforms and check launcher masks, native splas
 
 ## Dependency audit
 
-Initial npm audit: 13 inherited Expo tooling advisories (9 moderate, 4 high), rooted in uuid and node-forge. No patched node-forge release was available when checked. Do not apply npm audit fix --force blindly: its suggested Expo downgrade is incompatible with this SDK. Reassess upstream fixes before signing or shipping a release.
+Initial npm audit: Initial scan had 13 inherited Expo tooling advisories. UUID is now overridden to patched 11.1.1; the remaining node-forge 1.4.0 advisory has an exact, expiring exception in .ci/quality-policy.json. No patched node-forge release was available when checked. Do not apply npm audit fix --force blindly: its suggested Expo downgrade is incompatible with this SDK. Reassess upstream fixes before signing or shipping a release.
 
 ## Authentication setup and end-to-end checks
 
@@ -67,3 +67,7 @@ Remove-Item Env:RUN_AUTH_E2E
 ```
 
 On Unix: `RUN_AUTH_E2E=1 npm test`. The test launches a temporary FastAPI server using backend/.venv by default; set `PYTHON_EXECUTABLE` to override. Only GitHub, native browser and device storage are simulated.
+
+## Quality pipeline
+
+Use `npm run test:coverage` for enforced application coverage, `npm run lint` for lint and security rules with zero warnings, and `npm run typecheck`. Shared theme access avoids untrusted dynamic lookup. The root crash boundary provides themed retry and sanitized local reporting. See [pipeline documentation](../docs/QUALITY_PIPELINE.md) for thresholds, audits, free-runner boundaries and review-controlled merging.

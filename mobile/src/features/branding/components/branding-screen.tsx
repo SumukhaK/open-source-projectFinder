@@ -4,12 +4,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandMark } from '../../../components/brand-mark';
 import { BrandLoader } from '../../../components/brand-loader';
 import { AppearanceControls } from '../../../components/appearance-controls';
-import { branding } from '../../../config/branding';
+import { getThemeColors } from '../../../config/branding';
 import { useTheme } from '../../../lib/theme';
 
 export function BrandingScreen() {
   const { mode } = useTheme();
-  const colors = branding.themes[mode];
+  const colors = getThemeColors(mode);
   const [preview, setPreview] = useState(false);
   return <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]}>
     <ScrollView contentContainerStyle={styles.content}>

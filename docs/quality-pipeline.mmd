@@ -1,0 +1,5 @@
+flowchart LR
+    PR[Feature pull request] --> Checks[Tests, coverage and security]
+    Checks --> Review[Agent review of exact head]
+    Review --> Merge[Validated merge workflow]
+    Merge --> Main[main]

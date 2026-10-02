@@ -1,4 +1,4 @@
-import random
+import secrets
 import time
 from email.utils import parsedate_to_datetime
 
@@ -97,8 +97,9 @@ class GitHubProvider:
                     raise ProviderError() from error
                 if attempt == self.settings.github_attempts - 1:
                     raise ProviderError()
-                delay = self.settings.retry_base_delay * (2**attempt) + random.uniform(
-                    0, self.settings.retry_jitter
+                delay = (
+                    self.settings.retry_base_delay * (2**attempt)
+                    + secrets.randbelow(1001) / 1000 * self.settings.retry_jitter
                 )
                 if response is not None:
                     retry_after = response.headers.get("Retry-After")
