@@ -4,7 +4,7 @@ Turn a project idea into a search for existing open-source implementations.
 
 RepoRadar is a planned AI-driven discovery service with a React-based mobile client and a Python FastAPI backend. Users describe an idea by text or voice; the backend combines semantic retrieval from Milvus with GitHub public repository search to find similar projects.
 
-**Status:** repository scaffold and planning documentation only. No application features or services are implemented yet.
+**Status:** mobile branding foundation implemented in Expo / React Native. Backend search, repository ingestion, and voice submission remain planned.
 
 ## Planned architecture
 
@@ -30,7 +30,7 @@ The backend and ingestion worker share integration code and one central backend 
 | Component | Technology | Decision |
 | --- | --- | --- |
 | Backend API | Python, FastAPI | Confirmed |
-| Mobile client | React ecosystem | Confirmed; React Native proposed |
+| Mobile client | React ecosystem | React Native with Expo implemented |
 | Semantic index | Milvus | Confirmed |
 | Live repository retrieval | GitHub Search API | Confirmed |
 | Embeddings, language model, voice transcription | Pending | Select after requirements |
@@ -62,15 +62,16 @@ PROJECT_TRACKER.md # Phases, decisions, original prompts
 
 ## Development
 
-Runtime setup instructions will be added when dependencies and the first runnable feature are introduced. Keep secrets in ignored environment files, use a central configuration module, and develop each feature through tests, a feature branch, a pull request, review, and merge.
+See [mobile setup and checks](mobile/README.md) to run the implemented client. Keep secrets in ignored environment files, use a central configuration module, and develop each feature through tests, a feature branch, a pull request, review, and merge.
 
 ## Phase progress
 
 - Phase 0: initial folder scaffold and documentation prepared.
-- Application implementation: pending further brainstorming and requirements.
+- Mobile branding: implemented vector icon assets, themed launch configuration, saved appearance preferences, and accessible shared loading animation.
+- Search, ingestion, and voice implementation: pending further brainstorming and requirements.
 
 See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md), and [project tracker](PROJECT_TRACKER.md).
 
 ## Visual direction
 
-**Bracket Navigator** is the selected icon and splash concept: rounded code brackets around a blue compass needle, with a navy dark theme and cool off-white light theme. See [branding guidance and concept board](docs/BRANDING.md). Production mobile assets are pending.
+**Bracket Navigator** is the selected icon and splash concept: rounded code brackets around a blue compass needle, with a navy dark theme and cool off-white light theme. See [branding guidance and concept board](docs/BRANDING.md). Native icon exports, theme settings, and the shared loader are implemented; release-device validation remains pending.
