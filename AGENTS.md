@@ -12,6 +12,7 @@
 - Preserve the original project prompt verbatim in that tracker, alongside requirements, decisions, unresolved questions, dependencies, and acceptance criteria.
 - Divide phases into features with explicit verification criteria. Update feature and phase status as work proceeds; mark complete only after verification.
 - Maintain README.md with a brief project description, a high-level architecture diagram, tools and libraries actually chosen, and short notes about successfully completed phases.
+- Keep architecture diagrams minimal and readable in both GitHub light and dark themes: match canvas backgrounds, use neutral node fills, high-contrast labels and subtle visible arrows. Follow docs/DIAGRAMS.md, preserve editable sources, and update both theme variants whenever architecture changes.
 - Maintain REQUIREMENTS.md for technical requirements and SCOPE.md for a nontechnical explanation of the project and its boundaries.
 - Keep planned architecture and functionality clearly distinguished from implemented behavior. Update documentation when implementation or decisions change.
 - If a multi-agent system is part of the agreed product, describe its components and phases in the tracker. Do not infer that the product must be multi-agent from generic workflow instructions.
