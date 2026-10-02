@@ -70,4 +70,3 @@ Runtime setup instructions will be added when dependencies and the first runnabl
 - Application implementation: pending further brainstorming and requirements.
 
 See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md), and [project tracker](PROJECT_TRACKER.md).
-
