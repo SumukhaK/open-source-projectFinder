@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, Platform, StyleSheet, Text, View } from 'react-native';
-import { branding, ThemeMode } from '../config/branding';
+import { branding, getThemeColors, ThemeMode } from '../config/branding';
 import { useReducedMotion } from '../hooks/use-reduced-motion';
 import { BrandMark } from './brand-mark';
 
@@ -31,7 +31,7 @@ export function BrandLoader({ mode, size = 64, label = 'Loading' }: Props) {
         <BrandMark mode={mode} size={size} part="needle" />
       </Animated.View>
     </View>
-    <Text accessible={false} style={[styles.label, { color: branding.themes[mode].muted }]}>{label}</Text>
+    <Text accessible={false} style={[styles.label, { color: getThemeColors(mode).muted }]}>{label}</Text>
   </View>;
 }
 const styles = StyleSheet.create({ container: { alignItems: 'center', gap: 14 }, label: { fontSize: 15 } });

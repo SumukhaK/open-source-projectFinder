@@ -11,3 +11,7 @@ Current progress: an initial project structure and documentation. The app and se
 ## Account access
 
 Users sign up or log in with a single GitHub button. RepoRadar does not request private repository access. The app saves its own secure session; GitHub credentials stay on the backend. Signing out ends that app session. Authentication is implemented and automatically tested, while live GitHub and device validation need the app's OAuth setup. Discovery and voice remain future features.
+
+## Quality before new features
+
+Every change is automatically tested and checked for code/security issues before review and merging. The checks use free tools and need no additional account keys. The app can recover from a screen-rendering failure, and the backend records safe local crash events. Production crash monitoring and deployment remain future work. GitHub's included runner allowance still limits hosted automation.

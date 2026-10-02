@@ -38,13 +38,23 @@ class Store:
             db.close()
 
     def consume(self, table, key):
-        # Callers use fixed internal table names, never request input.
+        queries = {
+            "transactions": (
+                "SELECT * FROM transactions WHERE key = ?",
+                "DELETE FROM transactions WHERE key = ?",
+            ),
+            "handoffs": (
+                "SELECT * FROM handoffs WHERE key = ?",
+                "DELETE FROM handoffs WHERE key = ?",
+            ),
+        }
+        if table not in queries:
+            raise ValueError("Unknown one-use table")
+        select, delete = queries[table]
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute(
-                f"SELECT * FROM {table} WHERE key = ?", (digest(key),)
-            ).fetchone()
-            db.execute(f"DELETE FROM {table} WHERE key = ?", (digest(key),))
+            row = db.execute(select, (digest(key),)).fetchone()
+            db.execute(delete, (digest(key),))
             if row and row["expires"] > time.time():
                 return dict(row)
         return None
@@ -54,8 +64,13 @@ class Store:
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             # Expired ephemeral records are removed on every limited request.
-            for table in ("limits", "transactions", "handoffs", "sessions"):
-                db.execute(f"DELETE FROM {table} WHERE expires <= ?", (now,))
+            for delete in (
+                "DELETE FROM limits WHERE expires <= ?",
+                "DELETE FROM transactions WHERE expires <= ?",
+                "DELETE FROM handoffs WHERE expires <= ?",
+                "DELETE FROM sessions WHERE expires <= ?",
+            ):
+                db.execute(delete, (now,))
             row = db.execute("SELECT * FROM limits WHERE key = ?", (key,)).fetchone()
             if row and row["count"] >= limit:
                 return max(1, int(row["expires"] - now) + 1)

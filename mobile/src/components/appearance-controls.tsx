@@ -1,11 +1,11 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { branding, ThemePreference } from '../config/branding';
+import { getThemeColors, ThemePreference } from '../config/branding';
 import { useTheme } from '../lib/theme';
 
 export function AppearanceControls() {
   const { mode, preference, setPreference } = useTheme();
-  const colors = branding.themes[mode];
+  const colors = getThemeColors(mode);
   const options: ThemePreference[] = ['system', 'dark', 'light'];
   return <View style={styles.options}>
     {options.map(option => <Pressable key={option} accessibilityRole="radio"

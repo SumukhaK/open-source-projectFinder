@@ -15,3 +15,11 @@ coverage/
 .DS_Store
 
 backend/data/
+
+.coverage*
+backend/coverage.json
+backend/bandit.json
+backend/pip-audit.json
+backend/htmlcov/
+.ci/bin/
+reports/

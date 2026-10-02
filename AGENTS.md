@@ -35,3 +35,9 @@
 - Ignore secret files before staging changes. Provide only placeholder values in .env.example when useful.
 - Keep application configuration in one central configuration module or file. Load environment values there and use that module throughout the application.
 - Never expose sensitive values in logs, documentation, tests, or command output.
+
+## Quality and cost preferences
+- Use deeper analysis for architecture, security and review; keep routine implementation focused. Do not claim a model/effort-setting change unless actually supported.
+- Use free open-source checks without manually added API keys. Do not enable paid services, upgrade plans or increase spending limits. Minimize redundant model runs, CI reruns and logs. GitHub-hosted runner usage is bounded by its included quota; do not assume unlimited free compute.
+- Review every proposed merge against the exact current PR commit. Record the review marker only after review is complete; changes invalidate that review. Use the reviewed-merge workflow when available and respect repository rules.
+- Keep security exceptions narrow, version/advisory-specific, justified and expiring. Do not hide scanner errors or lower gates merely to make a PR green.

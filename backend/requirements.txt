@@ -1,7 +1,10 @@
 fastapi>=0.115,<1
 uvicorn>=0.30,<1
 httpx>=0.28,<1
-cryptography>=44,<47
+cryptography>=50,<51
 pydantic-settings>=2.7,<3
 pytest>=8,<10
 ruff>=0.16,<0.17
+pytest-cov>=7,<8
+bandit>=1.9,<2
+pip-audit>=2.10,<3

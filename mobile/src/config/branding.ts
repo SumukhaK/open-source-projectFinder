@@ -24,3 +24,7 @@ export const branding = {
     },
   },
 } as const;
+
+export function getThemeColors(mode: ThemeMode) {
+  return mode === 'light' ? branding.themes.light : branding.themes.dark;
+}

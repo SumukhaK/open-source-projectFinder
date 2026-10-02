@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import secrets
 import time
 from urllib.parse import urlencode
@@ -86,6 +87,27 @@ def create_app(settings=None, transport=None, sleep=time.sleep):
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Content-Type-Options"] = "nosniff"
         return response
+
+    @app.middleware("http")
+    async def crash_reporting(request, call_next):
+        try:
+            return await call_next(request)
+        except Exception as error:  # deliberate outer crash-redaction boundary
+            # Do not log exception messages, request bodies, URLs, headers or tokens.
+            logging.getLogger("reporadar.crashes").error(
+                json.dumps(
+                    {
+                        "event": "backend_unhandled_exception",
+                        "route": getattr(request.scope.get("route"), "path", "unknown"),
+                        "error_type": type(error).__name__,
+                    }
+                )
+            )
+            return JSONResponse(
+                {"detail": "An unexpected error occurred"},
+                500,
+                headers={"Cache-Control": "no-store"},
+            )
 
     def configured():
         if (

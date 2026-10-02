@@ -45,3 +45,12 @@ Follow Bulletproof React feature-based organization, adapted for Expo / React Na
 - Persistent IP quotas, bounded safe retries, provider timeouts and payload limits.
 - Backend tests before implementation, mobile tests before implementation, automated real-HTTP cross-layer verification.
 - Live GitHub/device checks require OAuth registration and native development builds. See docs/AUTHENTICATION.md.
+
+## Quality phase requirements
+
+- Free open-source tools; no manually supplied scanner keys, paid subscriptions or plan/budget upgrades.
+- Unit/integration/E2E tests, measurable coverage gates, lint/type/format checks, SAST, dependency auditing and redacted full-history secret scanning.
+- Failed/skipped/cancelled jobs and scanner errors must fail the quality gate. Exceptions must be exact and expiring.
+- Agent self-review of the exact head is mandatory before a workflow-controlled merge; repository restrictions must still apply.
+- Sanitized local crash capture and retry, with centralized/native crash reporting deferred until deployment is defined.
+- Bounded/cached jobs and minimal report retention; hosted runner quotas are not unlimited.

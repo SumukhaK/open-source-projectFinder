@@ -4,14 +4,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandLoader } from '../../../components/brand-loader';
 import { AppearanceControls } from '../../../components/appearance-controls';
 import { BrandMark } from '../../../components/brand-mark';
-import { branding } from '../../../config/branding';
+import { getThemeColors } from '../../../config/branding';
 import { useTheme } from '../../../lib/theme';
 import { ApiError, getUser, logout, signIn, User } from '../api/auth';
 import { clearToken, readToken, saveToken } from '../session-storage';
 
 export function AuthScreen({ children }: { children?: React.ReactNode }) {
   const { mode } = useTheme();
-  const colors = branding.themes[mode];
+  const colors = getThemeColors(mode);
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
