@@ -16,7 +16,7 @@
 - Treat embedding-model selection, versioning, index schema, and ranking as explicit design decisions.
 
 ## Decisions still required
-- React Native versus another React-based mobile delivery model; supported platforms.
+- React Native with Expo selected and implemented for the branding foundation; supported release OS versions remain to be specified.
 - AI, embedding, and speech providers; hosting and budget constraints.
 - Corpus selection and whether to index metadata, README content, documentation, or source code.
 - Ingestion cadence, scale targets, retention, storage beyond vectors, and GitHub API budget.
@@ -31,3 +31,7 @@ This document records initial requirements, not a finalized implementation contr
 - Support dark and light appearances and system appearance preference.
 - Loading indicators must respect Reduce Motion and expose accessible loading status.
 - Detailed animation, export, and platform rules are recorded in docs/BRANDING.md.
+
+## Mobile architecture
+
+Follow Bulletproof React feature-based organization, adapted for Expo / React Native: compose at the app layer, keep feature-specific code in features, and share independent components, hooks, libraries and centralized configuration.

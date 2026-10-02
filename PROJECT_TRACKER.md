@@ -45,7 +45,7 @@ feel free to create a remote git repo with the name "open-source-projectFinder" 
 | 6 | Voice submission and transcription | Planned | Voice-to-search flow and privacy/error behavior verification |
 | 7 | Scale validation and deployment readiness | Planned | Agreed performance, reliability and deployment checks |
 
-These phases are provisional. No dependencies or application code have been installed. React Native is proposed, not finalized. Future feature entries must record branches, PRs, test results and documentation changes.
+These phases are provisional. No dependencies or application code have been installed. React Native with Expo is now selected for the mobile branding foundation. Future feature entries must record branches, PRs, test results and documentation changes.
 
 
 ## Phase 0 review record
@@ -56,3 +56,23 @@ Branch: chore/project-scaffold. PR: https://github.com/SumukhaK/open-source-proj
 User selection: Bracket Navigator. Saved the chosen concept board and documented the blue/navy direction, dark/light modes, and platform-specific launch/icon requirements in docs/BRANDING.md. Branch: docs/bracket-navigator-brand. Decision and reference preservation complete; production exports and mobile integration remain part of the mobile phase. Verification: reviewed concept and documentation, confirmed reference file exists, and checked diff whitespace. No application tests apply to this asset/documentation update.
 
 User follow-up: 'and use app icon bracket navigator as loading animation throughout the app'. Added the shared loading requirement to technical requirements and branding guidance. Proposed motion: stationary brackets with a gently moving needle; final timing and reusable mobile component remain pending. PR: https://github.com/SumukhaK/open-source-projectFinder/pull/2.
+
+## Mobile branding implementation - 2026-10-02
+
+User authorization: "go ahead and build it and push it to git. open PR, review it yourself and then merge".
+Architecture follow-up: "use Bulletproof React  architecture guide on the app side".
+
+Branch: feat/mobile-branding. Scope: mobile foundation only; search and voice functionality remain pending.
+
+- [x] Adapt Bulletproof React structure for React Native and Expo.
+- [x] Write theme and loader tests before implementation; confirm missing modules fail the initial test run.
+- [x] Implement shared vector geometry and generate iOS light/dark/tinted and Android adaptive/monochrome exports.
+- [x] Configure native themed splash and minimal iOS launch background without artificial delay.
+- [x] Implement saved appearance settings and accessible loader with Reduce Motion and cleanup.
+- [x] Add a working branding preview screen and screen interaction test.
+- [x] Run tests (8 passing), typecheck, lint, Expo diagnostics (21/21), and iOS/Android/web bundle exports.
+- [x] Inspect the browser preview at phone width; theme switching and loader toggle work.
+- [ ] Complete final checks after accessibility review correction; open PR, review and merge.
+- [ ] Validate native release launch screens, icons and accessibility on physical iOS/Android devices.
+
+No backend endpoints, artificial searches or voice permissions were introduced. Native builds need signing and store identifiers to be configured later. The npm audit reports 13 inherited Expo tooling advisories (9 moderate, 4 high), rooted in uuid and node-forge. A current patched node-forge release was unavailable at inspection; the suggested forced Expo downgrade would break SDK compatibility. Dependency findings are recorded as outstanding rather than claiming a clean audit.
