@@ -6,11 +6,11 @@ It will combine a periodically refreshed collection of repository information wi
 
 The initial scope is idea submission and discovery of similar public repositories. Detailed screens, result presentation, and additional features will be defined during brainstorming. A match does not prove that an idea is unique, that a repository is suitable, or that its code is ready to reuse.
 
-Current progress: an initial project structure and documentation. The app and search service are not implemented yet.
+Current progress: the mobile branding/sign-in foundation and backend authentication, public GitHub repository details and account-specific favourites are implemented. Search also supports controls for how many results to request and how to sort them, with validation and safety tests. Review, automated checks and delivery are recorded in [PR #10](https://github.com/SumukhaK/open-source-projectFinder/pull/10). Semantic matching, combining search sources and repository ingestion remain planned.
 
 ## Account access
 
-Users sign up or log in with a single GitHub button. RepoRadar does not request private repository access. The app saves its own secure session; GitHub credentials stay on the backend. Signing out ends that app session. Authentication is implemented and automatically tested, while live GitHub and device validation need the app's OAuth setup. Discovery and voice remain future features.
+Users sign up or log in with a single GitHub button. RepoRadar does not request private repository access. The app saves its own secure session; GitHub credentials stay on the backend. Signing out ends that app session. Authentication is implemented and automatically tested, while live GitHub and device validation need the app's OAuth setup. Mobile discovery screens and voice remain future features.
 
 ## Quality before new features
 
