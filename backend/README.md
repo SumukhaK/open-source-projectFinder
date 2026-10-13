@@ -48,7 +48,7 @@ The lock includes patched cryptography and pinned free test/security tools. pyte
 ## Discovery integration
 Authenticated endpoints: `POST /projects/search` accepts `{idea, page}` and optional `per_page`, `sort` and `order`; `GET /projects/{owner}/{name}` assembles public repository metadata, up to three releases, languages, README and twelve contributors. `GET /favourites`, `PUT /favourites/{owner}/{name}` and `DELETE /favourites/{owner}/{name}` persist app-local favourites per GitHub identity. Saving a favourite does not star it on GitHub.
 
-The standalone keyword search controls are implemented in this feature branch. Ordinary ideas retain the existing six-keyword normalization and public-only/unarchived repository scope. Missing GitHub sections return empty collections so the UI can omit them. Provider errors remain explicit errors rather than zero results. Favourite cards are saved snapshots; details fetch current public data. Milvus semantic matching, advanced query syntax and relevance evaluation remain planned.
+The standalone keyword search controls are implemented and verified by contract tests. Ordinary ideas retain the existing six-keyword normalization and public-only/unarchived repository scope. Missing GitHub sections return empty collections so the UI can omit them. Provider errors remain explicit errors rather than zero results. Favourite cards are saved snapshots; details fetch current public data. Milvus semantic matching, advanced query syntax and relevance evaluation remain planned.
 
 | Search field | Accepted values and default |
 | --- | --- |

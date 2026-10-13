@@ -55,7 +55,7 @@ Follow Bulletproof React feature-based organization, adapted for Expo / React Na
 - Sanitized local crash capture and retry, with centralized/native crash reporting deferred until deployment is defined.
 - Bounded/cached jobs and minimal report retention; hosted runner quotas are not unlimited.
 
-Discovery API integration now exposes account-scoped app favourites and GitHub public repository details. Standalone keyword search controls and their contract tests are implemented in the feature branch; final review and required delivery checks are pending. Milvus semantic matching remains planned. Optional details must be omitted when GitHub supplies no data.
+Discovery API integration now exposes account-scoped app favourites and GitHub public repository details. Standalone keyword search controls and their contract tests are implemented and verified locally. Review, CI and delivery evidence is recorded in [PR #10](https://github.com/SumukhaK/open-source-projectFinder/pull/10). Milvus semantic matching remains planned. Optional details must be omitted when GitHub supplies no data.
 
 ## Standalone GitHub search improvements
 

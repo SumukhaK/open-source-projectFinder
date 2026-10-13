@@ -4,9 +4,9 @@ Turn a project idea into a search for existing open-source implementations.
 
 RepoRadar is a planned AI-driven discovery service with a React-based mobile client and a Python FastAPI backend. Users describe an idea by text or voice; the backend combines semantic retrieval from Milvus with GitHub public repository search to find similar projects.
 
-**Status:** mobile branding and GitHub-only signup/login implemented with Expo / React Native and FastAPI. Public GitHub search/details and account-specific favourites are connected. Search improvements are under verification; repository ingestion, semantic matching and voice remain planned. Live OAuth and native device validation remain required.
+**Status:** mobile branding and GitHub-only signup/login implemented with Expo / React Native and FastAPI. Public GitHub search/details and account-specific favourites are connected. Standalone search controls are implemented and tested; repository ingestion, semantic matching and voice remain planned. Live OAuth and native device validation remain required.
 
-Standalone GitHub search controls are implemented in the feature branch: configurable page size, sorting, validated query/pagination limits and bounded search responses. Tests preserve existing parsing, authentication and public-only scope. Final review and delivery checks are pending; see [the tracker](PROJECT_TRACKER.md). Advanced qualifiers, Boolean expressions and semantic search remain planned.
+Standalone GitHub search controls are implemented: configurable page size, sorting, validated query/pagination limits and bounded search responses. Tests preserve existing parsing, authentication and public-only scope. Review, CI and delivery evidence: [PR #10](https://github.com/SumukhaK/open-source-projectFinder/pull/10) and [the tracker](PROJECT_TRACKER.md). Advanced qualifiers, Boolean expressions and semantic search remain planned.
 
 ## Planned architecture
 
