@@ -6,7 +6,7 @@ It will combine a periodically refreshed collection of repository information wi
 
 The initial scope is idea submission and discovery of similar public repositories. Detailed screens, result presentation, and additional features will be defined during brainstorming. A match does not prove that an idea is unique, that a repository is suitable, or that its code is ready to reuse.
 
-Current progress: an initial project structure and documentation. The app and search service are not implemented yet.
+Current progress: the mobile branding/sign-in foundation and backend authentication, public GitHub repository details and account-specific favourites are implemented. The feature branch also adds controls for how many search results to request and how to sort them, with validation and safety tests; final review and delivery checks remain pending. Semantic matching, combining search sources and repository ingestion remain planned.
 
 ## Account access
 

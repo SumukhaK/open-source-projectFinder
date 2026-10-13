@@ -55,4 +55,14 @@ Follow Bulletproof React feature-based organization, adapted for Expo / React Na
 - Sanitized local crash capture and retry, with centralized/native crash reporting deferred until deployment is defined.
 - Bounded/cached jobs and minimal report retention; hosted runner quotas are not unlimited.
 
-Discovery API integration now exposes account-scoped app favourites and GitHub public repository details. Keyword search is connected but search validation is deferred; Milvus semantic matching remains planned. Optional details must be omitted when GitHub supplies no data.
+Discovery API integration now exposes account-scoped app favourites and GitHub public repository details. Standalone keyword search controls and their contract tests are implemented in the feature branch; final review and required delivery checks are pending. Milvus semantic matching remains planned. Optional details must be omitted when GitHub supplies no data.
+
+## Standalone GitHub search improvements
+
+- Preserve ordinary `idea` normalization, the existing response fields and public-only/unarchived repository scope.
+- Optional `per_page` accepts 1-100 and falls back to centralized `Settings.search_page_size` when omitted or null. Explicit sorts are `stars`, `forks` and `updated`; omitted or null sort uses best match. Sorting uses `desc` by default or explicit `asc`; an order supplied without a sort has no upstream effect. Response metadata reports the effective page size and sorting, including descending best match.
+- Preserve pages 1-50 and reject a page whose starting offset, calculated with the effective page size, is at least 1,000. Allow a partial final page starting within that window.
+- Retained keyword text, including spaces but excluding qualifiers, must fit the 256-character limit. Validate raw idea length separately at 1,000 characters. Reject invalid requests before provider calls and preserve explicit provider failures and incomplete-result metadata.
+- Search reads use a separate centralized 1 MiB response budget, configurable between 1 KiB and 2 MiB, while other GitHub reads keep the 512 KiB default. Reject over-budget responses and preserve bounded timeouts/retries.
+- Verify actual outbound parameters and response values, configured defaults, exact boundaries, compatibility, authentication, throttling, body limits, defensive public filtering and search response budgets. Delivery requires the full backend suite, coverage gates, review of the exact PR commit and all required repository checks.
+- Advanced qualifiers/quoted phrases and Boolean expressions are later phases requiring an explicit input contract. Semantic search and combining retrieval results remain separate planned work.

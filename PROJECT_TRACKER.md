@@ -154,3 +154,81 @@ Design: 8-point spacing grid; 20-point screen padding; 16-point card padding; 16
 Scope update: user requested UI and frontend/backend GitHub API integration only; search feature tests, relevance validation and live search execution are deferred. Favourites, details and safety tests remain in scope.
 
 Backend validation: 32 Python tests pass; 93.7% combined coverage and 87.5% branches, clean Bandit and Ruff. Tests cover favourites isolation/idempotency/limits, optional detail omissions, invalid/private/missing repos, request limits and provider failure/retry behavior. Search-specific feature tests and live search were deliberately not run.
+
+## Standalone GitHub search improvements - 2026-10-13
+
+Original review request (verbatim):
+
+```text
+okay, now based on the plan, verify the test cases written by the cline. analyse, think, read beofre making any changes
+```
+
+Authorization to change the tests (verbatim):
+
+```text
+sure, start changing as u propsed
+```
+
+Continuation (verbatim):
+
+```text
+continue from where u left off
+```
+
+Scope: strengthen the Phase 1 search tests before reviewing or changing the endpoint implementation. Preserve the existing favourites/details tests, restore the deleted discovery protection test, and leave unrelated backend/mobile work intact. Branch: `improved-search-endpoint`. Semantic search and combining retrieval results remain separate planned work.
+
+| Phase / feature | Status | Dependencies and verification criteria |
+| --- | --- | --- |
+| Phase 1: test contract and regression coverage | Complete (RED verified locally) | Assertions cover actual outbound GitHub parameters, effective metadata, configured defaults, exact input/query boundaries, valid/invalid pagination, public scope, authentication, throttling, body limits and provider failures. Reviewed the test diff, confirmed mutation detection and recorded the current endpoint failures below. No endpoint or delivery phase is marked complete. |
+| Phase 1: endpoint implementation review and corrections | Complete (verified locally) | Corrected configured defaults, sorting, query/pagination validation and search response limits. All 94 backend/policy tests, coverage gates, Ruff and Bandit pass. |
+| Phase 1: PR review and delivery | In progress | Stage only this feature, review the exact PR head, require successful CI and merge through the reviewed-merge workflow. GitHub records the live delivery result. |
+| Phase 2: qualifiers and quoted phrases | Planned | Decide the explicit advanced-query input contract and conflicts with mandatory public scope before adding tests or implementation. Preserve ordinary idea normalization. |
+| Phase 3: Boolean expressions | Planned | Depends on Phase 2. Preserve expression meaning, enforce GitHub's operator budget and public-only policy. |
+
+Phase 1 decisions and acceptance criteria:
+- Existing `idea` normalization, public-only/unarchived qualifiers and the six-keyword adapter remain unchanged. Keep existing response fields and verify supplied pagination/sorting metadata values.
+- Optional `per_page` accepts 1-100; omission uses central `Settings.search_page_size`, whose existing default is 20. Explicit values override the configured default.
+- Supported explicit sorts are `stars`, `forks` and `updated`. Omission means best match and omits upstream `sort` and `order`; an order supplied without a sort is accepted but has no upstream effect. Sorting uses `desc` by default and forwards explicit `asc`/`desc`.
+- Preserve the existing page range 1-50. Additionally reject pages whose starting offset is at least 1,000, using the effective page size; a partial final page starting below 1,000 remains valid.
+- Validate 255/256/257 characters of retained keyword text, including spaces, separately from the raw idea's 1,000-character maximum. Qualifiers do not count against the keyword limit. Reject invalid input before calling GitHub; do not silently truncate keywords.
+- Provider failure is an error, not an empty successful result. Preserve GitHub's incomplete-result flag and defensively omit nonpublic items.
+
+Baseline verification: the reviewed discovery file had 13 passing tests and one failure caused by an undefined variable in the forwarding test; Ruff reported four errors. In-memory mutations showed that the old feature tests survived disabled length validation, ignored page size/sort/order and incorrect metadata. Verification results after the test changes will be recorded below. No live GitHub search, implementation approval, PR or merge is claimed at this stage.
+
+Changes: repaired parameter inspection with HTTPX's `URL.params`, replaced permissive status-only checks with contract assertions and independent parameterized cases, removed redundant direct Pydantic checks, restored discovery throttling/body-limit coverage and added search-specific authentication/failure/public-scope checks. Default descending order may be omitted upstream because GitHub already defaults to `desc`; an empty parameter is not equivalent to omission.
+
+Final verification: `python -m pytest backend/tests scripts/tests -q --tb=short` with a unique ignored workspace temporary directory reported **79 passed, 12 failed, one pre-existing Starlette/httpx deprecation warning** in 33.20 seconds. The discovery file accounts for 64 cases: 52 passed and 12 failed; all other backend/policy tests passed. No cases were skipped or marked as expected failures. All failures were assertions against current endpoint behavior, rather than broken test code:
+
+- Five sorting cases expose empty upstream `sort`/`order` parameters or missing effective descending order.
+- Two configured-default cases expose the hardcoded page size of 20.
+- Three explicit pagination cases expose missing rejection of page offsets at or beyond 1,000.
+- Two combined configuration/pagination cases expose the same defects when the page size is omitted.
+
+The tests detected all five targeted in-memory mutations (disabled query length validation, ignored page size, ignored sort, ignored order, incorrect response metadata), after each corresponding unmodified baseline passed. `ruff check backend/app backend/tests`, Ruff format checks on those paths and `git diff --check` passed. The existing endpoint source hash remained unchanged (`985B8307B144790C3B691068AF03D125507502A54D5A3B2D9FF5AA7371E1392C`). Existing favourites/details checks were preserved, and the restored protection checks passed. Documentation distinguishes this verified RED stage from a completed endpoint. Live GitHub, advanced query phases and mobile checks were not run; there is no PR, merge or implementation approval for this work yet.
+
+### Backend implementation and delivery authorization
+
+User request (verbatim):
+
+```text
+now first review the backend code written as per the specs agreed , then plan for changes necessary, re write the code wherever necessary , run the tests and then raise a PR, review it and then merge it
+```
+
+Review findings:
+1. Hardcoded `Idea.per_page=20` bypasses the configured default used by existing clients.
+2. `sort="relevance"` is an invalid default under the model's own validator. Passing `None` values to HTTPX serializes empty query parameters; descending order is also sent empty, and order is forwarded without a sort.
+3. Page validation is independent of the effective page size and permits requests outside GitHub's 1,000-result window.
+4. Overlong keywords are truncated immediately before rejection, and the error misleadingly asks for keywords instead of describing the length limit.
+5. The general 512 KiB provider response limit can reject ordinary 100-result pages. A single public GitHub `fastapi` search returned 100 items in 568,754 bytes, above the current 524,288-byte limit. No provider credentials or repository payloads were printed or saved.
+
+Correction plan, in order:
+- Add failing regressions for effective order metadata, clear query-limit errors, optional null controls and full/oversized search-response payloads. Preserve the previously verified 12 failing cases.
+- Represent unset page size and sort explicitly with valid optional types; enumerate accepted sort/order values. Omitted or null page size uses the configured default; omitted or null sort means best match. Best match reports effective descending order even when an ignored ascending order was supplied.
+- Validate the starting offset with the effective page size, reject overlong retained keyword text without truncation, and build provider parameters with sorting keys only when a sort is active.
+- Add centralized `max_github_search_response` (default 1 MiB, configurable 1 KiB-2 MiB) and pass that budget explicitly through the existing provider read interface. Retain the general 512 KiB default for other GitHub reads and the existing timeout/retry behavior.
+- Run the full backend/policy tests with coverage, the coverage gate, tracked-file Ruff checks and Bandit. Review the scoped diff and stage only search source/tests and their documentation; exclude unrelated mobile work and untracked scratch scripts.
+- Push the existing `improved-search-endpoint` feature branch, open the PR, attach it to this task, review its exact commit and address findings. Record the repository's exact-head review marker only after review, wait for all required quality checks, and use the reviewed-merge workflow without bypassing protections.
+
+Dependencies and limits: no new library, credentials, paid service or schema migration is needed. Main was verified at `2237c7e5241a698258a28952150194b943d616b0`; an active `protect-main` ruleset and the reviewed-merge workflow apply. Advanced-query parsing, semantic search and mobile work remain outside this feature. Architecture components are unchanged, so no diagram update is required.
+
+Implementation verification: the additional regressions produced **50 passed and 17 failed** discovery cases before the correction, then **67 passed** afterward. The full backend/policy suite reports **94 passed**, with **97.0% combined coverage and 93.0% branch coverage**, passing the repository's coverage gate. Tracked Python files pass Ruff lint and formatting, and backend application code passes Bandit. The existing Starlette/httpx deprecation warning remains. The test HTTP provider exercises the real application/session/store path; the public payload-size check does not establish a live authenticated application search or native-device validation. PR review, CI and merge are still pending at this recorded stage.
