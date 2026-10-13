@@ -72,7 +72,8 @@ See [backend setup and checks](backend/README.md) and [mobile setup and checks](
 - Mobile branding: implemented vector icon assets, themed launch configuration, saved appearance preferences, and accessible shared loading animation.
 - GitHub authentication: implemented OAuth/PKCE, encrypted credentials, revocable sessions, rate limiting, mobile sign-in and automated cross-layer tests.
 - Quality pipeline: free open-source validation, explicit coverage/security gates and review-controlled delivery.
-- Search, ingestion, and voice implementation: pending further brainstorming and requirements.
+- Backend discovery: public GitHub search/details and account-specific favourites, with verified keyword search controls and limits.
+- Semantic search, ingestion, mobile discovery and voice: planned; advanced search syntax needs an explicit input contract.
 
 See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md), and [project tracker](PROJECT_TRACKER.md).
 
