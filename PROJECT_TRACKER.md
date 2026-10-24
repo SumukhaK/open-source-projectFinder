@@ -1,5 +1,13 @@
 # Project Tracker
 
+## Dependency security remediation and PR delivery - 2026-10-24
+
+User request (verbatim): "merge both the pr s to main then"
+
+Plan: retain useful search PR #10; fix inherited Python advisories and verify a scoped Expo CLI Zod 4 migration with tests first on a separate main-based branch. Preserve security/coverage/review gates and unrelated workspace work. Review and merge the remediation PR only after local checks and exact-head CI pass, then update/review/merge PRs #10 and #11 against current main.
+
+Status: locally verified; awaiting exact-head review and required CI. The bounded-array regression failed with 1,001 issues before the scoped Zod upgrade and passes with one rejection afterward; actual Expo plugin/output/MCP schema compatibility tests pass. Verification: 32 backend/policy tests (93.7% combined coverage, 87.5% branches), 29 mobile unit tests plus the real-HTTP auth E2E, lint/type/format/Bandit, deterministic asset generation and Android/iOS/web exports passed. Python audit reports no known vulnerabilities; npm passes the unchanged policy with only the pre-existing node-forge exception. No new exceptions were added. Native-device and authenticated live-GitHub search checks remain outside this tooling change.
+
 ## Current state
 Core idea received on 2026-10-02. Project name: RepoRadar. Repository: SumukhaK/open-source-projectFinder (private initially). Confirmed stack: Python FastAPI, React mobile client, Milvus, GitHub Search API. Detailed brainstorming remains pending.
 
