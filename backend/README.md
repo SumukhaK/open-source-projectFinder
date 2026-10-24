@@ -1,5 +1,13 @@
 # RepoRadar backend
 
+## Dependency security maintenance
+
+The Python lock pins the published security fixes in certifi 2026.10.19, filelock 4.2.1, opentelemetry-api 1.45.1 and setuptools 84.1.0. Regenerate it from the tested isolated environment; do not upgrade the whole dependency tree to resolve one advisory.
+
+Mobile scopes a Zod 4.6.6 override to Expo CLI while that CLI declares Zod 3. Regression tests resolve the CLI's actual validator and exercise its plugin metadata/output and MCP command schemas. They prove bounded oversized arrays reject before parsing every element; this does not claim unbounded arrays have a universal memory cap. Recheck the override and those compatibility tests on Expo upgrades, and remove it when the upstream dependency supports a patched version directly. No new audit exception or weaker gate is part of this fix. The existing node-forge 1.4.0 exception still requires review before its 2026-11-01 expiry.
+
+Primary sources: [certifi advisory](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2), [filelock release](https://github.com/tox-dev/filelock/releases/tag/4.2.1), [OpenTelemetry advisory](https://github.com/open-telemetry/opentelemetry-python/security/advisories/GHSA-xcq7-p3pf-p88h), [setuptools advisory](https://github.com/advisories/GHSA-xmj3-9gf7-h52w), [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) and [Zod 3 maintenance discussion](https://github.com/colinhacks/zod/issues/6653).
+
 FastAPI GitHub signup/login, persistent rate limits, encrypted provider credentials and revocable app sessions. Search and ingestion remain planned.
 
 ## Setup
