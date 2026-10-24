@@ -15,12 +15,12 @@ Core idea received on 2026-10-02. Project name: RepoRadar. Repository: SumukhaK/
 - [x] Read Karpathy guidelines and extract additional reusable engineering instructions.
 - [x] Create AGENTS.md.
 - [x] Preserve the initial workflow prompt below.
-- [ ] Complete end-to-end project brainstorming and receive the project-specific prompt.
-- [ ] Extract technical requirements, scope, decisions, and unresolved questions.
-- [ ] Define feature phases, dependencies, acceptance criteria, and verification checks.
+- [x] Receive the project-specific prompt (recorded below). Brainstorming continues feature by feature; detailed requests are recorded in each feature section.
+- [x] Extract technical requirements, scope, decisions, and unresolved questions (REQUIREMENTS.md, SCOPE.md and the feature sections below).
+- [x] Define feature phases, dependencies, acceptance criteria, and verification checks for each delivered feature and the hybrid-search handbook.
 - [x] Create README.md with planned architecture and selected tools, REQUIREMENTS.md, and SCOPE.md.
 - [x] Establish the GitHub repository identity and initialize the repository.
-- [ ] Implement features through TDD, feature branches, pull requests, review, and merge.
+- [ ] Implement features through TDD, feature branches, pull requests, review, and merge (ongoing; PRs #1-#13 delivered this way).
 
 ## Feature phase tracking
 Populate after project scope is established. For each feature record phase, status (planned / in progress / in review / blocked / complete), dependencies, acceptance criteria, tests and results, branch, PR, and documentation updates. Record blockers and unresolved questions explicitly.
@@ -45,11 +45,11 @@ feel free to create a remote git repo with the name "open-source-projectFinder" 
 | Phase | Features | Status | Verification |
 | --- | --- | --- | --- |
 | 0 | Repository, folder scaffold, architecture and scope documents | Complete | Diff reviewed; secret exclusions verified; pushed scaffold PR #1; GitGuardian check passed |
-| 1 | Finalize requirements, API contract, providers and evaluation criteria | Planned | Agreed acceptance criteria and recorded decisions |
-| 2 | Text idea submission and GitHub search baseline | Planned | Unit tests first, API integration checks, relevant results |
-| 3 | Periodic ingestion, embeddings and Milvus index | Planned | Repeatable ingestion, deduplication, updates and retrieval checks |
-| 4 | Hybrid retrieval, ranking and AI similarity explanations | Planned | Agreed relevance evaluation, provenance and failure handling |
-| 5 | Mobile text discovery flow | Planned | Client tests and end-to-end submission/results verification |
+| 1 | Finalize requirements, API contract, providers and evaluation criteria | In progress | Hybrid contract proposed in execution-plans/hybrid-search; T00 merged; eight operator decisions (D1-D8) still pending |
+| 2 | Text idea submission and GitHub search baseline | Backend complete; mobile pending | Backend keyword search, details and favourites merged (#9, #10, plus fixes below); mobile discovery UI unmerged |
+| 3 | Periodic ingestion, embeddings and Milvus index | Planned (T01-T09, T16-T23) | Repeatable ingestion, deduplication, updates and retrieval checks |
+| 4 | Hybrid retrieval, ranking and AI similarity explanations | Planned (T10-T15, T27) | Agreed relevance evaluation, provenance and failure handling |
+| 5 | Mobile text discovery flow | Planned (blocked on unmerged mobile foundation; T24-T26) | Client tests and end-to-end submission/results verification |
 | 6 | Voice submission and transcription | Planned | Voice-to-search flow and privacy/error behavior verification |
 | 7 | Scale validation and deployment readiness | Planned | Agreed performance, reliability and deployment checks |
 
@@ -259,8 +259,8 @@ Scope: publish the existing proposed hybrid/archive architecture plus portable O
 
 | Phase / feature | Status | Verification / acceptance |
 | --- | --- | --- |
-| Handbook authoring | Authored and statically verified; current-head review/checks and publication recorded in PR #11 | Static checks passed for 37 Markdown files, 30 required task workflows, 289 local links/anchors, dependency ordering and both diagram themes. Independent review found one missing T17 dependency on T08 publication; it was added to the task and tracker. [PR #11](https://github.com/SumukhaK/open-source-projectFinder/pull/11) and its current-head review/checks are authoritative for publication status. |
-| T00 readiness | Awaiting review | [PR #13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) on base `2e4a9ff353de7a137c49fff0c99bea1765a357a2`. [READINESS](execution-plans/hybrid-search/READINESS.md) records the fresh dependency audits, merged #10/#12/#11 prerequisites, unmerged mobile foundation, eight pending operator decisions and the task readiness/blocker matrix. Exact-head review and CI are pending; the implementer has not accepted or merged. |
+| Handbook authoring | Complete; merged as `2e4a9ff` via PR #11 (reviewed head `5cba2a4`, [CI 40084144348](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40084144348)) | Static checks passed for 37 Markdown files, 30 required task workflows, 289 local links/anchors, dependency ordering and both diagram themes. Independent review found one missing T17 dependency on T08 publication; it was added to the task and tracker. [PR #11](https://github.com/SumukhaK/open-source-projectFinder/pull/11) and its current-head review/checks are authoritative for publication status. |
+| T00 readiness | Complete (accepted and merged as `6dc4233`) | [PR #13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) on base `2e4a9ff353de7a137c49fff0c99bea1765a357a2`; exact-head review of `b535011` and [CI 40086438932](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40086438932) passed. The rest of this cell is the original delivery note: [READINESS](execution-plans/hybrid-search/READINESS.md) records the fresh dependency audits, merged #10/#12/#11 prerequisites, unmerged mobile foundation, eight pending operator decisions and the task readiness/blocker matrix. Exact-head review and CI are pending; the implementer has not accepted or merged. |
 | T01-T29 implementation | Not started | [Task tracker](execution-plans/hybrid-search/TRACKER.md) is authoritative for per-task status, full reviewed SHA/review/CI evidence and merged SHA. Only review acceptance checks a task done; dependents require merge into main. |
 
 Main baseline was 2237c7e5241a698258a28952150194b943d616b0. Search PR #10 and the local discovery mobile foundation were not merged during authoring. Fresh dependency policy evaluation on 2026-10-24 blocked main's mobile lock on zod 3.25.76 / GHSA-mrhx-c7xc-m3w5; the earlier braces/sprintf advisories were withdrawn, not patched here. The first handbook CI run additionally blocked the unchanged Python lock on six advisories across certifi, filelock, opentelemetry-api and setuptools; backend/mobile quality and secrets passed at that earlier head. See the dated evidence in REQUEST.md; later-head checks remain required. The handbook preserves current gates and requires rechecking prerequisite/security state. No unrelated workspace changes are included.
@@ -273,4 +273,25 @@ The October 13 security/delivery paragraphs above are historical and superseded 
 
 ### T00 readiness delivery - 2026-10-24
 
-[T00 PR #13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) is a documentation-only readiness slice on base `2e4a9ff353de7a137c49fff0c99bea1765a357a2`. It records the current legacy keyword-search contract, the merged #10/#12/#11 prerequisites, and the still-unmerged mobile discovery foundation (no origin branch or PR; the local uncommitted WIP was not copied). Fresh audits: the Python lock has 59 dependencies and 0 known vulnerabilities; the npm lock has 4 high audit entries with one direct `node-forge 1.4.0` advisory `GHSA-86w9-cpqp-85rv`, covered only by the existing exception expiring 2026-11-01. Local checks: 94 backend tests passed, 97.0% combined / 93.0% branches, ruff/format/Bandit clean, 302 relative links/anchors resolved, and diff/secret checks clean. All eight policy decisions remain pending operator approval with blocking task IDs in [READINESS](execution-plans/hybrid-search/READINESS.md). No runtime, ingestion, scheduler, credential, gate or mobile change was made. T00 is not accepted or merged; T01 must not start until it is merged.
+[T00 PR #13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) is a documentation-only readiness slice on base `2e4a9ff353de7a137c49fff0c99bea1765a357a2`. It records the current legacy keyword-search contract, the merged #10/#12/#11 prerequisites, and the still-unmerged mobile discovery foundation (no origin branch or PR; the local uncommitted WIP was not copied). Fresh audits: the Python lock has 59 dependencies and 0 known vulnerabilities; the npm lock has 4 high audit entries with one direct `node-forge 1.4.0` advisory `GHSA-86w9-cpqp-85rv`, covered only by the existing exception expiring 2026-11-01. Local checks: 94 backend tests passed, 97.0% combined / 93.0% branches, ruff/format/Bandit clean, 302 relative links/anchors resolved, and diff/secret checks clean. All eight policy decisions remain pending operator approval with blocking task IDs in [READINESS](execution-plans/hybrid-search/READINESS.md). No runtime, ingestion, scheduler, credential, gate or mobile change was made. At the time of that note T00 was not yet accepted; it has since been accepted and merged as `6dc4233` (see the hybrid [TRACKER](execution-plans/hybrid-search/TRACKER.md) change log). T01 is now prerequisite-ready.
+
+## Documentation drift and discovery hardening - 2026-10-24
+
+User request (verbatim):
+
+```text
+cut a branch from main and work on fixing issues to watch 2,3,4. im aware od first issue, we will deal with it later. also PR#13 is merged, so update ur graph and knowldge accoringly
+```
+
+Scope: the architect review's issues 2-4. Issue 1 (node-forge exception expiring 2026-11-01) is deliberately deferred by the user. Branch `claude/optimistic-franklin-06iy1f`, recut from main `6dc4233`.
+
+| Feature | Status | Verification |
+| --- | --- | --- |
+| 2. Documentation drift | Complete locally | backend README no longer calls search planned; invalid Latin-1 byte in README replaced with UTF-8 `·`; PR #11 and T00/PR #13 merges recorded here and in the hybrid TRACKER/READINESS with review/CI evidence; stale phase table and workflow checkboxes updated with evidence |
+| 3. Unmerged mobile path in the plan | Complete locally | ARCHITECTURE/README of the handbook now label `mobile/src/features/discovery/...` as a local uncommitted workspace file and point at prerequisite P2; T24-T26 remain blocked. The mobile foundation itself cannot be delivered from this checkout because it exists only on the operator's machine. |
+| 4a. Non-ASCII ideas | Complete locally | Keywords keep letters, digits and combining marks of any script. RED: Devanagari and CJK ideas returned 422 and `Café` became `caf`; GREEN after the change. Existing ASCII normalization tests unchanged. |
+| 4b. Per-user GitHub quota | Complete locally (mitigation) | Using each user's own token is kept by design. Rate-limited discovery reads now return 503 with `Retry-After` (GitHub's Retry-After/reset, or 60 s when GitHub gives no timing headers). RED: header missing; GREEN after the change. |
+| 4c. Private `request._body` | Complete locally | Replaced by a public-ASGI `BodyLimit` middleware that buffers up to `max_auth_body`, returns 413 and replays the body; it runs inside `protection`, so throttling still comes first. Chunked-body and direct ASGI tests cover delivery, oversize, disconnect and replay; real uvicorn smoke test returned 200 for a chunked login start and 413 for a 5,000-byte chunked body. |
+| 4d. Per-request SQLite pruning / single host | Not changed | Already documented as single-host; a shared PostgreSQL/Redis limiter belongs to the deployment phase. Rewriting the pruning without a measured problem would be speculative. |
+
+Verification (Linux, Python 3.13 scratch venv from `backend/requirements.lock.txt`; CI uses 3.11): `ruff check`/`ruff format --check backend scripts` clean; `python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch` 104 passed (was 94); `scripts/quality.py coverage` 97.2% combined / 93.5% branches; Bandit clean. Mobile code is unchanged and its suite was not run locally; PR CI runs mobile and E2E checks. No dependency, gate or exception change.

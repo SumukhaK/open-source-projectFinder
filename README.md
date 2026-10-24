@@ -22,7 +22,7 @@ The backend and ingestion worker share integration code and one central backend 
 ![RepoRadar authentication](docs/authentication-light.svg#gh-light-mode-only)
 ![RepoRadar authentication](docs/authentication-dark.svg#gh-dark-mode-only)
 
-[Authentication flow and security](docs/AUTHENTICATION.md) · [Editable source](docs/authentication.mmd)
+[Authentication flow and security](docs/AUTHENTICATION.md) Â· [Editable source](docs/authentication.mmd)
 
 GitHub credentials stay encrypted on the backend; the app uses a separate revocable session. Persistent rate limits and bounded provider retries are implemented.
 
@@ -73,6 +73,8 @@ See [backend setup and checks](backend/README.md) and [mobile setup and checks](
 - GitHub authentication: implemented OAuth/PKCE, encrypted credentials, revocable sessions, rate limiting, mobile sign-in and automated cross-layer tests.
 - Quality pipeline: free open-source validation, explicit coverage/security gates and review-controlled delivery.
 - Backend discovery: public GitHub search/details and account-specific favourites, with verified keyword search controls and limits.
+- Discovery hardening: non-ASCII ideas are searchable, GitHub rate limits return `Retry-After`, and request-size limits use a public ASGI middleware.
+- Hybrid search handbook: T00 readiness merged (PR #13); T01-T29 not started.
 - Semantic search, ingestion, mobile discovery and voice: planned; advanced search syntax needs an explicit input contract.
 
 See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md), and [project tracker](PROJECT_TRACKER.md).

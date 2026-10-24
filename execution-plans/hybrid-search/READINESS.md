@@ -1,6 +1,6 @@
 # T00 readiness and policy decisions
 
-Status: **Awaiting review**. This is a documentation/prerequisites slice. It implements no archive, hybrid, mobile, ingestion, scheduler, credential or quality-gate change. Review/merge evidence belongs in [TRACKER](TRACKER.md).
+Status: **Accepted and merged** via [PR #13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) (`6dc4233`, 2026-10-24); acceptance evidence is in [TRACKER](TRACKER.md). The decisions and prerequisites below remain open unless the tracker or REQUEST records otherwise. This is a documentation/prerequisites slice. It implements no archive, hybrid, mobile, ingestion, scheduler, credential or quality-gate change. Review/merge evidence belongs in [TRACKER](TRACKER.md).
 
 | Control | Value |
 | --- | --- |
