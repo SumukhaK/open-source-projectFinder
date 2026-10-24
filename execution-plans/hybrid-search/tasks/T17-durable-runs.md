@@ -5,10 +5,10 @@ Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 | Control | Value |
 | --- | --- |
 | Branch to create from latest origin/main | `codex/hybrid-t17-durable-runs` |
-| Prerequisites, merged into main | [T03](T03-catalogue.md), [T16](T16-discovery-partitions.md) |
+| Prerequisites, merged into main | [T03](T03-catalogue.md), [T08](T08-publication.md), [T16](T16-discovery-partitions.md) |
 | Intended scope | archive_store run/task/partition migrations + tests |
 
-Read first: Existing archive migrations and pure partition outputs; ARCHITECTURE run/task schema and lease requirements. Also read [ARCHITECTURE](../ARCHITECTURE.md), [EXECUTION_GUIDE](../EXECUTION_GUIDE.md), [REQUEST](../REQUEST.md) and the actual current callers/tests/configuration. Proposed file paths are ownership boundaries; reuse existing code if main has evolved.
+Read first: Existing archive migrations, T08 publication/activation/cleanup code and pure partition outputs; ARCHITECTURE run/task schema and lease requirements. Also read [ARCHITECTURE](../ARCHITECTURE.md), [EXECUTION_GUIDE](../EXECUTION_GUIDE.md), [REQUEST](../REQUEST.md) and the actual current callers/tests/configuration. Proposed file paths are ownership boundaries; reuse existing code if main has evolved.
 
 ## Copy-ready execution prompt
 

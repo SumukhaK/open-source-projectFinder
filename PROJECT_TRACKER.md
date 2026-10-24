@@ -168,7 +168,7 @@ Scope: publish the existing proposed hybrid/archive architecture plus portable O
 
 | Phase / feature | Status | Verification / acceptance |
 | --- | --- | --- |
-| Handbook authoring | Authored; awaiting exact-head review and publication | 30 bounded task prompts, explicit dependency graph, tests-first rules, per-task main branch/PR/wait instructions and review-controlled tracker; local static checks and independent review must pass before merge. GitHub PR/checks are authoritative for publication status. |
+| Handbook authoring | Authored in PR #11; awaiting final exact-head review/checks and publication | Static checks passed for 37 Markdown files, 30 required task workflows, 286 local links/anchors, dependency ordering and both diagram themes. Independent review found one missing T17 dependency on T08 publication; it was added to the task and tracker. [PR #11](https://github.com/SumukhaK/open-source-projectFinder/pull/11) and its current-head review/checks are authoritative for publication status. |
 | T00-T29 implementation | Not started | [Task tracker](execution-plans/hybrid-search/TRACKER.md) is authoritative for per-task status, full reviewed SHA/review/CI evidence and merged SHA. Only review acceptance checks a task done; dependents require merge into main. |
 
 Main baseline was 2237c7e5241a698258a28952150194b943d616b0. Search PR #10 and the local discovery mobile foundation were not merged during authoring. Fresh dependency policy evaluation on 2026-10-24 blocked main's mobile lock on zod 3.25.76 / GHSA-mrhx-c7xc-m3w5; the earlier braces/sprintf advisories were withdrawn, not patched here. The handbook preserves current gates and requires rechecking prerequisite/security state. No unrelated workspace changes are included.

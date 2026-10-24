@@ -27,7 +27,7 @@ Do not amend a PR after review simply to tick its own tracker row. The GitHub re
 | [ ] | [T14: Paginate fused snapshots with account-bound cursors](tasks/T14-fused-cursors.md) | T13 | Not started | — | — | — |
 | [ ] | [T15: Expose authenticated versioned hybrid search and status](tasks/T15-hybrid-api.md) | T14 | Not started | — | — | — |
 | [ ] | [T16: Plan partitioned rolling-year discovery](tasks/T16-discovery-partitions.md) | T04 | Not started | — | — | — |
-| [ ] | [T17: Persist runs, checkpoints and fenced worker leases](tasks/T17-durable-runs.md) | T03, T16 | Not started | — | — | — |
+| [ ] | [T17: Persist runs, checkpoints and fenced worker leases](tasks/T17-durable-runs.md) | T03, T08, T16 | Not started | — | — | — |
 | [ ] | [T18: Run a bounded resumable backfill](tasks/T18-backfill.md) | T09, T16, T17 | Not started | — | — | — |
 | [ ] | [T19: Refresh weekly with content-aware change detection](tasks/T19-weekly-refresh.md) | T10, T17, T18 | Not started | — | — | — |
 | [ ] | [T20: Suppress and retire unsafe or expired archive content](tasks/T20-retirement.md) | T10, T19 | Not started | — | — | — |
