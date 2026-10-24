@@ -105,7 +105,7 @@ All commands were run in the T00 worktree on 2026-10-24 unless noted.
 | Python audit/policy | See section 2 | 59 dependencies; 0 vulnerabilities; policy exit 0 |
 | npm audit/policy | See section 2 | 4 high entries; one direct advisory; policy exit 0 via existing exception |
 | Whitespace | `git diff --check` | Exit 0 |
-| Links/anchors | Local Markdown link/anchor check over 40 handbook/root docs | 299 relative links and anchors resolved |
+| Links/anchors | Local Markdown link/anchor check over 40 handbook/root docs | 302 relative links and anchors resolved |
 | Secrets | Changed-file inspection for token/key patterns | No credential or private-key patterns found |
 
 No behavioral RED is claimed: this is a documentation-only change, so there is no runtime requirement to fail first. The existing backend suite is a regression baseline, not evidence for unimplemented archive/hybrid features.
