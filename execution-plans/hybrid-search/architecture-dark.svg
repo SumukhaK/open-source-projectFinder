@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="680" viewBox="0 0 1000 680" role="img" aria-labelledby="title desc"><title id="title">Planned hybrid search and weekly archive</title><desc id="desc">One mobile search calls FastAPI. GitHub keyword search and local Milvus vector search run in parallel. Their results are validated, deduplicated and fused into one list. A separate weekly worker maintains the rolling 365-day local archive. All changes are proposed.</desc><rect width="1000" height="680" fill="#0D1117"/><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#8B949E"/></marker></defs>
+<path d="M 230 58 L 275 58" fill="none" stroke="#8B949E" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M 550 58 L 620 58" fill="none" stroke="#8B949E" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M 550 75 L 585 75 L 585 115 L 890 115 L 890 235" fill="none" stroke="#8B949E" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M 355 170 L 170 170 L 170 235" fill="none" stroke="#8B949E" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M 645 170 L 800 170 L 800 235" fill="none" stroke="#8B949E" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M 500 135 L 500 110 L 790 110 L 790 90" fill="none" stroke="#8B949E" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M 170 320 L 170 425 L 355 425" fill="none" stroke="#8B949E" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M 830 320 L 830 425 L 645 425" fill="none" stroke="#8B949E" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M 355 590 L 335 590 L 335 170 L 355 170" fill="none" stroke="#8B949E" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M 500 460 L 500 555" fill="none" stroke="#8B949E" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="20" y="25" width="210" height="65" rx="10" fill="#161B22" stroke="#30363D" stroke-width="1.5"/>
+<text x="125.0" y="62.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#E6EDF3">Weekly host task</text>
+<rect x="275" y="25" width="275" height="65" rx="10" fill="#161B22" stroke="#30363D" stroke-width="1.5"/>
+<text x="412.5" y="51.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#E6EDF3">GitHub ingestion worker</text>
+<text x="412.5" y="75.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#8B949E">Fetch / CPU embeddings</text>
+<rect x="620" y="25" width="340" height="65" rx="10" fill="#161B22" stroke="#30363D" stroke-width="1.5"/>
+<text x="790.0" y="51.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#E6EDF3">SSD archive</text>
+<text x="790.0" y="75.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#8B949E">SQLite catalogue + raw content</text>
+<rect x="355" y="135" width="290" height="70" rx="10" fill="#161B22" stroke="#30363D" stroke-width="1.5"/>
+<text x="500.0" y="164.0" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#E6EDF3">FastAPI hybrid orchestrator</text>
+<text x="500.0" y="188.0" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#8B949E">One request / parallel retrieval</text>
+<rect x="30" y="235" width="280" height="85" rx="10" fill="#161B22" stroke="#30363D" stroke-width="1.5"/>
+<text x="170.0" y="271.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#E6EDF3">Live GitHub search</text>
+<text x="170.0" y="295.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#8B949E">Derived keyword query</text>
+<rect x="690" y="235" width="280" height="85" rx="10" fill="#161B22" stroke="#30363D" stroke-width="1.5"/>
+<text x="830.0" y="271.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#E6EDF3">Local Milvus search</text>
+<text x="830.0" y="295.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#8B949E">Full-idea embedding / 365-day corpus</text>
+<rect x="355" y="390" width="290" height="70" rx="10" fill="#161B22" stroke="#30363D" stroke-width="1.5"/>
+<text x="500.0" y="419.0" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#E6EDF3">One combined ranking</text>
+<text x="500.0" y="443.0" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#8B949E">Validate / ID dedup / rank fusion</text>
+<rect x="355" y="555" width="290" height="70" rx="10" fill="#161B22" stroke="#30363D" stroke-width="1.5"/>
+<text x="500.0" y="584.0" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#E6EDF3">Mobile app</text>
+<text x="500.0" y="608.0" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#8B949E">One search / one result list</text>
+<text x="500" y="660" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#8B949E">PROPOSED - both sources serve normal search; weekly ingestion runs separately</text></svg>
