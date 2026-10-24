@@ -1,3 +1,4 @@
+import math
 import secrets
 import time
 from email.utils import parsedate_to_datetime
@@ -7,7 +8,10 @@ from app.core.config import Settings
 
 
 class ProviderError(Exception):
-    pass
+    def __init__(self, retry_after=None):
+        super().__init__()
+        # Whole seconds GitHub asked callers to wait, when its rate-limit signals say so.
+        self.retry_after = retry_after
 
 
 class GitHubProvider:
@@ -122,6 +126,7 @@ class GitHubProvider:
                     raise ProviderError() from error
                 if attempt == self.settings.github_attempts - 1:
                     raise ProviderError()
+                requested_wait = False
                 delay = (
                     self.settings.retry_base_delay * (2**attempt)
                     + secrets.randbelow(1001) / 1000 * self.settings.retry_jitter
@@ -139,7 +144,7 @@ class GitHubProvider:
                         and not reset
                     ):
                         # GitHub requires at least a minute without usable rate-limit headers.
-                        raise ProviderError()
+                        raise ProviderError(retry_after=60)
                     try:
                         if retry_after:
                             try:
@@ -152,9 +157,10 @@ class GitHubProvider:
                             delay = max(delay, requested)
                         if reset:
                             delay = max(delay, float(reset) - time.time())
+                        requested_wait = bool(retry_after or reset)
                     except (ValueError, TypeError, OverflowError):
                         raise ProviderError()
                 if delay > self.settings.retry_max_delay:
-                    raise ProviderError()
+                    raise ProviderError(math.ceil(delay) if requested_wait else None)
                 self.sleep(delay)
         raise ProviderError()

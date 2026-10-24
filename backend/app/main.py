@@ -37,6 +37,41 @@ class SessionRequest(BaseModel):
     verifier: str = Field(pattern=r"^[A-Za-z0-9._~-]{43,128}$")
 
 
+DISCOVERY_PATHS = ("/projects/", "/favourites")
+
+
+class BodyLimit:
+    """Buffer limited request bodies, including chunked ones, then replay them."""
+
+    def __init__(self, app, paths, settings):
+        self.app, self.paths, self.settings = app, paths, settings
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope["path"].startswith(self.paths):
+            return await self.app(scope, receive, send)
+        body = bytearray()
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return None
+            body.extend(message.get("body", b""))
+            if len(body) > self.settings.max_auth_body:
+                response = JSONResponse({"detail": "Request too large"}, 413)
+                return await response(scope, receive, send)
+            if not message.get("more_body", False):
+                break
+        replayed = False
+
+        async def replay():
+            nonlocal replayed
+            if replayed:
+                return await receive()
+            replayed = True
+            return {"type": "http.request", "body": bytes(body), "more_body": False}
+
+        return await self.app(scope, replay, send)
+
+
 def create_app(settings=None, transport=None, sleep=time.sleep):
     settings = settings or Settings()
     app = FastAPI(title="RepoRadar API")
@@ -62,9 +97,14 @@ def create_app(settings=None, transport=None, sleep=time.sleep):
         allow_headers=["Authorization", "Content-Type"],
     )
 
+    # Added before protection, so it runs inside it: throttling is checked first.
+    app.add_middleware(
+        BodyLimit, paths=("/auth/",) + DISCOVERY_PATHS, settings=settings
+    )
+
     @app.middleware("http")
     async def protection(request, call_next):
-        discovery = request.url.path.startswith(("/projects/", "/favourites"))
+        discovery = request.url.path.startswith(DISCOVERY_PATHS)
         if request.url.path.startswith("/auth/") or discovery:
             # Trust the actual connection, not user-supplied forwarding headers.
             ip = request.client.host if request.client else "unknown"
@@ -79,13 +119,6 @@ def create_app(settings=None, transport=None, sleep=time.sleep):
                     429,
                     headers={"Retry-After": str(retry), "Cache-Control": "no-store"},
                 )
-            # Limit the actual body, including chunked requests.
-            body = bytearray()
-            async for chunk in request.stream():
-                body.extend(chunk)
-                if len(body) > settings.max_auth_body:
-                    return JSONResponse({"detail": "Request too large"}, 413)
-            request._body = bytes(body)
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
         response.headers["Referrer-Policy"] = "no-referrer"
