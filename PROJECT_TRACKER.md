@@ -1,5 +1,13 @@
 # Project Tracker
 
+## Dependency security remediation and PR delivery - 2026-10-24
+
+User request (verbatim): "merge both the pr s to main then"
+
+Plan: retain useful search PR #10; fix inherited Python advisories and verify a scoped Expo CLI Zod 4 migration with tests first on a separate main-based branch. Preserve security/coverage/review gates and unrelated workspace work. Review and merge the remediation PR only after local checks and exact-head CI pass, then update/review/merge PRs #10 and #11 against current main.
+
+Dependency delivery complete: [PR #12](https://github.com/SumukhaK/open-source-projectFinder/pull/12) merged as be74b1a3b5f3a583787f1d40d62b627881bca005 after independent review of 163e77deb6542d5adc128ed8a49dcf5d543d7388 and passing [CI 40083752223](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40083752223). The bounded-array regression failed with 1,001 issues before the scoped Zod upgrade and passes with one rejection afterward; actual Expo plugin/output/MCP schema compatibility tests pass. Verification: 32 backend/policy tests (93.7% combined coverage, 87.5% branches), 29 mobile unit tests plus the real-HTTP auth E2E, lint/type/format/Bandit, deterministic asset generation and Android/iOS/web exports passed. Python audit reports no known vulnerabilities; npm passes the unchanged policy with only the pre-existing node-forge exception. No new exceptions were added. Native-device and authenticated live-GitHub search checks remain outside this tooling change.
+
 ## Current state
 Core idea received on 2026-10-02. Project name: RepoRadar. Repository: SumukhaK/open-source-projectFinder (private initially). Confirmed stack: Python FastAPI, React mobile client, Milvus, GitHub Search API. Detailed brainstorming remains pending.
 
@@ -155,6 +163,89 @@ Scope update: user requested UI and frontend/backend GitHub API integration only
 
 Backend validation: 32 Python tests pass; 93.7% combined coverage and 87.5% branches, clean Bandit and Ruff. Tests cover favourites isolation/idempotency/limits, optional detail omissions, invalid/private/missing repos, request limits and provider failure/retry behavior. Search-specific feature tests and live search were deliberately not run.
 
+## Standalone GitHub search improvements - 2026-10-13
+
+Original review request (verbatim):
+
+```text
+okay, now based on the plan, verify the test cases written by the cline. analyse, think, read beofre making any changes
+```
+
+Authorization to change the tests (verbatim):
+
+```text
+sure, start changing as u propsed
+```
+
+Continuation (verbatim):
+
+```text
+continue from where u left off
+```
+
+Scope: strengthen the Phase 1 search tests before reviewing or changing the endpoint implementation. Preserve the existing favourites/details tests, restore the deleted discovery protection test, and leave unrelated backend/mobile work intact. Branch: `improved-search-endpoint`. Semantic search and combining retrieval results remain separate planned work.
+
+| Phase / feature | Status | Dependencies and verification criteria |
+| --- | --- | --- |
+| Phase 1: test contract and regression coverage | Complete (RED verified locally) | Assertions cover actual outbound GitHub parameters, effective metadata, configured defaults, exact input/query boundaries, valid/invalid pagination, public scope, authentication, throttling, body limits and provider failures. Reviewed the test diff, confirmed mutation detection and recorded the current endpoint failures below. No endpoint or delivery phase is marked complete. |
+| Phase 1: endpoint implementation review and corrections | Complete (verified locally) | Corrected configured defaults, sorting, query/pagination validation and search response limits. All 94 backend/policy tests, coverage gates, Ruff and Bandit pass. |
+| Phase 1: PR review and delivery | Blocked (dependency audit); [PR #10](https://github.com/SumukhaK/open-source-projectFinder/pull/10) remains open | Only this feature is committed. Independent backend review found no blocking findings. Required CI rejects two tooling advisories without available fixes; the user chose to keep the gate unchanged and leave the PR open. No merge workflow was dispatched. |
+| Phase 2: qualifiers and quoted phrases | Planned | Decide the explicit advanced-query input contract and conflicts with mandatory public scope before adding tests or implementation. Preserve ordinary idea normalization. |
+| Phase 3: Boolean expressions | Planned | Depends on Phase 2. Preserve expression meaning, enforce GitHub's operator budget and public-only policy. |
+
+Phase 1 decisions and acceptance criteria:
+- Existing `idea` normalization, public-only/unarchived qualifiers and the six-keyword adapter remain unchanged. Keep existing response fields and verify supplied pagination/sorting metadata values.
+- Optional `per_page` accepts 1-100; omission uses central `Settings.search_page_size`, whose existing default is 20. Explicit values override the configured default.
+- Supported explicit sorts are `stars`, `forks` and `updated`. Omission means best match and omits upstream `sort` and `order`; an order supplied without a sort is accepted but has no upstream effect. Sorting uses `desc` by default and forwards explicit `asc`/`desc`.
+- Preserve the existing page range 1-50. Additionally reject pages whose starting offset is at least 1,000, using the effective page size; a partial final page starting below 1,000 remains valid.
+- Validate 255/256/257 characters of retained keyword text, including spaces, separately from the raw idea's 1,000-character maximum. Qualifiers do not count against the keyword limit. Reject invalid input before calling GitHub; do not silently truncate keywords.
+- Provider failure is an error, not an empty successful result. Preserve GitHub's incomplete-result flag and defensively omit nonpublic items.
+
+Baseline verification: the reviewed discovery file had 13 passing tests and one failure caused by an undefined variable in the forwarding test; Ruff reported four errors. In-memory mutations showed that the old feature tests survived disabled length validation, ignored page size/sort/order and incorrect metadata. Verification results after the test changes will be recorded below. No live GitHub search, implementation approval, PR or merge is claimed at this stage.
+
+Changes: repaired parameter inspection with HTTPX's `URL.params`, replaced permissive status-only checks with contract assertions and independent parameterized cases, removed redundant direct Pydantic checks, restored discovery throttling/body-limit coverage and added search-specific authentication/failure/public-scope checks. Default descending order may be omitted upstream because GitHub already defaults to `desc`; an empty parameter is not equivalent to omission.
+
+Final verification: `python -m pytest backend/tests scripts/tests -q --tb=short` with a unique ignored workspace temporary directory reported **79 passed, 12 failed, one pre-existing Starlette/httpx deprecation warning** in 33.20 seconds. The discovery file accounts for 64 cases: 52 passed and 12 failed; all other backend/policy tests passed. No cases were skipped or marked as expected failures. All failures were assertions against current endpoint behavior, rather than broken test code:
+
+- Five sorting cases expose empty upstream `sort`/`order` parameters or missing effective descending order.
+- Two configured-default cases expose the hardcoded page size of 20.
+- Three explicit pagination cases expose missing rejection of page offsets at or beyond 1,000.
+- Two combined configuration/pagination cases expose the same defects when the page size is omitted.
+
+The tests detected all five targeted in-memory mutations (disabled query length validation, ignored page size, ignored sort, ignored order, incorrect response metadata), after each corresponding unmodified baseline passed. `ruff check backend/app backend/tests`, Ruff format checks on those paths and `git diff --check` passed. The existing endpoint source hash remained unchanged (`985B8307B144790C3B691068AF03D125507502A54D5A3B2D9FF5AA7371E1392C`). Existing favourites/details checks were preserved, and the restored protection checks passed. Documentation distinguishes this verified RED stage from a completed endpoint. Live GitHub, advanced query phases and mobile checks were not run; there is no PR, merge or implementation approval for this work yet.
+
+### Backend implementation and delivery authorization
+
+User request (verbatim):
+
+```text
+now first review the backend code written as per the specs agreed , then plan for changes necessary, re write the code wherever necessary , run the tests and then raise a PR, review it and then merge it
+```
+
+Review findings:
+1. Hardcoded `Idea.per_page=20` bypasses the configured default used by existing clients.
+2. `sort="relevance"` is an invalid default under the model's own validator. Passing `None` values to HTTPX serializes empty query parameters; descending order is also sent empty, and order is forwarded without a sort.
+3. Page validation is independent of the effective page size and permits requests outside GitHub's 1,000-result window.
+4. Overlong keywords are truncated immediately before rejection, and the error misleadingly asks for keywords instead of describing the length limit.
+5. The general 512 KiB provider response limit can reject ordinary 100-result pages. A single public GitHub `fastapi` search returned 100 items in 568,754 bytes, above the current 524,288-byte limit. No provider credentials or repository payloads were printed or saved.
+
+Correction plan, in order:
+- Add failing regressions for effective order metadata, clear query-limit errors, optional null controls and full/oversized search-response payloads. Preserve the previously verified 12 failing cases.
+- Represent unset page size and sort explicitly with valid optional types; enumerate accepted sort/order values. Omitted or null page size uses the configured default; omitted or null sort means best match. Best match reports effective descending order even when an ignored ascending order was supplied.
+- Validate the starting offset with the effective page size, reject overlong retained keyword text without truncation, and build provider parameters with sorting keys only when a sort is active.
+- Add centralized `max_github_search_response` (default 1 MiB, configurable 1 KiB-2 MiB) and pass that budget explicitly through the existing provider read interface. Retain the general 512 KiB default for other GitHub reads and the existing timeout/retry behavior.
+- Run the full backend/policy tests with coverage, the coverage gate, tracked-file Ruff checks and Bandit. Review the scoped diff and stage only search source/tests and their documentation; exclude unrelated mobile work and untracked scratch scripts.
+- Push the existing `improved-search-endpoint` feature branch, open the PR, attach it to this task, review its exact commit and address findings. Record the repository's exact-head review marker only after review, wait for all required quality checks, and use the reviewed-merge workflow without bypassing protections.
+
+Dependencies and limits: no new library, credentials, paid service or schema migration is needed. Main was verified at `2237c7e5241a698258a28952150194b943d616b0`; an active `protect-main` ruleset and the reviewed-merge workflow apply. Advanced-query parsing, semantic search and mobile work remain outside this feature. Architecture components are unchanged, so no diagram update is required.
+
+Implementation verification: the additional regressions produced **50 passed and 17 failed** discovery cases before the correction, then **67 passed** afterward. The full backend/policy suite reports **94 passed**, with **97.0% combined coverage and 93.0% branch coverage**, passing the repository's coverage gate. Tracked Python files pass Ruff lint and formatting, backend application code passes Bandit, and the staged Gitleaks scan finds no leaks. The existing Starlette/httpx deprecation warning remains. The test HTTP provider exercises the real application/session/store path; the public payload-size check does not establish a live authenticated application search or native-device validation. [PR #10](https://github.com/SumukhaK/open-source-projectFinder/pull/10) is the delivery record; exact-head review, required CI and the reviewed-merge result are recorded there and in GitHub Actions rather than asserted before execution.
+
+CI blocker: [run 38425124561](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/38425124561) passed backend, mobile/E2E/platform exports and secret checks, but the dependency audit rejected newly reviewed advisories for [braces 3.0.3 / GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) and [sprintf-js 1.0.3 / GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c). GitHub's advisory database lists no patched releases, and npm's latest releases are still affected (3.0.3 and 1.1.3). The committed lock traces braces through Jest and Expo/React Native Metro file matching, and sprintf-js through Jest coverage configuration's js-yaml/argparse path. These advisories remain unresolved; no vulnerable package is described as patched.
+
+Delivery decision: automatic approval review rejected committing/pushing proposed short-lived exact-version exceptions because explicit authorization to weaken the dependency gate was absent. The user then chose, verbatim: **"Keep the gate unchanged; leave PR open (Recommended)"**. The uncommitted exception proposal was removed. Scanner execution, policy, thresholds and mobile dependencies remain unchanged. PR #10 stays open without merging; resolving the advisories compatibly, passing required CI and reviewing the resulting exact head are prerequisites to any future merge. Unrelated local mobile work is preserved.
+
+
 
 ## Hybrid search execution handbook - 2026-10-24
 
@@ -168,7 +259,13 @@ Scope: publish the existing proposed hybrid/archive architecture plus portable O
 
 | Phase / feature | Status | Verification / acceptance |
 | --- | --- | --- |
-| Handbook authoring | Authored in PR #11; awaiting final exact-head review/checks and publication | Static checks passed for 37 Markdown files, 30 required task workflows, 286 local links/anchors, dependency ordering and both diagram themes. Independent review found one missing T17 dependency on T08 publication; it was added to the task and tracker. [PR #11](https://github.com/SumukhaK/open-source-projectFinder/pull/11) and its current-head review/checks are authoritative for publication status. |
+| Handbook authoring | Authored and statically verified; current-head review/checks and publication recorded in PR #11 | Static checks passed for 37 Markdown files, 30 required task workflows, 289 local links/anchors, dependency ordering and both diagram themes. Independent review found one missing T17 dependency on T08 publication; it was added to the task and tracker. [PR #11](https://github.com/SumukhaK/open-source-projectFinder/pull/11) and its current-head review/checks are authoritative for publication status. |
 | T00-T29 implementation | Not started | [Task tracker](execution-plans/hybrid-search/TRACKER.md) is authoritative for per-task status, full reviewed SHA/review/CI evidence and merged SHA. Only review acceptance checks a task done; dependents require merge into main. |
 
 Main baseline was 2237c7e5241a698258a28952150194b943d616b0. Search PR #10 and the local discovery mobile foundation were not merged during authoring. Fresh dependency policy evaluation on 2026-10-24 blocked main's mobile lock on zod 3.25.76 / GHSA-mrhx-c7xc-m3w5; the earlier braces/sprintf advisories were withdrawn, not patched here. The first handbook CI run additionally blocked the unchanged Python lock on six advisories across certifi, filelock, opentelemetry-api and setuptools; backend/mobile quality and secrets passed at that earlier head. See the dated evidence in REQUEST.md; later-head checks remain required. The handbook preserves current gates and requires rechecking prerequisite/security state. No unrelated workspace changes are included.
+
+### Delivery update - 2026-10-24
+
+[PR #10](https://github.com/SumukhaK/open-source-projectFinder/pull/10) was retained because it adds backend search controls/validation and contract tests absent from the documentation-only PR #11. It merged as 1e681ae5fe1bb309e793c225aa0513335d95ba15 after independent review of 3b80dad4fefb6ee5e8008ffbbe9217b22b501e2e and passing [CI 40083939979](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40083939979). A fresh 94-test run with the patched dependency environment passed, at 97.0% combined and 93.0% branch coverage. Both #12 and #10 used the reviewed-merge workflow with exact-head markers and passing current checks; no restrictions were bypassed.
+
+The October 13 security/delivery paragraphs above are historical and superseded by this update: the braces/sprintf advisories were withdrawn, and the current Python/Zod blockers were fixed in #12 with no new exceptions. The prior node-forge tooling exception still expires on 2026-11-01. PR #11 now includes the actual delivered prerequisite code from main and updated readiness notes; its own exact-head review/checks and merge status remain authoritative in GitHub. T00-T29 implementation remains not started; the unrelated local mobile foundation remains unmerged and untouched.

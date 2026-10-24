@@ -22,7 +22,7 @@ Start with [the copy-ready session prompt](OPENCODE_PROMPT.md), set a task ID an
 5. T24-T26: migrate the already merged mobile foundation, one combined UI and real HTTP/Milvus integration.
 6. T27-T29: human-judged relevance, measured capacity/fairness and rollout/recovery evidence.
 
-The tracker is the precise dependency graph, not an instruction to implement a whole numbered range in one PR. T00 must verify the unmerged search/mobile foundations. If main lacks them, link their delivery PRs and stop dependent work rather than recreating those features in an archive task. Do not blindly merge the old search PR or the local mobile draft.
+The tracker is the precise dependency graph, not an instruction to implement a whole numbered range in one PR. T00 must verify the delivered search/security prerequisites and the still-unmerged mobile foundation; see the dated update in [REQUEST](REQUEST.md#delivered-prerequisites-2026-10-24). If main lacks a dependency, link its delivery PR and stop dependent work rather than recreating it in an archive task. Do not copy the local mobile draft without its own review.
 
 The architecture has one user-facing hybrid flow: FastAPI calls live GitHub and local Milvus concurrently and returns one union deduplicated by numeric repository ID. The rolling 365-day window applies to the archive branch. Live-only and older valid GitHub results remain eligible. Weekly ingestion is a separate resumable local worker, never a user-search side effect.
 

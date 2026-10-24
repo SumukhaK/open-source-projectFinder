@@ -1,5 +1,13 @@
 # RepoRadar backend
 
+## Dependency security maintenance
+
+The Python lock pins the published security fixes in certifi 2026.10.19, filelock 4.2.1, opentelemetry-api 1.45.1 and setuptools 84.1.0. Regenerate it from the tested isolated environment; do not upgrade the whole dependency tree to resolve one advisory.
+
+Mobile scopes a Zod 4.6.6 override to Expo CLI while that CLI declares Zod 3. Regression tests resolve the CLI's actual validator and exercise its plugin metadata/output and MCP command schemas. They prove bounded oversized arrays reject before parsing every element; this does not claim unbounded arrays have a universal memory cap. Recheck the override and those compatibility tests on Expo upgrades, and remove it when the upstream dependency supports a patched version directly. No new audit exception or weaker gate is part of this fix. The existing node-forge 1.4.0 exception still requires review before its 2026-11-01 expiry.
+
+Primary sources: [certifi advisory](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2), [filelock release](https://github.com/tox-dev/filelock/releases/tag/4.2.1), [OpenTelemetry advisory](https://github.com/open-telemetry/opentelemetry-python/security/advisories/GHSA-xcq7-p3pf-p88h), [setuptools advisory](https://github.com/advisories/GHSA-xmj3-9gf7-h52w), [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) and [Zod 3 maintenance discussion](https://github.com/colinhacks/zod/issues/6653).
+
 FastAPI GitHub signup/login, persistent rate limits, encrypted provider credentials and revocable app sessions. Search and ingestion remain planned.
 
 ## Setup
@@ -46,6 +54,18 @@ See [authentication design](../docs/AUTHENTICATION.md). Do not use GitHub access
 The lock includes patched cryptography and pinned free test/security tools. pytest-cov enforces the application coverage policy through scripts/quality.py; Ruff and Bandit check code. pip-audit scans the pinned dependency graph. Unhandled request crashes emit only a sanitized event, declared route template and exception class, without private error/request data. See [quality pipeline](../docs/QUALITY_PIPELINE.md) for local commands, coverage gates and limits of local crash capture.
 
 ## Discovery integration
-Authenticated endpoints: `POST /projects/search` accepts `{idea, page}`; `GET /projects/{owner}/{name}` assembles public repository metadata, up to three releases, languages, README and twelve contributors. `GET /favourites`, `PUT /favourites/{owner}/{name}` and `DELETE /favourites/{owner}/{name}` persist app-local favourites per GitHub identity. Saving a favourite does not star it on GitHub.
+Authenticated endpoints: `POST /projects/search` accepts `{idea, page}` and optional `per_page`, `sort` and `order`; `GET /projects/{owner}/{name}` assembles public repository metadata, up to three releases, languages, README and twelve contributors. `GET /favourites`, `PUT /favourites/{owner}/{name}` and `DELETE /favourites/{owner}/{name}` persist app-local favourites per GitHub identity. Saving a favourite does not star it on GitHub.
 
-The keyword search adapter is wired but feature/relevance/live search validation is deferred at the user's request. This is not semantic similarity. Milvus is the next search phase. Missing GitHub sections return empty collections so the UI can omit them. Provider errors remain explicit errors rather than zero results. Favourite cards are saved snapshots; details fetch current public data. Limits and response/README size settings are centralized in Settings.
+The standalone keyword search controls are implemented and verified by contract tests. Ordinary ideas retain the existing six-keyword normalization and public-only/unarchived repository scope. Missing GitHub sections return empty collections so the UI can omit them. Provider errors remain explicit errors rather than zero results. Favourite cards are saved snapshots; details fetch current public data. Milvus semantic matching, advanced query syntax and relevance evaluation remain planned.
+
+| Search field | Accepted values and default |
+| --- | --- |
+| `idea` | 2-1,000 characters; retained keywords must fit 256 characters, excluding the fixed qualifiers |
+| `page` | 1-50, default 1; starting offset must be below 1,000 using the effective page size |
+| `per_page` | 1-100; omission or null uses `Settings.search_page_size`, default 20 |
+| `sort` | `stars`, `forks`, `updated`; omission or null uses best match and omits upstream sorting parameters |
+| `order` | `desc` or `asc`, default `desc`; ignored without an explicit sort |
+
+Existing response fields are preserved; `per_page`, `sort` and `order` report effective values. Best match is represented as `sort: "relevance", order: "desc"`. Invalid input and pages return 422 before calling GitHub; an overlong keyword query is rejected without truncation. Search responses have a separate configurable `MAX_GITHUB_SEARCH_RESPONSE` budget of 1 MiB (1 KiB-2 MiB allowed); other GitHub reads retain the general 512 KiB default. Oversized provider responses remain explicit errors. Limits, timeouts and retries are centralized in Settings.
+
+Contract tests use real API/session/storage/provider code with a mocked HTTP transport. A single direct public GitHub search verified that an ordinary 100-item payload exceeded the old general budget; this does not validate the application's live OAuth search flow or semantic relevance. Source: [GitHub Search API](https://docs.github.com/en/rest/search/search).

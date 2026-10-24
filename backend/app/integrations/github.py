@@ -66,7 +66,20 @@ class GitHubProvider:
             raise ProviderError()
         return data
 
-    def read(self, token, path, params=None, raw=False, optional=False):
+    def read(
+        self,
+        token,
+        path,
+        params=None,
+        raw=False,
+        optional=False,
+        max_response_bytes=None,
+    ):
+        limit = (
+            self.settings.max_github_response
+            if max_response_bytes is None
+            else max_response_bytes
+        )
         with httpx.Client(
             transport=self.transport,
             timeout=self.settings.github_timeout,
@@ -91,7 +104,7 @@ class GitHubProvider:
                             return None
                         raise ProviderError()
                     if response.status_code == 200:
-                        if len(response.content) > self.settings.max_github_response:
+                        if len(response.content) > limit:
                             raise ProviderError()
                         return response.text if raw else response.json()
                     retryable = response.status_code in (429, 500, 502, 503, 504) or (

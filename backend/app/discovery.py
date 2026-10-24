@@ -3,7 +3,7 @@
 import json
 import re
 import time
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Request
 from pydantic import BaseModel, Field, field_validator
@@ -17,6 +17,9 @@ RepoName = Annotated[str, Path(pattern=r"^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,99}$")]
 class Idea(BaseModel):
     idea: str = Field(min_length=2, max_length=1000)
     page: int = Field(default=1, ge=1, le=50)
+    per_page: int | None = Field(default=None, ge=1, le=100)
+    sort: Literal["stars", "forks", "updated"] | None = None
+    order: Literal["desc", "asc"] = "desc"
 
     @field_validator("idea")
     @classmethod
@@ -102,15 +105,27 @@ def discovery_router(store, provider, cipher, current, settings):
         ][:6]
         if not words:
             raise HTTPException(422, "Include a few project keywords")
+        query = " ".join(words)
+        if len(query) > 256:
+            raise HTTPException(422, "Search keywords must be at most 256 characters")
+        per_page = body.per_page or settings.search_page_size
+        if (body.page - 1) * per_page >= 1000:
+            raise HTTPException(
+                422, "Page starts beyond GitHub's first 1,000 search results"
+            )
+        order = body.order if body.sort is not None else "desc"
+        params = {
+            "q": query + " in:name,description,readme is:public archived:false",
+            "per_page": per_page,
+            "page": body.page,
+        }
+        if body.sort is not None:
+            params.update(sort=body.sort, order=order)
         data = read(
             token,
             "/search/repositories",
-            params={
-                "q": " ".join(words)
-                + " in:name,description,readme is:public archived:false",
-                "per_page": settings.search_page_size,
-                "page": body.page,
-            },
+            params=params,
+            max_response_bytes=settings.max_github_search_response,
         )
         return {
             "items": [
@@ -119,6 +134,9 @@ def discovery_router(store, provider, cipher, current, settings):
             "total": data["total_count"],
             "incomplete": data.get("incomplete_results", False),
             "page": body.page,
+            "per_page": per_page,
+            "sort": body.sort or "relevance",
+            "order": order,
             "source": "github_keywords",
         }
 

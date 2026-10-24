@@ -43,7 +43,7 @@ Do not amend a PR after review simply to tick its own tracker row. The GitHub re
 
 ## Blockers and decisions
 
-- Initial baseline and security/mobile/search prerequisites: [REQUEST](REQUEST.md#publication-baseline-2026-10-24); recheck in T00.
+- Historical baseline: [REQUEST](REQUEST.md#publication-baseline-2026-10-24). Search/security prerequisites were merged in #10/#12; see [delivery evidence](REQUEST.md#delivered-prerequisites-2026-10-24). The mobile foundation remains unmerged. Recheck all in T00.
 - Unapproved policy choices: [REQUEST](REQUEST.md#request-and-decision-boundaries). Recommendations do not authorize live ingestion/rollout.
 - Each implementing session handles one task; no task is auto-assigned to another chat/agent or automatically continued after PR creation.
 
