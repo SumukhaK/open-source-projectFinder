@@ -1,0 +1,11 @@
+flowchart TB
+    Schedule[Weekly host task] --> Worker[GitHub ingestion worker: fetch and CPU embeddings]
+    Worker --> Archive[(SSD catalogue and raw content)]
+    Worker --> Milvus[(Milvus: 365-day local corpus)]
+    Mobile[Mobile: one search and one result list] --> API[FastAPI hybrid orchestrator]
+    API -->|Derived keyword query| GitHub[Live GitHub repository search]
+    API -->|Full-idea embedding| Milvus
+    API -->|Metadata validation| Archive
+    GitHub --> Fusion[Source-aware validation, ID deduplication and rank fusion]
+    Milvus --> Fusion
+    Fusion --> Mobile

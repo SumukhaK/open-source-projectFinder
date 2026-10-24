@@ -154,3 +154,21 @@ Design: 8-point spacing grid; 20-point screen padding; 16-point card padding; 16
 Scope update: user requested UI and frontend/backend GitHub API integration only; search feature tests, relevance validation and live search execution are deferred. Favourites, details and safety tests remain in scope.
 
 Backend validation: 32 Python tests pass; 93.7% combined coverage and 87.5% branches, clean Bandit and Ruff. Tests cover favourites isolation/idempotency/limits, optional detail omissions, invalid/private/missing repos, request limits and provider failure/retry behavior. Search-specific feature tests and live search were deliberately not run.
+
+
+## Hybrid search execution handbook - 2026-10-24
+
+Original request (verbatim):
+
+```text
+now , we will be using deepseek flash v4 available on open code to implemnt this plan, so what u should do is dicide this plan into smaller executable plans, write anothe detailed doc that invloves prompt for execution that explains what to do, what counts as acceptable right solution, what not to do, include a tracker option to mark each tasks as done when its accepted via code review.  include this instruction in each task, deepseek shouldcut a branch from main, execute plan there, raise PR and wait for review. TDD approach for coding so tests first then actaul code. use ponytail and other coding plugins to plan the task with detaile instruction, so codes are minimal, human readable and underestandable, follow lint and other coding discipline. add all these docs on main branch under a newly created folder and push it on main repo as well
+```
+
+Scope: publish the existing proposed hybrid/archive architecture plus portable OpenCode execution prompts in [execution-plans/hybrid-search](execution-plans/hybrid-search/README.md). No archive implementation, provider/model configuration, model download or scheduler activation is included. Confirmed requirements and earlier project prompts are retained in [REQUEST](execution-plans/hybrid-search/REQUEST.md); policy recommendations remain pending explicit decisions.
+
+| Phase / feature | Status | Verification / acceptance |
+| --- | --- | --- |
+| Handbook authoring | Authored; awaiting exact-head review and publication | 30 bounded task prompts, explicit dependency graph, tests-first rules, per-task main branch/PR/wait instructions and review-controlled tracker; local static checks and independent review must pass before merge. GitHub PR/checks are authoritative for publication status. |
+| T00-T29 implementation | Not started | [Task tracker](execution-plans/hybrid-search/TRACKER.md) is authoritative for per-task status, full reviewed SHA/review/CI evidence and merged SHA. Only review acceptance checks a task done; dependents require merge into main. |
+
+Main baseline was 2237c7e5241a698258a28952150194b943d616b0. Search PR #10 and the local discovery mobile foundation were not merged during authoring. Fresh dependency policy evaluation on 2026-10-24 blocked main's mobile lock on zod 3.25.76 / GHSA-mrhx-c7xc-m3w5; the earlier braces/sprintf advisories were withdrawn, not patched here. The handbook preserves current gates and requires rechecking prerequisite/security state. No unrelated workspace changes are included.
