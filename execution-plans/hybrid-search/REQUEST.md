@@ -22,18 +22,18 @@ Confirmed product requirements: one combined hybrid search, live GitHub plus loc
 
 These recommendations still require an operator/product decision in T00 before real corpus ingestion or public rollout:
 
-| Decision | Recommendation to evaluate | Blocking use |
-| --- | --- | --- |
-| Corpus selection/cap | 1k feasibility sample, then 10k, diverse language/activity/star bands | T18 acquisition beyond an explicitly approved sample |
-| Archived content/license policy | Approved SPDX allowlist; no unknown-license full README content | T09 real content acquisition; T18 |
-| Retention | Active eligible content; superseded 30 days; content-free run history 90 days | T20 policy activation |
-| Visibility | ID-bound public check, cache at most 15 minutes; fail closed when unverified | T10/T15 production serving |
-| Offline backup exception | Encrypted backup maximum 7 days; quarantine and reapply current suppression ledger on restore | T21/T22 live-content backups |
-| Backup tool/destination | Select a maintained, free encryption-capable backup tool and private destination; verify restore | T21; do not invent encryption |
-| Schedule/availability | Sunday 03:30 Asia/Kolkata, missed-run catch-up, laptop availability disclosed | T23 host activation |
-| Quality thresholds | Record measured latency baseline and acceptable relevance changes before tuning | T27/T28 rollout recommendation |
+| Decision | Recommendation to evaluate | Owner | T00 status (2026-10-24) | Evidence | Blocking use |
+| --- | --- | --- | --- | --- | --- |
+| Corpus selection/cap | 1k feasibility sample, then 10k, diverse language/activity/star bands | Operator | Pending approval | None recorded | T18 acquisition beyond an explicitly approved sample; T28 expansion gates |
+| Archived content/license policy | Approved SPDX allowlist; no unknown-license full README content | Operator | Pending approval | None recorded | T09 real content acquisition; T18 |
+| Retention | Active eligible content; superseded 30 days; content-free run history 90 days | Operator | Pending approval | None recorded | T20 policy activation |
+| Visibility | ID-bound public check, cache at most 15 minutes; fail closed when unverified | Operator | Pending approval | None recorded | T10/T15 production serving |
+| Offline backup exception | Encrypted backup maximum 7 days; quarantine and reapply current suppression ledger on restore | Operator | Pending approval | None recorded | T21/T22 live-content backups |
+| Backup tool/destination | Select a maintained, free encryption-capable backup tool and private destination; verify restore | Operator | Pending approval | None recorded | T21; do not invent encryption |
+| Schedule/availability | Sunday 03:30 Asia/Kolkata, missed-run catch-up, laptop availability disclosed | Operator | Pending approval | None recorded | T23 host activation |
+| Quality thresholds | Record measured latency baseline and acceptable relevance changes before tuning | Operator | Pending approval | None recorded | T27/T28 rollout recommendation |
 
-T00 records decision owner, date, evidence and approved values here. A recommendation is not consent. If an answer is missing, keep dependent real-data/rollout work blocked and continue only independent synthetic/offline work. No DeepSeek/OpenCode model ID, provider configuration, availability, free quota or pricing was verified by this handbook; use the model the user has already selected and do not change billing/settings.
+T00 records decision owner, date, evidence and approved values here. All eight remain **Pending operator approval** as of 2026-10-24; no approval or evidence was available in that session, so none is resolved. See [READINESS](READINESS.md#3-decision-gates) for the gates and [readiness matrix](READINESS.md#4-readiness-matrix) for the affected tasks. A recommendation is not consent. If an answer is missing, keep dependent real-data/rollout work blocked and continue only independent synthetic/offline work. No DeepSeek/OpenCode model ID, provider configuration, availability, free quota or pricing was verified by this handbook; use the model the user has already selected and do not change billing/settings.
 
 ## Publication baseline, 2026-10-24
 
