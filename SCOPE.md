@@ -15,3 +15,5 @@ Users sign up or log in with a single GitHub button. RepoRadar does not request 
 ## Quality before new features
 
 Every change is automatically tested and checked for code/security issues before review and merging. The checks use free tools and need no additional account keys. The app can recover from a screen-rendering failure, and the backend records safe local crash events. Production crash monitoring and deployment remain future work. GitHub's included runner allowance still limits hosted automation.
+
+A small local database feasibility experiment now proves CPU operations using synthetic data. It does not ingest GitHub projects or implement hybrid search; GPU support and weekly archive operation remain planned pending the documented runtime gates.

@@ -97,3 +97,5 @@ Sanitized local crash events and a mobile retry screen are implemented; producti
 ## Planned hybrid search implementation
 
 The [OpenCode execution handbook](execution-plans/hybrid-search/README.md) contains the proposed Milvus archive/hybrid design, 30 small task prompts, tests-first acceptance criteria and review-controlled tracker. Implementation is not complete; each task requires a fresh main-based branch, a PR and review before merge.
+
+T01 local Milvus feasibility: private pinned Compose profiles and a bounded synthetic CPU proof are available in [the runbook](infra/milvus/README.md). GPU/host/WAL gates remain blocked; this is not archive/hybrid implementation.

@@ -295,3 +295,16 @@ Scope: the architect review's issues 2-4. Issue 1 (node-forge exception expiring
 | 4d. Per-request SQLite pruning / single host | Not changed | Already documented as single-host; a shared PostgreSQL/Redis limiter belongs to the deployment phase. Rewriting the pruning without a measured problem would be speculative. |
 
 Verification (Linux, Python 3.13 scratch venv from `backend/requirements.lock.txt`; CI uses 3.11): `ruff check`/`ruff format --check backend scripts` clean; `python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch` 104 passed (was 94); `scripts/quality.py coverage` 97.2% combined / 93.5% branches; Bandit clean. Mobile code is unchanged and its suite was not run locally; PR CI runs mobile and E2E checks. No dependency, gate or exception change.
+
+
+## T01 Milvus feasibility continuation - 2026-10-24
+
+User request (verbatim): "awesome, please proceed"
+
+Resume only T01 from the supplied DeepSeek handoff. The existing clean branch was fast-forwarded from 6dc4233 to current main 3fe801661d63e0b147f611f39f35f2f07a79e184 before changes, preserving the newer search fixes and T00 review record. Original checkout/mobile WIP is untouched.
+
+Plan/status: In progress. Write failing behavior tests, then a bounded synthetic 1k-vector probe and private authenticated CPU/GPU Compose profiles. Verify official version/config sources, real operations and resource use independently for CPU/GPU; document SQLite/memory/runtime limits honestly. Run relevant checks/audits, update tracker to Awaiting review, open one PR and stop. Do not start T02, merge, approve policy decisions or change host memory/driver settings. Live tests depend on safe available resources; missing evidence remains blocked.
+
+Verification/handoff: **Awaiting review, not accepted**. Real Milvus 2.6.26 / PyMilvus 2.6.17 CPU proof passed twice on 1,000 synthetic normalized vectors with HNSW/IP, scalar filtering, upsert/delete and owned-collection cleanup. Default/missing REST credentials are rejected. Current driver fails the pinned GPU image's CUDA 12.9 requirement; GPU Milvus was not run. WSL SQLite 3.46.1 and the ~5.8 GiB Docker cap remain archive/runtime gates; no automatic CPU-only approval is inferred. See [T01 evidence](execution-plans/hybrid-search/T01_EVIDENCE.md) and [runbook](infra/milvus/README.md).
+
+Local checks: 131 backend/policy/probe tests pass (96.8% combined coverage / 92.4% branches); Ruff/format/Bandit/pip-check pass; 69 locked Python dependencies audit clean, npm passes the unchanged policy with the existing node-forge exception only. Static validation covers 44 Markdown files and 335 links/anchors, diagram XML, conflict/fence checks and unchecked T01 acceptance. New behavior regressions were observed failing before their fixes. No local mobile rerun solely for this probe; required remote CI remains authoritative. Test containers were stopped without deleting volumes; pre-existing WSL settings and unrelated applications/workspace files remain unchanged. Open one PR and wait for review; no T02 work or merge.

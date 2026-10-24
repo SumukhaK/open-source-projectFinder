@@ -1,0 +1,86 @@
+name: reporadar-t01
+
+x-milvus: &milvus
+  command: [milvus, run, standalone]
+  environment: &milvus-env
+    ETCD_ENDPOINTS: etcd:2379
+    MINIO_ADDRESS: minio:9000
+    MINIO_ACCESSKEYID: reporadar_t01
+    MINIO_SECRETACCESSKEY: ${MINIO_PASSWORD:?Set a private MINIO_PASSWORD}
+    MINIO_REGION: us-east-1
+    COMMON_SECURITY_AUTHORIZATIONENABLED: "true"
+    COMMON_SECURITY_DEFAULTROOTPASSWORD: ${MILVUS_PASSWORD:?Set a private MILVUS_PASSWORD}
+    GPU_INITMEMSIZE: "128"
+    GPU_MAXMEMSIZE: "256"
+    OMP_NUM_THREADS: "2"
+  ports: ["127.0.0.1:19530:19530"]
+  depends_on:
+    etcd: {condition: service_healthy}
+    minio: {condition: service_healthy}
+  healthcheck:
+    test: [CMD, curl, -f, http://localhost:9091/healthz]
+    interval: 10s
+    timeout: 5s
+    start_period: 90s
+    retries: 18
+  mem_limit: 4g
+  cpus: 4
+  shm_size: 256m
+  logging: {driver: json-file, options: {max-size: 10m, max-file: "2"}}
+
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.25@sha256:52f17f7e56e4f7239f0320dbfcbcc24721163d7d78ae710b466af3254ccf6366
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "268435456"
+      ETCD_SNAPSHOT_COUNT: "10000"
+    command: [etcd, --advertise-client-urls=http://etcd:2379, --listen-client-urls=http://0.0.0.0:2379, --data-dir=/etcd]
+    volumes: [etcd:/etcd]
+    healthcheck: {test: [CMD, etcdctl, endpoint, health], interval: 10s, timeout: 5s, retries: 12}
+    mem_limit: 256m
+    cpus: 1
+    logging: {driver: json-file, options: {max-size: 5m, max-file: "2"}}
+
+  minio:
+    image: milvusdb/minio:RELEASE.2024-12-18T13-15-44Z@sha256:1dce27c494a16bae114774f1cec295493f3613142713130c2d22dd5696be6ad3
+    environment:
+      MINIO_ROOT_USER: reporadar_t01
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:?Set a private MINIO_PASSWORD}
+    command: [minio, server, /minio_data]
+    volumes: [minio:/minio_data]
+    healthcheck: {test: [CMD, curl, -f, http://localhost:9000/minio/health/live], interval: 10s, timeout: 5s, retries: 12}
+    mem_limit: 512m
+    cpus: 1
+    logging: {driver: json-file, options: {max-size: 5m, max-file: "2"}}
+
+  cpu:
+    <<: *milvus
+    profiles: [cpu]
+    image: milvusdb/milvus:v2.6.26@sha256:f43e0cd0c9912c35379c349f7f3a3a806b9308462d43d1bfa18d007c6642d693
+    environment:
+      <<: *milvus-env
+      ETCD_ROOTPATH: reporadar-t01-cpu
+      MINIO_BUCKETNAME: reporadar-t01-cpu
+    volumes: [cpu:/var/lib/milvus]
+
+  gpu:
+    <<: *milvus
+    profiles: [gpu]
+    image: milvusdb/milvus:v2.6.26-gpu@sha256:cb9fde8ccd5bb1b4eada5672e98b8da1f848eb5adf44b15e4f8c5f2ee43f07e7
+    environment:
+      <<: *milvus-env
+      ETCD_ROOTPATH: reporadar-t01-gpu
+      MINIO_BUCKETNAME: reporadar-t01-gpu
+    volumes: [gpu:/var/lib/milvus]
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, capabilities: [gpu], device_ids: ["0"]}]
+
+volumes:
+  etcd:
+  minio:
+  cpu:
+  gpu:
