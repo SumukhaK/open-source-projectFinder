@@ -1,6 +1,6 @@
 # Task acceptance tracker
 
-T00 is **Awaiting review**; all other tasks are **Not started**. Publishing this handbook completes none of the implementation tasks. Owner: the implementer records progress/PR links; only a trusted reviewer records acceptance. [Review format](REVIEW_CHECKLIST.md).
+T00 is **Merged**; all other tasks are **Not started**. T01 is the only task whose prerequisites are merged. Publishing this handbook completes none of the implementation tasks. Owner: the implementer records progress/PR links; only a trusted reviewer records acceptance. [Review format](REVIEW_CHECKLIST.md).
 
 Status values: Not started, In progress, Awaiting review, Changes requested, Blocked, Accepted, Merged. The `[ ]` marker in a row is editable: change it to `[x]` only after exact-head review acceptance and passing required checks. This table uses explicit checkbox text for row alignment; it is not an automatic GitHub task-list widget.
 
@@ -10,7 +10,7 @@ Do not amend a PR after review simply to tick its own tracker row. The GitHub re
 
 | Accepted | Task | Requires merged | Status | PR / base SHA | Reviewed head / review / CI evidence | Merged main SHA / date |
 | --- | --- | --- | --- | --- | --- | --- |
-| [ ] | [T00: Readiness and policy decisions](tasks/T00-readiness.md) | — | Awaiting review | [#13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) / base `2e4a9ff353de7a137c49fff0c99bea1765a357a2` | — (awaiting exact-head review) | — |
+| [x] | [T00: Readiness and policy decisions](tasks/T00-readiness.md) | — | Merged | [#13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) / base `2e4a9ff353de7a137c49fff0c99bea1765a357a2` | `b535011de3e202e5e3207a4fd201711df90aac3a` / [review](https://github.com/SumukhaK/open-source-projectFinder/pull/13#pullrequestreview-5637976990) / [CI 40086438932](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40086438932) | `6dc4233` / 2026-10-24 |
 | [ ] | [T01: Prove local Milvus CPU/GPU feasibility](tasks/T01-milvus-feasibility.md) | T00 | Not started | — | — | — |
 | [ ] | [T02: Pin a CPU embedding adapter and manifest](tasks/T02-embeddings.md) | T01 | Not started | — | — | — |
 | [ ] | [T03: Add the isolated archive catalogue](tasks/T03-catalogue.md) | T00, T01 | Not started | — | — | — |
@@ -50,3 +50,5 @@ Do not amend a PR after review simply to tick its own tracker row. The GitHub re
 ## Review/change log
 
 Append dated task ID, state change, full SHA, evidence links and reviewer identity here when a reviewed tracker sync is made. Keep the row as the current state; do not claim that a local log substitutes for a GitHub review.
+
+- 2026-10-24 — T00: Awaiting review → Accepted → Merged. Exact-head review by SumukhaK ([review 5637976990](https://github.com/SumukhaK/open-source-projectFinder/pull/13#pullrequestreview-5637976990)) of `b535011de3e202e5e3207a4fd201711df90aac3a`; [CI 40086438932](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40086438932) passed; merged by the reviewed-merge workflow as `6dc4233` at 2026-10-24T10:51:43Z. Acceptance covers the readiness inventory only: D1-D8 and P1-P3 remain open. Recorded through a separate documentation sync, not by amending PR #13.

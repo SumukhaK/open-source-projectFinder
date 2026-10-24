@@ -59,10 +59,10 @@ Discovery API integration now exposes account-scoped app favourites and GitHub p
 
 ## Standalone GitHub search improvements
 
-- Preserve ordinary `idea` normalization, the existing response fields and public-only/unarchived repository scope.
+- Preserve ordinary `idea` normalization, the existing response fields and public-only/unarchived repository scope. Keyword extraction keeps letters, digits and combining marks of any script, so non-ASCII ideas are searchable instead of rejected or split mid-word.
 - Optional `per_page` accepts 1-100 and falls back to centralized `Settings.search_page_size` when omitted or null. Explicit sorts are `stars`, `forks` and `updated`; omitted or null sort uses best match. Sorting uses `desc` by default or explicit `asc`; an order supplied without a sort has no upstream effect. Response metadata reports the effective page size and sorting, including descending best match.
 - Preserve pages 1-50 and reject a page whose starting offset, calculated with the effective page size, is at least 1,000. Allow a partial final page starting within that window.
 - Retained keyword text, including spaces but excluding qualifiers, must fit the 256-character limit. Validate raw idea length separately at 1,000 characters. Reject invalid requests before provider calls and preserve explicit provider failures and incomplete-result metadata.
-- Search reads use a separate centralized 1 MiB response budget, configurable between 1 KiB and 2 MiB, while other GitHub reads keep the 512 KiB default. Reject over-budget responses and preserve bounded timeouts/retries.
+- Search reads use a separate centralized 1 MiB response budget, configurable between 1 KiB and 2 MiB, while other GitHub reads keep the 512 KiB default. Reject over-budget responses and preserve bounded timeouts/retries. Provider rate limits return 503 with `Retry-After` when GitHub supplies (or requires) a wait.
 - Verify actual outbound parameters and response values, configured defaults, exact boundaries, compatibility, authentication, throttling, body limits, defensive public filtering and search response budgets. Delivery requires the full backend suite, coverage gates, review of the exact PR commit and all required repository checks.
 - Advanced qualifiers/quoted phrases and Boolean expressions are later phases requiring an explicit input contract. Semantic search and combining retrieval results remain separate planned work.

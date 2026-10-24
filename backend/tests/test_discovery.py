@@ -645,3 +645,79 @@ def test_basic_search_backward_compatibility(discovery, page):
     assert json_data["incomplete"] is False
     assert json_data["page"] == 1
     assert json_data["source"] == "github_keywords"
+
+
+@pytest.mark.parametrize(
+    ("idea", "keywords"),
+    [
+        ("कार्य सूची साझा करना", "कार्य सूची साझा करना"),
+        ("开源 项目 搜索", "开源 项目 搜索"),
+        ("Café recipe planner", "café recipe planner"),
+    ],
+    ids=["devanagari", "cjk", "accented-latin"],
+)
+def test_search_keeps_non_ascii_keywords_intact(discovery, idea, keywords):
+    client, _, calls, _ = discovery
+    response = client.post("/projects/search", headers=HEADERS, json={"idea": idea})
+    assert response.status_code == 200
+    assert len(calls) == 1
+    assert calls[0].url.params["q"] == (
+        keywords + " in:name,description,readme is:public archived:false"
+    )
+
+
+@pytest.mark.parametrize(
+    ("upstream", "retry_after"),
+    [
+        (httpx.Response(429, headers={"Retry-After": "120"}), "120"),
+        (httpx.Response(429), "60"),
+        (httpx.Response(503), None),
+    ],
+    ids=["retry-after", "no-timing-headers", "unavailable"],
+)
+def test_provider_rate_limits_tell_the_client_when_to_retry(
+    discovery, upstream, retry_after
+):
+    client, _, _, responses = discovery
+    responses["/search/repositories"] = upstream
+    response = client.post(
+        "/projects/search", headers=HEADERS, json={"idea": "python web framework"}
+    )
+    assert response.status_code == 503
+    assert response.headers.get("Retry-After") == retry_after
+
+
+def test_provider_rate_limit_reset_becomes_retry_after(discovery):
+    client, _, _, responses = discovery
+    responses["/search/repositories"] = httpx.Response(
+        403,
+        headers={
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": str(int(time.time()) + 90),
+        },
+    )
+    response = client.post(
+        "/projects/search", headers=HEADERS, json={"idea": "python web framework"}
+    )
+    assert response.status_code == 503
+    assert 80 <= int(response.headers["Retry-After"]) <= 91
+
+
+def test_chunked_request_bodies_are_limited_and_otherwise_delivered(discovery):
+    client, _, calls, _ = discovery
+
+    def chunks(*parts):
+        yield from parts
+
+    response = client.post(
+        "/projects/search",
+        headers={**HEADERS, "Content-Type": "application/json"},
+        content=chunks(b'{"idea": "python ', b'web framework"}'),
+    )
+    assert response.status_code == 200
+    assert calls[0].url.params["q"].startswith("python web framework ")
+    response = client.post(
+        "/projects/search", headers=HEADERS, content=chunks(b"x" * 3000, b"x" * 3000)
+    )
+    assert response.status_code == 413
+    assert len(calls) == 1

@@ -8,7 +8,7 @@ Mobile scopes a Zod 4.6.6 override to Expo CLI while that CLI declares Zod 3. Re
 
 Primary sources: [certifi advisory](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2), [filelock release](https://github.com/tox-dev/filelock/releases/tag/4.2.1), [OpenTelemetry advisory](https://github.com/open-telemetry/opentelemetry-python/security/advisories/GHSA-xcq7-p3pf-p88h), [setuptools advisory](https://github.com/advisories/GHSA-xmj3-9gf7-h52w), [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) and [Zod 3 maintenance discussion](https://github.com/colinhacks/zod/issues/6653).
 
-FastAPI GitHub signup/login, persistent rate limits, encrypted provider credentials and revocable app sessions. Search and ingestion remain planned.
+FastAPI GitHub signup/login, persistent rate limits, encrypted provider credentials and revocable app sessions, plus authenticated public GitHub keyword search, repository details and app-local favourites. Semantic (Milvus) search and repository ingestion remain planned.
 
 ## Setup
 
@@ -35,7 +35,7 @@ Configure HTTPS and a reachable callback for device testing/deployment. Bind to 
 
 ## Configuration and storage
 
-All backend settings live in `app/core/config.py`. `DATABASE_PATH` defaults to ignored `data/auth.sqlite3`. SQLite transactions make single-use handoffs and rate counts atomic across processes on one host. This is not a distributed rate limiter; migrate to shared PostgreSQL/Redis before multiple deployment hosts. Rate limits default to 20 auth requests per connection IP per 60 seconds, configurable through `RATE_LIMIT`/`RATE_WINDOW`. NAT users share this quota. Authentication bodies are capped at 4096 bytes.
+All backend settings live in `app/core/config.py`. `DATABASE_PATH` defaults to ignored `data/auth.sqlite3`. SQLite transactions make single-use handoffs and rate counts atomic across processes on one host. This is not a distributed rate limiter; migrate to shared PostgreSQL/Redis before multiple deployment hosts. Rate limits default to 20 auth requests per connection IP per 60 seconds, configurable through `RATE_LIMIT`/`RATE_WINDOW`. NAT users share this quota. Authentication and discovery request bodies, including chunked bodies, are capped at 4096 bytes (`MAX_AUTH_BODY`) by a small ASGI middleware that runs after throttling.
 
 Authentication can run locally without credentials for health checks; login then returns 503. An invalid configured encryption key fails startup. No production credentials or fake provider are included. The GitHub simulator exists only under tests.
 
@@ -60,12 +60,12 @@ The standalone keyword search controls are implemented and verified by contract 
 
 | Search field | Accepted values and default |
 | --- | --- |
-| `idea` | 2-1,000 characters; retained keywords must fit 256 characters, excluding the fixed qualifiers |
+| `idea` | 2-1,000 characters; letters, digits and combining marks of any script form keywords (underscores and hyphens kept, other characters separate words); retained keywords must fit 256 characters, excluding the fixed qualifiers |
 | `page` | 1-50, default 1; starting offset must be below 1,000 using the effective page size |
 | `per_page` | 1-100; omission or null uses `Settings.search_page_size`, default 20 |
 | `sort` | `stars`, `forks`, `updated`; omission or null uses best match and omits upstream sorting parameters |
 | `order` | `desc` or `asc`, default `desc`; ignored without an explicit sort |
 
-Existing response fields are preserved; `per_page`, `sort` and `order` report effective values. Best match is represented as `sort: "relevance", order: "desc"`. Invalid input and pages return 422 before calling GitHub; an overlong keyword query is rejected without truncation. Search responses have a separate configurable `MAX_GITHUB_SEARCH_RESPONSE` budget of 1 MiB (1 KiB-2 MiB allowed); other GitHub reads retain the general 512 KiB default. Oversized provider responses remain explicit errors. Limits, timeouts and retries are centralized in Settings.
+Existing response fields are preserved; `per_page`, `sort` and `order` report effective values. Best match is represented as `sort: "relevance", order: "desc"`. Invalid input and pages return 422 before calling GitHub; an overlong keyword query is rejected without truncation. Search responses have a separate configurable `MAX_GITHUB_SEARCH_RESPONSE` budget of 1 MiB (1 KiB-2 MiB allowed); other GitHub reads retain the general 512 KiB default. Oversized provider responses remain explicit errors. When GitHub rate-limits a discovery read beyond the bounded retry budget, the 503 response carries `Retry-After` with GitHub's requested wait (60 seconds when GitHub gives no timing headers); other provider failures carry none. Searches use the signed-in user's own GitHub token, so GitHub's per-user search quota applies. Limits, timeouts and retries are centralized in Settings.
 
 Contract tests use real API/session/storage/provider code with a mocked HTTP transport. A single direct public GitHub search verified that an ordinary 100-item payload exceeded the old general budget; this does not validate the application's live OAuth search flow or semantic relevance. Source: [GitHub Search API](https://docs.github.com/en/rest/search/search).

@@ -1,8 +1,8 @@
 """Public GitHub read integration and app-local, account-scoped favourites."""
 
 import json
-import re
 import time
+import unicodedata
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Request
@@ -27,6 +27,16 @@ class Idea(BaseModel):
         if len(value.strip()) < 2:
             raise ValueError("Describe your idea")
         return value.strip()
+
+
+def keyword_text(idea):
+    # Keep letters, digits and combining marks of any script; anything else separates words.
+    return "".join(
+        char
+        if char in "_-" or char.isalnum() or unicodedata.category(char).startswith("M")
+        else " "
+        for char in idea.lower()
+    )
 
 
 def summary(data):
@@ -62,9 +72,14 @@ def discovery_router(store, provider, cipher, current, settings):
     def read(token, path, **kwargs):
         try:
             return provider.read(token, path, **kwargs)
-        except ProviderError:
+        except ProviderError as error:
+            headers = (
+                {"Retry-After": str(error.retry_after)} if error.retry_after else None
+            )
             raise HTTPException(
-                503, "GitHub is unavailable or rate limited. Try again later."
+                503,
+                "GitHub is unavailable or rate limited. Try again later.",
+                headers=headers,
             ) from None
 
     def repository(token, owner, name):
@@ -98,11 +113,8 @@ def discovery_router(store, provider, cipher, current, settings):
             "of",
             "using",
         }
-        words = [
-            word
-            for word in re.findall(r"[a-zA-Z0-9_-]+", body.idea.lower())
-            if word not in stop
-        ][:6]
+        words = keyword_text(body.idea).split()
+        words = [word for word in words if word not in stop][:6]
         if not words:
             raise HTTPException(422, "Include a few project keywords")
         query = " ".join(words)
