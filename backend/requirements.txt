@@ -8,3 +8,5 @@ ruff>=0.16,<0.17
 pytest-cov>=7,<8
 bandit>=1.9,<2
 pip-audit>=2.10,<3
+# T01 local feasibility probe; imported lazily, not used by the API yet.
+pymilvus==2.6.17

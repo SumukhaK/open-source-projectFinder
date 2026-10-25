@@ -74,7 +74,7 @@ See [backend setup and checks](backend/README.md) and [mobile setup and checks](
 - Quality pipeline: free open-source validation, explicit coverage/security gates and review-controlled delivery.
 - Backend discovery: public GitHub search/details and account-specific favourites, with verified keyword search controls and limits.
 - Discovery hardening: non-ASCII ideas are searchable, GitHub rate limits return `Retry-After`, and request-size limits use a public ASGI middleware.
-- Hybrid search handbook: T00 readiness merged (PR #13); T01-T29 not started.
+- Hybrid search handbook: T00 readiness merged (PR #13); T01 awaiting review with CPU/GPU 1k proofs passed and capacity/SQLite gates open; T02-T29 not started.
 - Semantic search, ingestion, mobile discovery and voice: planned; advanced search syntax needs an explicit input contract.
 
 See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md), and [project tracker](PROJECT_TRACKER.md).
@@ -97,3 +97,5 @@ Sanitized local crash events and a mobile retry screen are implemented; producti
 ## Planned hybrid search implementation
 
 The [OpenCode execution handbook](execution-plans/hybrid-search/README.md) contains the proposed Milvus archive/hybrid design, 30 small task prompts, tests-first acceptance criteria and review-controlled tracker. Implementation is not complete; each task requires a fresh main-based branch, a PR and review before merge.
+
+T01 local Milvus feasibility: private pinned Compose profiles and bounded synthetic CPU/GPU proofs are available in [the runbook](infra/milvus/README.md). GPU 1k proof passed; host/archive capacity and SQLite gates remain open (SQLite gates T03 WAL, not T01 review). This is not archive/hybrid implementation.
