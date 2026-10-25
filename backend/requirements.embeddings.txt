@@ -2,6 +2,8 @@
 # Python 3.11+ (huggingface-hub 2.x requires it). Install the lock for reproduction:
 #   python -m pip install -r backend/requirements.embeddings.lock.txt
 # The CPU index keeps Linux from pulling the CUDA packages in PyPI's torch wheel.
+# The torch pin and the sed rewrite in .github/workflows/quality.yml must change
+# together; CI fails closed if the generated audit file still has a +cpu line.
 --extra-index-url https://download.pytorch.org/whl/cpu
 sentence-transformers==6.2.0
 torch==2.14.1+cpu

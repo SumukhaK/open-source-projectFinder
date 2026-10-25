@@ -3,6 +3,8 @@
 #            python -m pip freeze > backend/requirements.embeddings.lock.txt
 # Then restore this CPU index line so the lock installs the CPU-only torch wheel,
 # and keep setuptools pinned because pip freeze omits it while torch requires it.
+# The torch pin and the sed rewrite in .github/workflows/quality.yml must change
+# together; CI fails closed if the generated audit file still has a +cpu line.
 --extra-index-url https://download.pytorch.org/whl/cpu
 annotated-doc==0.0.5
 anyio==4.15.1

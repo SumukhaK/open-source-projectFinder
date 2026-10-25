@@ -1,9 +1,10 @@
 """Real CPU smoke check and small benchmark for the pinned E5 adapter.
 
-Loads intfloat/multilingual-e5-small at the manifest revision with
-trust_remote_code disabled, verifies the cached safe-weight hashes, then checks
-query/passage dimensions, norms and the 512-token boundary. This is never part
-of the unit suite and is never imported by the API.
+Loads intfloat/multilingual-e5-small from a verified local snapshot with
+trust_remote_code disabled, then checks query/passage dimensions, norms and the
+512-token boundary. Run once with ``--download`` to fetch the pinned revision;
+without that flag the script is offline-only. This is never part of the unit
+suite and is never imported by the API.
 """
 
 import argparse
@@ -121,7 +122,7 @@ def timed(call, repeats):
     return result, seconds
 
 
-def run(repeats):
+def run(repeats, download=False):
     backend = Path(__file__).resolve().parents[1] / "backend"
     sys.path.insert(0, str(backend))
     import huggingface_hub
@@ -133,21 +134,29 @@ def run(repeats):
     import tokenizers
     import torch
     import transformers
-    from app.services.embeddings import EmbeddingAdapter, EmbeddingError, ModelManifest
+    from app.services.embeddings import (
+        EmbeddingAdapter,
+        ModelManifest,
+        UnsupportedInput,
+    )
 
     manifest = ModelManifest.load()
-    rss_before, _ = process_memory_mb()
-    started = time.perf_counter()
-    adapter = EmbeddingAdapter.load()
-    load_seconds = time.perf_counter() - started
-    rss_loaded, _ = process_memory_mb()
+    # Only this explicit setup path may download. Serving loads the cached snapshot.
+    try:
+        snapshot = huggingface_hub.snapshot_download(
+            repo_id=manifest.name,
+            revision=manifest.revision,
+            local_files_only=not download,
+            # Fetch only safe weights and the configuration/tokenizer files they need.
+            allow_patterns=manifest.snapshot_files,
+        )
+    except Exception as error:
+        raise SystemExit(
+            "Pinned embedding model is not cached. Run this command once with "
+            "network access: python scripts/embeddings_smoke.py --download"
+        ) from error
 
     # Verify the cached bytes, not just the requested revision name.
-    snapshot = huggingface_hub.snapshot_download(
-        manifest.name,
-        revision=manifest.revision,
-        allow_patterns=[manifest.weights_file, manifest.tokenizer_file],
-    )
     weights_sha256 = sha256_file(Path(snapshot) / manifest.weights_file)
     tokenizer_sha256 = sha256_file(Path(snapshot) / manifest.tokenizer_file)
     if (
@@ -155,6 +164,12 @@ def run(repeats):
         or tokenizer_sha256 != manifest.tokenizer_sha256
     ):
         raise SystemExit("Cached model files do not match the pinned manifest")
+
+    rss_before, _ = process_memory_mb()
+    started = time.perf_counter()
+    adapter = EmbeddingAdapter.load()
+    load_seconds = time.perf_counter() - started
+    rss_loaded, _ = process_memory_mb()
 
     queries, query_seconds = timed(
         lambda: adapter.embed(list(SAMPLE_QUERIES), kind="query"), repeats
@@ -166,14 +181,14 @@ def run(repeats):
 
     try:
         adapter.embed(["query: caller supplied prefix"], kind="query")
-    except EmbeddingError:
+    except UnsupportedInput:
         pass
     else:
         raise SystemExit("Caller-supplied prefix was not rejected")
 
     try:
         adapter.embed(["repository search " * 200], kind="query")
-    except EmbeddingError as error:
+    except UnsupportedInput as error:
         overflow_rejected = str(manifest.max_tokens) in str(error)
     else:
         raise SystemExit("Over-budget input was not rejected")
@@ -244,12 +259,17 @@ def run(repeats):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument(
+        "--download",
+        action="store_true",
+        help="download the pinned revision once with network access, then verify it",
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     if not 1 <= args.repeats <= 5:
         raise SystemExit("--repeats must be between 1 and 5")
     try:
-        result = run(args.repeats)
+        result = run(args.repeats, download=args.download)
     except Exception as error:
         raise SystemExit(
             f"Embedding smoke check failed ({type(error).__name__})"

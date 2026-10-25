@@ -7,13 +7,14 @@ without the optional embedding stack installed.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 MANIFEST_PATH = Path(__file__).with_name("embedding_model.json")
 PREFIXES = {"query": "query: ", "passage": "passage: "}
@@ -25,6 +26,14 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 class EmbeddingError(ValueError):
     """The input or the model output does not match the pinned contract."""
+
+
+class UnsupportedInput(EmbeddingError):
+    """Caller-supplied text cannot be embedded under T02's contract.
+
+    T13 must map this to the semantic branch's ``query_not_supported`` status
+    and keep live GitHub results instead of failing the whole hybrid search.
+    """
 
 
 @dataclass(frozen=True)
@@ -66,6 +75,17 @@ class ModelManifest:
         )
         manifest.validate()
         return manifest
+
+    @property
+    def snapshot_files(self) -> list[str]:
+        """Keep explicit setup and offline resolution scoped to the same files."""
+        return [
+            self.weights_file,
+            self.tokenizer_file,
+            "*.json",
+            "*.txt",
+            "sentencepiece.bpe.model",
+        ]
 
     def validate(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
@@ -132,12 +152,16 @@ class EmbeddingAdapter:
         self._check_encoder()
 
     def _check_encoder(self) -> None:
-        if self.encoder.max_seq_length != self.manifest.max_tokens:
+        try:
+            max_tokens = self.encoder.max_seq_length
+            dimension = self.encoder.get_embedding_dimension()
+        except Exception as error:
+            raise EmbeddingError("could not inspect the embedding model") from error
+        if max_tokens != self.manifest.max_tokens:
             raise EmbeddingError(
-                f"encoder max sequence length {self.encoder.max_seq_length} "
+                f"encoder max sequence length {max_tokens} "
                 f"does not match manifest {self.manifest.max_tokens}"
             )
-        dimension = self.encoder.get_embedding_dimension()
         if dimension != self.manifest.dimensions:
             raise EmbeddingError(
                 f"encoder returns {dimension} dimensions, "
@@ -176,22 +200,26 @@ class EmbeddingAdapter:
         vectors: list[tuple[float, ...]] = []
         for start in range(0, len(prepared), self.batch_size):
             chunk = prepared[start : start + self.batch_size]
-            counts = list(self.encoder.count_tokens(chunk))
+            try:
+                counts = list(self.encoder.count_tokens(chunk))
+            except Exception as error:
+                raise EmbeddingError("tokenizer failed to count tokens") from error
             if len(counts) != len(chunk):
                 raise EmbeddingError(
                     "tokenizer returned the wrong number of token counts"
                 )
             for count in counts:
-                if (
-                    isinstance(count, bool)
-                    or not isinstance(count, int)
-                    or count > self.manifest.max_tokens
-                ):
-                    raise EmbeddingError(
+                if not _is_positive_int(count):
+                    raise EmbeddingError("tokenizer returned an invalid token count")
+                if count > self.manifest.max_tokens:
+                    raise UnsupportedInput(
                         f"text needs {count} tokens; "
                         f"the limit is {self.manifest.max_tokens}"
                     )
-            rows = list(self.encoder.encode(chunk, batch_size=len(chunk)))
+            try:
+                rows = list(self.encoder.encode(chunk, batch_size=len(chunk)))
+            except Exception as error:
+                raise EmbeddingError("encoder failed to produce vectors") from error
             if len(rows) != len(chunk):
                 raise EmbeddingError("encoder returned the wrong number of vectors")
             vectors.extend(self._vector(row) for row in rows)
@@ -199,12 +227,12 @@ class EmbeddingAdapter:
 
     def _prepare(self, text: str, kind: str) -> str:
         if not isinstance(text, str):
-            raise EmbeddingError("embedding input must be text")
+            raise UnsupportedInput("embedding input must be text")
         text = text.strip()
         if not text:
-            raise EmbeddingError("embedding input must not be empty")
+            raise UnsupportedInput("embedding input must not be empty")
         if text.lower().startswith(_CALLER_PREFIXES):
-            raise EmbeddingError(
+            raise UnsupportedInput(
                 "omit the E5 prefix; the adapter adds query: or passage:"
             )
         return PREFIXES[kind] + text
@@ -212,7 +240,7 @@ class EmbeddingAdapter:
     def _vector(self, row: Sequence[float]) -> tuple[float, ...]:
         try:
             values = tuple(float(value) for value in row)
-        except (TypeError, ValueError) as error:
+        except (TypeError, ValueError, OverflowError) as error:
             raise EmbeddingError("encoder returned a non-numeric vector") from error
         if len(values) != self.manifest.dimensions:
             raise EmbeddingError(
@@ -221,7 +249,12 @@ class EmbeddingAdapter:
             )
         if not all(math.isfinite(value) for value in values):
             raise EmbeddingError("encoder returned a non-finite vector")
-        norm = math.sqrt(math.fsum(value * value for value in values))
+        try:
+            norm = math.sqrt(math.fsum(value * value for value in values))
+        except OverflowError as error:
+            raise EmbeddingError("encoder returned a non-finite vector norm") from error
+        if not math.isfinite(norm):
+            raise EmbeddingError("encoder returned a non-finite vector norm")
         if norm == 0:
             raise EmbeddingError("encoder returned a zero vector")
         # Normalize here as well as in the model call so the contract survives encoder changes.
@@ -233,17 +266,25 @@ class _SentenceTransformerEncoder:
 
     def __init__(self, manifest: ModelManifest) -> None:
         try:
+            import huggingface_hub
             from sentence_transformers import SentenceTransformer
         except ImportError as error:
             raise EmbeddingError(
                 "install backend/requirements.embeddings.txt to use embeddings"
             ) from error
-        self._model = SentenceTransformer(
-            manifest.name,
-            revision=manifest.revision,
-            device="cpu",
-            trust_remote_code=False,
-        )
+        snapshot = _verified_snapshot(manifest, huggingface_hub)
+        try:
+            self._model = SentenceTransformer(
+                str(snapshot),
+                device="cpu",
+                trust_remote_code=False,
+                local_files_only=True,
+                model_kwargs={"use_safetensors": True},
+            )
+        except Exception as error:
+            raise EmbeddingError(
+                "could not load the verified embedding model"
+            ) from error
         self._model.max_seq_length = manifest.max_tokens
         if self._model.tokenizer is None:
             raise EmbeddingError("pinned model has no tokenizer")
@@ -278,6 +319,57 @@ def _sentence_transformer_encoder(
     manifest: ModelManifest,
 ) -> _SentenceTransformerEncoder:
     return _SentenceTransformerEncoder(manifest)
+
+
+def _verified_snapshot(manifest: ModelManifest, huggingface_hub: Any) -> Path:
+    """Resolve and verify the cached pinned snapshot without downloading."""
+    try:
+        snapshot = huggingface_hub.snapshot_download(
+            repo_id=manifest.name,
+            revision=manifest.revision,
+            local_files_only=True,
+            allow_patterns=manifest.snapshot_files,
+        )
+    except Exception as error:
+        raise EmbeddingError(
+            "pinned embedding model is not cached; run "
+            "`python scripts/embeddings_smoke.py --download` once with network "
+            "access, then retry"
+        ) from error
+    snapshot_path = Path(snapshot)
+    _verify_file(
+        snapshot_path / manifest.weights_file,
+        manifest.weights_sha256,
+        "weights",
+    )
+    _verify_file(
+        snapshot_path / manifest.tokenizer_file,
+        manifest.tokenizer_sha256,
+        "tokenizer",
+    )
+    return snapshot_path
+
+
+def _verify_file(path: Path, expected_sha256: str, label: str) -> None:
+    try:
+        actual = _sha256_file(path)
+    except OSError as error:
+        raise EmbeddingError(
+            f"embedding {label} file is missing from the pinned snapshot: {path.name}"
+        ) from error
+    if actual != expected_sha256:
+        raise EmbeddingError(
+            f"embedding {label} sha256 mismatch: "
+            f"expected {expected_sha256}, got {actual}"
+        )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as file:
+        for block in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def _text(data: dict, key: str) -> str:
