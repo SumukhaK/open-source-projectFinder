@@ -102,6 +102,24 @@ jobs:
           pip-audit --strict --no-deps --disable-pip -r backend/requirements.lock.txt -f json -o reports/python-audit.json || status=$?
           if [ "$status" -gt 1 ]; then exit "$status"; fi
           python scripts/quality.py pip reports/python-audit.json
+      - name: Audit pinned embedding dependencies
+        shell: bash
+        run: |
+          # pip-audit cannot resolve PyTorch's +cpu local version from PyPI.
+          # Audit the same 2.14.1 release; the install lock keeps the CPU wheel.
+          sed 's/^torch==2\.14\.1+cpu$/torch==2.14.1/' backend/requirements.embeddings.lock.txt > reports/embeddings-audit-requirements.txt
+          if grep -Eq '^[^#].*\+cpu' reports/embeddings-audit-requirements.txt; then
+            echo "::error::torch +cpu pin was not rewritten for pip-audit; update the sed with the torch pin"
+            exit 1
+          fi
+          if ! grep -Eq '^torch==[0-9]+\.[0-9]+\.[0-9]+$' reports/embeddings-audit-requirements.txt; then
+            echo "::error::no plain torch==X.Y.Z pin found after the pip-audit rewrite"
+            exit 1
+          fi
+          status=0
+          pip-audit --strict --no-deps --disable-pip -r reports/embeddings-audit-requirements.txt -f json -o reports/embeddings-audit.json || status=$?
+          if [ "$status" -gt 1 ]; then exit "$status"; fi
+          python scripts/quality.py pip reports/embeddings-audit.json
       - name: Audit locked JavaScript dependencies
         shell: bash
         working-directory: mobile

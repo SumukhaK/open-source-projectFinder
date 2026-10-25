@@ -1,0 +1,15 @@
+{
+  "name": "intfloat/multilingual-e5-small",
+  "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+  "dimensions": 384,
+  "max_tokens": 512,
+  "license": "MIT",
+  "weights": {
+    "file": "model.safetensors",
+    "sha256": "1a55775f53449dac10a2bcbc312469fac40b96d53198c407081a831f81c98477"
+  },
+  "tokenizer": {
+    "file": "tokenizer.json",
+    "sha256": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39"
+  }
+}

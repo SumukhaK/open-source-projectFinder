@@ -8,7 +8,7 @@ Mobile scopes a Zod 4.6.6 override to Expo CLI while that CLI declares Zod 3. Re
 
 Primary sources: [certifi advisory](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2), [filelock release](https://github.com/tox-dev/filelock/releases/tag/4.2.1), [OpenTelemetry advisory](https://github.com/open-telemetry/opentelemetry-python/security/advisories/GHSA-xcq7-p3pf-p88h), [setuptools advisory](https://github.com/advisories/GHSA-xmj3-9gf7-h52w), [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) and [Zod 3 maintenance discussion](https://github.com/colinhacks/zod/issues/6653).
 
-FastAPI GitHub signup/login, persistent rate limits, encrypted provider credentials and revocable app sessions, plus authenticated public GitHub keyword search, repository details and app-local favourites. Semantic (Milvus) search and repository ingestion remain planned.
+FastAPI GitHub signup/login, persistent rate limits, encrypted provider credentials and revocable app sessions, plus authenticated public GitHub keyword search, repository details and app-local favourites. A CPU embedding adapter and manifest are implemented but not yet wired into search; semantic (Milvus) search and repository ingestion remain planned.
 
 ## Setup
 
@@ -32,6 +32,33 @@ ruff format --check .
 ```
 
 Configure HTTPS and a reachable callback for device testing/deployment. Bind to the required interface deliberately. Behind a proxy, allow only explicitly trusted proxy addresses; never accept arbitrary forwarded client IPs. Disable/redact auth query strings in proxy logs as well. Put a body-size limit and request timeout at the ingress. Use deployment filesystem permissions to protect `.env` and the database directory.
+
+## CPU embeddings (optional)
+
+The T02 adapter is `app/services/embeddings.py`; its immutable manifest is `app/services/embedding_model.json`. It pins `intfloat/multilingual-e5-small` at revision `614241f622f53c4eeff9890bdc4f31cfecc418b3`, produces normalized 384-dimensional vectors, adds `query: ` / `passage: ` prefixes, rejects caller prefixes and inputs over 512 tokens after prefixing, and loads safe weights on CPU with `trust_remote_code=False`. It is not imported by an API route yet.
+
+Loading is offline-only. The adapter resolves the cached snapshot with `local_files_only=True`, verifies the manifest SHA-256 values for `model.safetensors` and `tokenizer.json`, then loads from that verified path with `use_safetensors=True`. Serving and worker processes must use `HF_HUB_OFFLINE=1` so a request cannot trigger a model download; set it after the explicit setup step below.
+
+The embedding stack is intentionally separate from `requirements.lock.txt` so the main CI lock does not install PyTorch. In a Python 3.11+ environment, install once:
+
+```sh
+python -m pip install -r requirements.embeddings.lock.txt
+```
+
+Then perform the explicit one-time download with network access:
+
+```sh
+env -u HF_HUB_OFFLINE python ../scripts/embeddings_smoke.py --download --repeats 3
+```
+
+For serving/worker processes and the offline smoke run:
+
+```sh
+export HF_HUB_OFFLINE=1
+python ../scripts/embeddings_smoke.py --repeats 3
+```
+
+The setup downloads only the pinned safetensors weights and model/tokenizer support files, excluding alternate pickle/export weights. After setup, the smoke command is offline-only and fails with a clear setup message if the pinned snapshot is missing. The smoke command verifies both cached hashes and prints CPU dimensions, norms, timings and memory as JSON. Unit tests use fake encoders and do not download models. Input rejections use `UnsupportedInput`; model/cache/manifest faults use `EmbeddingError`. T13 must map unsupported input to semantic `query_not_supported` while retaining live GitHub results; no API wiring is included here. Do not persist user ideas or embeddings. See [T02 evidence](../execution-plans/hybrid-search/T02_EVIDENCE.md).
 
 ## Configuration and storage
 
