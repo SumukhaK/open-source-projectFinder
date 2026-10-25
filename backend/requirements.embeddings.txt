@@ -1,0 +1,14 @@
+# Optional CPU embedding runtime for the pinned multilingual E5 adapter.
+# Python 3.11+ (huggingface-hub 2.x requires it). Install the lock for reproduction:
+#   python -m pip install -r backend/requirements.embeddings.lock.txt
+# The CPU index keeps Linux from pulling the CUDA packages in PyPI's torch wheel.
+--extra-index-url https://download.pytorch.org/whl/cpu
+sentence-transformers==6.2.0
+torch==2.14.1+cpu
+transformers==5.20.2
+tokenizers==0.23.3
+safetensors==0.8.0
+huggingface-hub==2.3.0
+numpy==2.4.6
+scipy==1.17.1
+scikit-learn==1.9.1

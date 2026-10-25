@@ -1,6 +1,6 @@
 # T02: Pin a CPU embedding adapter and manifest
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review; CPU adapter, manifest, tests and benchmark passed. Review/merge evidence belongs in [TRACKER](../TRACKER.md) and [T02_EVIDENCE](../T02_EVIDENCE.md).
 
 | Control | Value |
 | --- | --- |

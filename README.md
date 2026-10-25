@@ -4,9 +4,11 @@ Turn a project idea into a search for existing open-source implementations.
 
 RepoRadar is a planned AI-driven discovery service with a React-based mobile client and a Python FastAPI backend. Users describe an idea by text or voice; the backend combines semantic retrieval from Milvus with GitHub public repository search to find similar projects.
 
-**Status:** mobile branding and GitHub-only signup/login implemented with Expo / React Native and FastAPI. Public GitHub search/details and account-specific favourites are connected. Standalone search controls are implemented and tested; repository ingestion, semantic matching and voice remain planned. Live OAuth and native device validation remain required.
+**Status:** mobile branding and GitHub-only signup/login implemented with Expo / React Native and FastAPI. Public GitHub search/details and account-specific favourites are connected. Standalone search controls are implemented and tested; the CPU embedding adapter and immutable model manifest are implemented and validated but not yet wired into search. Repository ingestion, semantic matching and voice remain planned. Live OAuth and native device validation remain required.
 
 Standalone GitHub search controls are implemented: configurable page size, sorting, validated query/pagination limits and bounded search responses. Tests preserve existing parsing, authentication and public-only scope. Review, CI and delivery evidence: [PR #10](https://github.com/SumukhaK/open-source-projectFinder/pull/10) and [the tracker](PROJECT_TRACKER.md). Advanced qualifiers, Boolean expressions and semantic search remain planned.
+
+The CPU embedding adapter is implemented in `backend/app/services/embeddings.py` with a pinned `intfloat/multilingual-e5-small` revision and manifest. It produces normalized 384-dimensional query/passage vectors, adds the E5 prefixes, enforces the 512-token limit after prefixing, and loads only safe weights on CPU with remote model code disabled. It is not connected to an API route yet. Unit tests use a deterministic fake encoder and never download a model; the real local CPU smoke/benchmark and dependency evidence are in [T02 evidence](execution-plans/hybrid-search/T02_EVIDENCE.md). The optional CPU lock is separate from the main backend lock.
 
 ## Planned architecture
 
@@ -34,7 +36,8 @@ GitHub credentials stay encrypted on the backend; the app uses a separate revoca
 | Mobile client | React ecosystem | React Native with Expo implemented |
 | Semantic index | Milvus | Confirmed |
 | Live repository retrieval | GitHub Search API | Confirmed |
-| Embeddings, language model, voice transcription | Pending | Select after requirements |
+| Embeddings | `intfloat/multilingual-e5-small` with `sentence-transformers` on CPU | T02 adapter/manifest implemented; not yet wired into search |
+| Language model, voice transcription | Pending | Select after requirements |
 | Tests | Unit and integration tests with TDD | pytest, Jest / React Native Testing Library |
 
 ## Repository layout
