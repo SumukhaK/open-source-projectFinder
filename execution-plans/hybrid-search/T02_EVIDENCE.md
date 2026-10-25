@@ -8,7 +8,7 @@ Status: **Awaiting review, not accepted.** The CPU adapter, immutable manifest, 
 - Worktree: `E:\OpenSourceProjectFinder-t02`, separate from the primary checkout.
 - Branch: `codex/hybrid-t02-embeddings`.
 - Base: `7f94e2f5c8b0e68905dba367c584b4f74d98c175` (`origin/main`, T01 merged through PR #15).
-- Head: recorded in the PR description; a commit cannot embed its own SHA.
+- Head: implementation commit `5f92e5787595bc25dd4f51e36cab3ffbe381d511`; the final documentation-sync head is in the PR description because a commit cannot embed its own SHA.
 - Production change: `backend/app/services/embeddings.py`, `backend/app/services/embedding_model.json`, `backend/requirements.embeddings.txt`, `backend/requirements.embeddings.lock.txt`.
 - Test/benchmark change: `backend/tests/test_embeddings.py`, `scripts/embeddings_smoke.py`.
 - CI change: `.github/workflows/quality.yml` audits the optional embedding lock. No gate was lowered and no exception was added.
