@@ -388,3 +388,5 @@ Base: `487cc52c54c6b03e553f183a1e5764fd50c77899`; branch `codex/hybrid-t03-catal
 Non-goals: no ingestion, raw-file writer, vector publication, durable jobs, API/mobile changes or system/runtime modifications. Architecture flow is unchanged; existing planned diagrams remain accurate.
 
 Verification: 222 tests pass in WSL Python 3.11.17 / SQLite 3.53.1; 97.8% combined / 95.3% branch coverage passes unchanged gates; Ruff lint/format and Bandit pass. Real catalogue WAL snapshots, commits, truncate checkpoint, reopen and integrity pass; system SQLite 3.46.1 fails the shared gate. Detailed RED/GREEN commands and rollback are in [T03 evidence](execution-plans/hybrid-search/T03_EVIDENCE.md). PR/current-head CI and independent trusted acceptance remain GitHub evidence; task is not accepted or merged.
+
+T03 handoff: [PR #18](https://github.com/SumukhaK/open-source-projectFinder/pull/18), Awaiting review. Independent trusted acceptance and required current-head CI remain pending; no merge or next-task execution.

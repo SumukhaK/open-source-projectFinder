@@ -1,6 +1,6 @@
 # T03 catalogue evidence - 2026-10-25
 
-Status: **Awaiting review**, not accepted or merged. This is T03 only. The PR's current full head SHA and required CI run are authoritative in GitHub; this file cannot embed its own commit SHA.
+Status: **Awaiting review** in [PR #18](https://github.com/SumukhaK/open-source-projectFinder/pull/18), not accepted or merged. This is T03 only. The PR's current full head SHA and required CI run are authoritative in GitHub; this file cannot embed its own commit SHA.
 
 ## Scope and prerequisites
 
