@@ -4,7 +4,12 @@ Turn a project idea into a search for existing open-source implementations.
 
 RepoRadar is a planned AI-driven discovery service with a React-based mobile client and a Python FastAPI backend. Users describe an idea by text or voice; the backend combines semantic retrieval from Milvus with GitHub public repository search to find similar projects.
 
-**Status:** mobile branding and GitHub-only signup/login implemented with Expo / React Native and FastAPI. Public GitHub search/details and account-specific favourites are connected. Standalone search controls are implemented and tested; the CPU embedding adapter and immutable model manifest are implemented and validated but not yet wired into search. Repository ingestion, semantic matching and voice remain planned. Live OAuth and native device validation remain required.
+**Status (2026-10-25):**
+
+- **Implemented:** mobile branding and GitHub-only signup/login (Expo / React Native + FastAPI); authenticated public GitHub keyword search with page-size/sort controls, repository details and account-specific favourites.
+- **Hybrid-search foundations merged:** local Milvus runs on the development laptop's CPU and GPU (T01), and a pinned CPU embedding model turns text into vectors (T02). Neither is connected to search yet.
+- **Planned:** repository ingestion into Milvus, semantic and hybrid matching, the mobile discovery screens and voice input.
+- **Still to validate:** live GitHub OAuth and native-device checks.
 
 Standalone GitHub search controls are implemented: configurable page size, sorting, validated query/pagination limits and bounded search responses. Tests preserve existing parsing, authentication and public-only scope. Review, CI and delivery evidence: [PR #10](https://github.com/SumukhaK/open-source-projectFinder/pull/10) and [the tracker](PROJECT_TRACKER.md). Advanced qualifiers, Boolean expressions and semantic search remain planned.
 
@@ -34,9 +39,10 @@ GitHub credentials stay encrypted on the backend; the app uses a separate revoca
 | --- | --- | --- |
 | Backend API | Python, FastAPI | Confirmed |
 | Mobile client | React ecosystem | React Native with Expo implemented |
-| Semantic index | Milvus | Confirmed |
+| Semantic index | Milvus 2.6.26 standalone (etcd + MinIO) via Docker Compose, PyMilvus 2.6.17 | Pinned; local CPU (HNSW) and GPU (GPU_CAGRA) feasibility proven in T01; archive not built yet |
 | Live repository retrieval | GitHub Search API | Confirmed |
-| Embeddings | `intfloat/multilingual-e5-small` with `sentence-transformers` on CPU | T02 adapter/manifest implemented; not yet wired into search |
+| Embeddings | `intfloat/multilingual-e5-small` (pinned revision, 384-d) with `sentence-transformers` and CPU-only PyTorch | T02 adapter, manifest and hash-verified offline loading merged; not yet wired into search |
+| Local runtime | WSL2 (Ubuntu) + Docker Desktop on Windows; NVIDIA driver 617.42 for the GPU profile | Used for Milvus and the embedding smoke checks |
 | Language model, voice transcription | Pending | Select after requirements |
 | Tests | Unit and integration tests with TDD | pytest, Jest / React Native Testing Library |
 
@@ -57,8 +63,12 @@ backend/
 mobile/
   src/             # React mobile client
   tests/
-infra/             # Deployment and local service configuration
+infra/
+  milvus/          # Pinned local Milvus CPU/GPU Compose profiles and runbook (T01)
 docs/              # Detailed design documents
+execution-plans/
+  hybrid-search/   # Hybrid search handbook, task prompts, tracker and evidence
+scripts/           # Quality gates, reviewed merge, Milvus probe, embedding smoke check
 AGENTS.md          # Engineering workflow
 REQUIREMENTS.md    # Technical requirements
 SCOPE.md           # Plain-language scope
@@ -77,7 +87,7 @@ See [backend setup and checks](backend/README.md) and [mobile setup and checks](
 - Quality pipeline: free open-source validation, explicit coverage/security gates and review-controlled delivery.
 - Backend discovery: public GitHub search/details and account-specific favourites, with verified keyword search controls and limits.
 - Discovery hardening: non-ASCII ideas are searchable, GitHub rate limits return `Retry-After`, and request-size limits use a public ASGI middleware.
-- Hybrid search handbook: T00 readiness merged (PR #13); T01 awaiting review with CPU/GPU 1k proofs passed and capacity/SQLite gates open; T02-T29 not started.
+- Hybrid search handbook: T00 readiness (PR #13), T01 Milvus CPU/GPU feasibility (PR #15) and T02 CPU embedding adapter (PR #16) merged; capacity and the worker SQLite gate for T03 remain open; T03-T29 not started.
 - Semantic search, ingestion, mobile discovery and voice: planned; advanced search syntax needs an explicit input contract.
 
 See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md), and [project tracker](PROJECT_TRACKER.md).
@@ -99,6 +109,13 @@ Sanitized local crash events and a mobile retry screen are implemented; producti
 
 ## Planned hybrid search implementation
 
-The [OpenCode execution handbook](execution-plans/hybrid-search/README.md) contains the proposed Milvus archive/hybrid design, 30 small task prompts, tests-first acceptance criteria and review-controlled tracker. Implementation is not complete; each task requires a fresh main-based branch, a PR and review before merge.
+The [OpenCode execution handbook](execution-plans/hybrid-search/README.md) contains the proposed Milvus archive/hybrid design, 30 small task prompts, tests-first acceptance criteria and a review-controlled [task tracker](execution-plans/hybrid-search/TRACKER.md). Each task uses a fresh main-based branch, a PR and exact-head review before merge.
 
-T01 local Milvus feasibility: private pinned Compose profiles and bounded synthetic CPU/GPU proofs are available in [the runbook](infra/milvus/README.md). GPU 1k proof passed; host/archive capacity and SQLite gates remain open (SQLite gates T03 WAL, not T01 review). This is not archive/hybrid implementation.
+| Task | Status | Result |
+| --- | --- | --- |
+| T00 readiness | Merged (PR #13) | Prerequisites, audits and the decision/blocker matrix recorded in [READINESS](execution-plans/hybrid-search/READINESS.md) |
+| T01 Milvus feasibility | Merged (PR #15) | 1,000-vector CPU and GPU proofs pass on the development laptop; GPU peak 196 MiB of 4 GB; no meaningful speed gain at this size ([evidence](execution-plans/hybrid-search/T01_EVIDENCE.md), [runbook](infra/milvus/README.md)) |
+| T02 CPU embeddings | Merged (PR #16) | Hash-verified offline model loading on Windows and WSL; about 87–100 queries/s and about 1 GiB RAM on CPU ([evidence](execution-plans/hybrid-search/T02_EVIDENCE.md)) |
+| T03-T29 | Not started | T03 (archive catalogue) needs a worker Python linked to SQLite 3.51.3+ before using WAL mode |
+
+Still open: archive and rebuild capacity on the 16 GB development laptop, the eight policy decisions (corpus cap, licences, retention and others) and the unmerged mobile discovery foundation. Search quality is not measured until T27.

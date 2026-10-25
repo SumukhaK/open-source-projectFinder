@@ -1,6 +1,6 @@
 # T01 local Milvus feasibility stack
 
-This is a disposable **synthetic development experiment**, not an archive deployment. The API does not use the SDK yet. The CPU and GPU profiles have passed real 1,000-row proofs; GPU_CAGRA/IP passed on driver 617.42. Host/archive capacity and the worker SQLite WAL gate remain open; T01 awaits review, not acceptance. See [dated evidence](../../execution-plans/hybrid-search/T01_EVIDENCE.md). No user ideas, GitHub content, model weights or production database are inputs.
+This is a disposable **synthetic development experiment**, not an archive deployment. The API does not use the SDK yet. The CPU and GPU profiles have passed real 1,000-row proofs; GPU_CAGRA/IP passed on driver 617.42. Host/archive capacity and the worker SQLite WAL gate remain open; T01 was accepted and merged via PR #15 (`7f94e2f`). See [dated evidence](../../execution-plans/hybrid-search/T01_EVIDENCE.md). No user ideas, GitHub content, model weights or production database are inputs.
 
 ## Pinned compatibility set
 

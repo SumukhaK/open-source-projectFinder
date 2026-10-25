@@ -1,6 +1,6 @@
 # T02 embedding adapter evidence - 2026-10-25
 
-Status: **Awaiting review, not accepted.** The CPU adapter, immutable manifest, unit tests, real CPU smoke check and small benchmark pass. No T03 work, API wiring, paid service, GPU model load or user-content persistence was performed.
+Status: **Accepted and merged via [PR #16](https://github.com/SumukhaK/open-source-projectFinder/pull/16) as `e400076` (2026-10-25); review evidence is in [TRACKER](TRACKER.md).** The CPU adapter, immutable manifest, unit tests, real CPU smoke check and small benchmark pass. No T03 work, API wiring, paid service, GPU model load or user-content persistence was performed.
 
 ## Scope and base
 
