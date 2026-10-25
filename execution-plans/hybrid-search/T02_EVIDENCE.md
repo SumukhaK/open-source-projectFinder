@@ -87,7 +87,7 @@ Result: **160 tests passed**, 97.8% combined coverage / 95.5% branches, new modu
 Command, from the repository root in the optional Python 3.11 environment:
 
 ```text
-HF_HUB_OFFLINE=1 python scripts/embeddings_smoke.py --repeats 3
+python scripts/embeddings_smoke.py --repeats 3
 ```
 
 The script loaded the real pinned model on CPU, verified both cached file hashes, encoded 3 synthetic queries and 12 synthetic passages (including Devanagari and Japanese text), and rejected a caller-supplied prefix and an 805-token input before encoding.
