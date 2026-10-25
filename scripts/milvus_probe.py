@@ -110,6 +110,16 @@ def run_probe(client, datatype, profile):
             raise ValueError(
                 "Requested index/metric was not created; no fallback is accepted"
             )
+        if (
+            description.get("state") != "Finished"
+            or description.get("total_rows") != len(rows)
+            or description.get("indexed_rows") != len(rows)
+            or description.get("pending_index_rows") != 0
+        ):
+            raise ValueError(
+                "Incomplete data index; a definition or flat scan is not a build proof"
+            )
+
         stage = time.perf_counter()
         client.load_collection(collection_name=name, timeout=120)
         timings["load_seconds"] = round(time.perf_counter() - stage, 4)
@@ -157,6 +167,8 @@ def run_probe(client, datatype, profile):
             "server": server,
             "index_type": index_type,
             "metric": "IP",
+            "indexed_rows": description["indexed_rows"],
+            "index_state": description["state"],
             "rows": len(rows),
             "dimensions": 384,
             "seed": 17,

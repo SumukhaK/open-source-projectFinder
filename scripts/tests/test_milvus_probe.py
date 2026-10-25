@@ -64,7 +64,14 @@ def client_fixture():
     client = MagicMock()
     client.insert.return_value = {"insert_count": 1000}
     client.get_server_version.return_value = "2.6.26"
-    client.describe_index.return_value = {"index_type": "HNSW", "metric_type": "IP"}
+    client.describe_index.return_value = {
+        "index_type": "HNSW",
+        "metric_type": "IP",
+        "state": "Finished",
+        "indexed_rows": 1000,
+        "total_rows": 1000,
+        "pending_index_rows": 0,
+    }
     client.search.side_effect = [
         [[{"id": 0, "distance": 1.0, "entity": {"cohort": 0}}]],
         [[{"id": 1, "distance": 0.2, "entity": {"cohort": 1}}]],
@@ -141,10 +148,7 @@ def test_probe_rejects_incomplete_insertion():
 
 def test_gpu_profile_requires_gpu_index_without_cpu_fallback():
     client = client_fixture()
-    client.describe_index.return_value = {
-        "index_type": "GPU_CAGRA",
-        "metric_type": "IP",
-    }
+    client.describe_index.return_value["index_type"] = "GPU_CAGRA"
     result = run_probe(client, DATATYPE, "gpu")
     assert result["index_type"] == "GPU_CAGRA"
     params = client.prepare_index_params.return_value.add_index.call_args.kwargs
@@ -184,6 +188,7 @@ def test_compose_is_authenticated_private_pinned_and_resource_bounded():
         assert service["ports"] == ["127.0.0.1:19530:19530"]
         env = service["environment"]
         assert env["COMMON_SECURITY_AUTHORIZATIONENABLED"] == "true"
+        assert env["ROOTCOORD_MINSEGMENTSIZETOENABLEINDEX"] == "64"
         assert env["COMMON_SECURITY_DEFAULTROOTPASSWORD"].startswith(
             "${MILVUS_PASSWORD:?"
         )
@@ -195,3 +200,20 @@ def test_compose_is_authenticated_private_pinned_and_resource_bounded():
     assert services["gpu"]["deploy"]["resources"]["reservations"]["devices"] == [
         {"driver": "nvidia", "capabilities": ["gpu"], "device_ids": ["0"]}
     ]
+
+
+@pytest.mark.parametrize(
+    "progress",
+    [
+        {"indexed_rows": 0},
+        {"indexed_rows": 999},
+        {"state": "InProgress"},
+        {"pending_index_rows": 1},
+    ],
+)
+def test_definition_without_complete_data_indexing_is_not_a_success(progress):
+    client = client_fixture()
+    client.describe_index.return_value.update(progress)
+    with pytest.raises(ValueError, match="index"):
+        run_probe(client, DATATYPE, "cpu")
+    client.drop_collection.assert_called_once()

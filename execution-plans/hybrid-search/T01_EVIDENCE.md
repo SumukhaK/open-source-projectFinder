@@ -1,8 +1,8 @@
-# T01 feasibility evidence — 2026-10-24
+# T01 feasibility evidence — 2026-10-25
 
 Status: **CPU proof passed; GPU and archive-runtime gates blocked. Awaiting review, not accepted.** No T02 work, policy approval, GitHub ingestion, model download or schedule was performed.
 
-Continuation request: "awesome, please proceed". Prior handoff assessment verified the existing T01 worktree was clean at6dc4233. It was fast-forwarded to main `3fe801661d63e0b147f611f39f35f2f07a79e184` before edits, preserving PR#14's search/body-limit changes. [T00/#13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) is merged. The original dirty checkout and mobile WIP are untouched.
+Continuation request: "awesome, please proceed". Prior handoff assessment verified the existing T01 worktree was clean at `6dc4233`. It was fast-forwarded to main `3fe801661d63e0b147f611f39f35f2f07a79e184` before edits, preserving PR#14's search/body-limit changes. [T00/#13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) is merged. The original dirty checkout and mobile WIP are untouched.
 
 ## Runtime and exact choices
 
@@ -21,21 +21,23 @@ Credentials were generated independently into ignored `infra/milvus/.env` and ne
 
 ## Test-first and real CPU proof
 
-Initial minimal stubs produced **17 expected assertion failures /5 passes** for deterministic normalized vectors, settings/credential boundaries, fixed SQLite versions, operations and safe cleanup. An initial wrong-working-directory import error was corrected first and is not counted as behavioral RED. Further regressions failed before fixing incomplete insertion-count acceptance and the real server's build-version response. The final focused suite covers27 cases, including GPU-index selection without a hidden CPU fallback and Compose authentication/exposure/resource pins.
+Initial minimal stubs produced **17 expected assertion failures /5 passes** for deterministic normalized vectors, settings/credential boundaries, fixed SQLite versions, operations and safe cleanup. An initial wrong-working-directory import error was corrected first and is not counted as behavioral RED. Further regressions failed before fixing incomplete insertion-count acceptance and the real server's build-version response. Four additional indexing regressions rejected zero/partial coverage, pending rows and unfinished state before the fix. The final focused suite covers 31 cases, including GPU-index selection without a hidden CPU fallback and Compose authentication/exposure/resource pins.
+
+Independent review invalidated the earlier indexing claim: Milvus defaults to a 1,024-row minimum segment size, so a 1,000-row collection could be searched without a built index. The probe-local threshold is now 64 and success requires `Finished`, `total_rows=1000`, `indexed_rows=1000` and zero pending rows. The measurements below replace those earlier runs; both corrected runs returned those values.
 
 Real operations, twice on the same server with fresh disposable collections: insert1000, flush, buildHNSW/IP, load, normalized self-search(topID0, score~1), filtered odd/cohort1 matches, upsertID0/cohort2 and verify it, deleteID0 and verify absence. Probe collection cleanup left zero collections. No simulated transport was used for these runs.
 
 | Timed stage (seconds) | First successful run | Warm repeat / fresh rebuild |
 | --- | --- | --- |
-| insert_flush_seconds | 1.6603 | 1.0844 |
-| build_seconds | 0.5238 | 0.5221 |
-| load_seconds | 2.2779 | 1.8813 |
-| search_seconds | 0.0316 | 0.0386 |
-| Whole probe | 4.7564 | 3.7421 |
+| insert_flush_seconds | 1.7154 | 1.6865 |
+| build_seconds | 0.5453 | 0.5443 |
+| load_seconds | 2.3392 | 2.1435 |
+| search_seconds | 0.0655 | 0.0586 |
+| Probe operations (excludes SDK startup and final cleanup) | 5.0018 | 4.7425 |
 
 Seed17,384dimensions,1000rows, per-call timeouts30s (flush/build/load120s); one query per branch, so search timing is **not p95/throughput**. Fresh collection construction on repeat verifies a repeatable rebuild, not a production rolling-index migration. The tool's sanitized stdout JSON excludes credentials and raw vectors.
 
-Resource evidence: Docker stats sampled four times during the first successful run and three times during repeat (roughly1-2s cadence); repeat maxima observed Milvus136.2MiB, MinIO99.72MiB, etcd25.29MiB; idle Milvus around120MiB. These are sampled container values, not exhaustive peaks. OOMKilled=false; the bounded CPU runs completed without observed OOM. Windows free memory recovered after Firefox closed; it varied ~2.9-5.7GiB during checks. No sustained-swap or long-load measurement was made. C: free disk remained~28.9GiB and E:~81.1GiB after CPU image acquisition. No unrelated process was terminated; only this task's stalled diagnostic helper was stopped after identifying its parent/child executable paths.
+Resource evidence: Docker stats sampled nine times during the first corrected run and five times during repeat, about every 2.04 seconds. First-run maxima were Milvus 130.8 MiB / MinIO 96.78 MiB / etcd 35.87 MiB; repeat maxima were 161.1 / 103.4 / 37.34 MiB respectively. These are sampled container values, not exhaustive peaks or whole-host RAM. All three containers were healthy with OOMKilled=false before shutdown. Windows available RAM fell to about 0.7 GiB during the continuation, so the completed stack was stopped and Docker Desktop was stopped after confirming no other containers were running. Available RAM recovered to about 3 GiB. This host pressure is a further reason not to infer capacity from a tiny success. No sustained-swap or long-load measurement was made. Free disk after verification was 28.6 GiB on C: and 81.1 GiB on E:. No unrelated application was terminated; only this task's stalled diagnostic helper was stopped after identifying its parent/child executable paths.
 
 The first live connection failed because Docker Desktop did not forward loopback ports on an `internal` network. Recreating only the owned network/containers with a normal bridge fixed it; no volume was removed. This is an environment failure, not a behavioral unit-test RED. An initial exact-semver assertion then failed on the release's build string; its regression was fixed while retaining immutable image pins.
 
@@ -48,7 +50,8 @@ The first live connection failed because Docker Desktop did not forward loopback
 
 ## Verification and handoff
 
-- Local final checks: 27 focused probe cases and 131 total backend/policy/probe tests pass, 96.8% combined coverage / 92.4% branches; Ruff/format/Bandit/pip-check pass. Both dependency audits pass the existing policy (69 Python dependencies, no known findings). Static checks cover 44 Markdown files and 335 links/anchors. Current PR CI is recorded in the PR and remains required; it is not asserted here before execution. Python lock audit found no known vulnerabilities; npm passes through only the existing node-forge exception (expires2026-11-01), unchanged. Audit findings are not an absence-of-all-risk guarantee.
+- Local final checks (Windows / Python 3.11.9, 2026-10-25): 31 focused probe cases and 135 total backend/policy/probe tests pass, 96.8% combined coverage / 92.4% branches; Ruff/format/Bandit/pip-check pass. Both dependency audits pass the existing policy (69 Python dependencies, no known findings). Static checks cover 44 Markdown files and 335 links/anchors. Current PR CI is recorded in the PR and remains required; it is not asserted here before execution. Python lock audit found no known vulnerabilities; npm passes through only the existing node-forge exception (expires2026-11-01), unchanged. Audit findings are not an absence-of-all-risk guarantee.
+- Reproduction commands from the repository root: `python -m pytest scripts/tests/test_milvus_probe.py -q`; `python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch --cov-report=json:reports/backend-coverage.json`; `python scripts/quality.py coverage reports/backend-coverage.json`; `ruff check backend scripts`; `ruff format --check backend scripts`; `bandit -r backend/app`; `python -m pip check`. All exited 0. Dependency checks use the unchanged commands in `.github/workflows/quality.yml`; actual stack/probe commands are in the runbook. The live CPU command exited 0 twice after the index fix.
 - Mobile runtime/files are unchanged and local mobile tests are not rerun solely for this probe; required remote CI runs them. Container-image vulnerabilities were not separately scanned. GPU/WSL/SDK results are scoped as stated above.
 - [Runbook and commands](../../infra/milvus/README.md); [task](tasks/T01-milvus-feasibility.md); [tracker](TRACKER.md). Rollback reverts this PR; local `docker compose down` preserves test volumes. The pre-existing host configuration/driver is outside that code rollback.
 - Next: exact-head review; decide how to resolve GPU/host/WAL gates, then rerun the missing real checks. No self-acceptance, merge or next-task execution is authorized by this handoff.

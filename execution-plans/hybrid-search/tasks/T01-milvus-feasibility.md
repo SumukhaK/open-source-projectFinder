@@ -1,6 +1,6 @@
 # T01: Prove local Milvus CPU/GPU feasibility
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review; CPU proof passed, GPU/host/WAL gates blocked. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

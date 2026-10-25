@@ -13,6 +13,8 @@ x-milvus: &milvus
     GPU_INITMEMSIZE: "128"
     GPU_MAXMEMSIZE: "256"
     OMP_NUM_THREADS: "2"
+    # Synthetic 1k rows must be indexed, not silently served by a small-segment flat scan.
+    ROOTCOORD_MINSEGMENTSIZETOENABLEINDEX: "64"
   ports: ["127.0.0.1:19530:19530"]
   depends_on:
     etcd: {condition: service_healthy}
