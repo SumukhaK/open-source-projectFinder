@@ -21,7 +21,7 @@ The CPU embedding adapter is implemented in `backend/app/services/embeddings.py`
 ![RepoRadar planned architecture](docs/architecture-light.svg#gh-light-mode-only)
 ![RepoRadar planned architecture](docs/architecture-dark.svg#gh-dark-mode-only)
 
-[Editable Mermaid source](docs/architecture.mmd) Â· [Diagram styling](docs/DIAGRAMS.md)
+[Editable Mermaid source](docs/architecture.mmd) · [Diagram styling](docs/DIAGRAMS.md)
 
 The backend and ingestion worker share integration code and one central backend configuration module. Provider choices, corpus boundaries, ingestion cadence, and ranking strategy remain open.
 
@@ -30,7 +30,7 @@ The backend and ingestion worker share integration code and one central backend 
 ![RepoRadar authentication](docs/authentication-light.svg#gh-light-mode-only)
 ![RepoRadar authentication](docs/authentication-dark.svg#gh-dark-mode-only)
 
-[Authentication flow and security](docs/AUTHENTICATION.md) Â· [Editable source](docs/authentication.mmd)
+[Authentication flow and security](docs/AUTHENTICATION.md) · [Editable source](docs/authentication.mmd)
 
 GitHub credentials stay encrypted on the backend; the app uses a separate revocable session. Persistent rate limits and bounded provider retries are implemented.
 
@@ -117,7 +117,8 @@ The [OpenCode execution handbook](execution-plans/hybrid-search/README.md) conta
 | --- | --- | --- |
 | T00 readiness | Merged (PR #13) | Prerequisites, audits and the decision/blocker matrix recorded in [READINESS](execution-plans/hybrid-search/READINESS.md) |
 | T01 Milvus feasibility | Merged (PR #15) | 1,000-vector CPU and GPU proofs pass on the development laptop; GPU peak 196 MiB of 4 GB; no meaningful speed gain at this size ([evidence](execution-plans/hybrid-search/T01_EVIDENCE.md), [runbook](infra/milvus/README.md)) |
-| T02 CPU embeddings | Merged (PR #16) | Hash-verified offline model loading on Windows and WSL; about 87â€“100 queries/s and about 1 GiB RAM on CPU ([evidence](execution-plans/hybrid-search/T02_EVIDENCE.md)) |
-| T03-T29 | Not started | T03 (archive catalogue) needs a worker Python linked to SQLite 3.51.3+ before using WAL mode |
+| T02 CPU embeddings | Merged (PR #16) | Hash-verified offline model loading on Windows and WSL; about 87–100 queries/s and about 1 GiB RAM on CPU ([evidence](execution-plans/hybrid-search/T02_EVIDENCE.md)) |
+| T03 catalogue | Awaiting review | Isolated SQLite v1 migrations; real WAL proof on worker SQLite 3.53.1; auth unchanged ([evidence](execution-plans/hybrid-search/T03_EVIDENCE.md)) |
+| T04-T29 | Not started | Require their task-specific merged prerequisites and policy approvals |
 
 Still open: archive and rebuild capacity on the 16 GB development laptop, the eight policy decisions (corpus cap, licences, retention and others) and the unmerged mobile discovery foundation. Search quality is not measured until T27.

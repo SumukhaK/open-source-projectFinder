@@ -71,6 +71,8 @@ Commands below run from the isolated repository root in WSL; `python` and `ruff`
 
 Coverage includes catalogue migration/reopen, transaction rollback/connection closing, migration DDL rollback and retry, uniqueness/foreign keys, cross-repository revision rejection, metadata/vector state constraints, chunk cascade, private files/sidecars, unknown/future database rejection, auth byte preservation, unpatched runtime refusal and the real WAL path. Catalogue combined coverage is 95%; central settings and the shared gate are 100%. Unit tests do not simulate a real disk-full/power-loss event.
 
+The final fresh-context reviewer could not run because its model usage limit was reached. No paid upgrade, retry or model change was made. An author review of the complete diff and connected callers found and corrected the path-sidecar alias bug (with RED/GREEN) and documentation UTF-8/status drift. This is not independent trusted acceptance; that review remains required on the final PR head.
+
 No dependencies were added or changed. Required remote CI still audits both Python locks and npm, tests the mobile client/E2E, and scans secrets. The existing node-forge exception remains unchanged and expires 2026-11-01; any resulting gate failure must be reported, not waived. Local mobile/export, fresh dependency audits and full-history secret scanning are delegated to that unchanged required CI, not claimed as local passes.
 
 ## Migration, compatibility and rollback
