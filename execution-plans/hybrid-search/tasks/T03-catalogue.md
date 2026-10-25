@@ -1,6 +1,6 @@
 # T03: Add the isolated archive catalogue
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review. Implementation and real WSL verification: [T03 evidence](../T03_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

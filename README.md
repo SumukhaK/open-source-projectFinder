@@ -8,6 +8,7 @@ RepoRadar is a planned AI-driven discovery service with a React-based mobile cli
 
 - **Implemented:** mobile branding and GitHub-only signup/login (Expo / React Native + FastAPI); authenticated public GitHub keyword search with page-size/sort controls, repository details and account-specific favourites.
 - **Hybrid-search foundations merged:** local Milvus runs on the development laptop's CPU and GPU (T01), and a pinned CPU embedding model turns text into vectors (T02). Neither is connected to search yet.
+- **Awaiting review:** T03 adds a separate private SQLite archive catalogue; it is opt-in and does not alter search or auth. See [T03 evidence](execution-plans/hybrid-search/T03_EVIDENCE.md).
 - **Planned:** repository ingestion into Milvus, semantic and hybrid matching, the mobile discovery screens and voice input.
 - **Still to validate:** live GitHub OAuth and native-device checks.
 
@@ -20,7 +21,7 @@ The CPU embedding adapter is implemented in `backend/app/services/embeddings.py`
 ![RepoRadar planned architecture](docs/architecture-light.svg#gh-light-mode-only)
 ![RepoRadar planned architecture](docs/architecture-dark.svg#gh-dark-mode-only)
 
-[Editable Mermaid source](docs/architecture.mmd) · [Diagram styling](docs/DIAGRAMS.md)
+[Editable Mermaid source](docs/architecture.mmd) Â· [Diagram styling](docs/DIAGRAMS.md)
 
 The backend and ingestion worker share integration code and one central backend configuration module. Provider choices, corpus boundaries, ingestion cadence, and ranking strategy remain open.
 
@@ -29,7 +30,7 @@ The backend and ingestion worker share integration code and one central backend 
 ![RepoRadar authentication](docs/authentication-light.svg#gh-light-mode-only)
 ![RepoRadar authentication](docs/authentication-dark.svg#gh-dark-mode-only)
 
-[Authentication flow and security](docs/AUTHENTICATION.md) · [Editable source](docs/authentication.mmd)
+[Authentication flow and security](docs/AUTHENTICATION.md) Â· [Editable source](docs/authentication.mmd)
 
 GitHub credentials stay encrypted on the backend; the app uses a separate revocable session. Persistent rate limits and bounded provider retries are implemented.
 
@@ -42,6 +43,7 @@ GitHub credentials stay encrypted on the backend; the app uses a separate revoca
 | Semantic index | Milvus 2.6.26 standalone (etcd + MinIO) via Docker Compose, PyMilvus 2.6.17 | Pinned; local CPU (HNSW) and GPU (GPU_CAGRA) feasibility proven in T01; archive not built yet |
 | Live repository retrieval | GitHub Search API | Confirmed |
 | Embeddings | `intfloat/multilingual-e5-small` (pinned revision, 384-d) with `sentence-transformers` and CPU-only PyTorch | T02 adapter, manifest and hash-verified offline loading merged; not yet wired into search |
+| Archive catalogue | Standard-library SQLite, separate private Linux database and versioned migrations | T03 awaiting review; real WAL evidence on SQLite 3.53.1; no ingestion yet |
 | Local runtime | WSL2 (Ubuntu) + Docker Desktop on Windows; NVIDIA driver 617.42 for the GPU profile | Used for Milvus and the embedding smoke checks |
 | Language model, voice transcription | Pending | Select after requirements |
 | Tests | Unit and integration tests with TDD | pytest, Jest / React Native Testing Library |
@@ -87,7 +89,7 @@ See [backend setup and checks](backend/README.md) and [mobile setup and checks](
 - Quality pipeline: free open-source validation, explicit coverage/security gates and review-controlled delivery.
 - Backend discovery: public GitHub search/details and account-specific favourites, with verified keyword search controls and limits.
 - Discovery hardening: non-ASCII ideas are searchable, GitHub rate limits return `Retry-After`, and request-size limits use a public ASGI middleware.
-- Hybrid search handbook: T00 readiness (PR #13), T01 Milvus CPU/GPU feasibility (PR #15) and T02 CPU embedding adapter (PR #16) merged; capacity and the worker SQLite gate for T03 remain open; T03-T29 not started.
+- Hybrid search handbook: T00 readiness (PR #13), T01 Milvus CPU/GPU feasibility (PR #15) and T02 CPU embedding adapter (PR #16) merged; T03 catalogue is awaiting review with the worker WAL gate proven on SQLite 3.53.1; corpus capacity and T04-T29 remain planned.
 - Semantic search, ingestion, mobile discovery and voice: planned; advanced search syntax needs an explicit input contract.
 
 See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md), and [project tracker](PROJECT_TRACKER.md).
@@ -115,7 +117,7 @@ The [OpenCode execution handbook](execution-plans/hybrid-search/README.md) conta
 | --- | --- | --- |
 | T00 readiness | Merged (PR #13) | Prerequisites, audits and the decision/blocker matrix recorded in [READINESS](execution-plans/hybrid-search/READINESS.md) |
 | T01 Milvus feasibility | Merged (PR #15) | 1,000-vector CPU and GPU proofs pass on the development laptop; GPU peak 196 MiB of 4 GB; no meaningful speed gain at this size ([evidence](execution-plans/hybrid-search/T01_EVIDENCE.md), [runbook](infra/milvus/README.md)) |
-| T02 CPU embeddings | Merged (PR #16) | Hash-verified offline model loading on Windows and WSL; about 87–100 queries/s and about 1 GiB RAM on CPU ([evidence](execution-plans/hybrid-search/T02_EVIDENCE.md)) |
+| T02 CPU embeddings | Merged (PR #16) | Hash-verified offline model loading on Windows and WSL; about 87â€“100 queries/s and about 1 GiB RAM on CPU ([evidence](execution-plans/hybrid-search/T02_EVIDENCE.md)) |
 | T03-T29 | Not started | T03 (archive catalogue) needs a worker Python linked to SQLite 3.51.3+ before using WAL mode |
 
 Still open: archive and rebuild capacity on the 16 GB development laptop, the eight policy decisions (corpus cap, licences, retention and others) and the unmerged mobile discovery foundation. Search quality is not measured until T27.

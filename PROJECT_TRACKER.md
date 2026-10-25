@@ -47,7 +47,7 @@ feel free to create a remote git repo with the name "open-source-projectFinder" 
 | 0 | Repository, folder scaffold, architecture and scope documents | Complete | Diff reviewed; secret exclusions verified; pushed scaffold PR #1; GitGuardian check passed |
 | 1 | Finalize requirements, API contract, providers and evaluation criteria | In progress | Hybrid contract proposed in execution-plans/hybrid-search; T00 merged; eight operator decisions (D1-D8) still pending |
 | 2 | Text idea submission and GitHub search baseline | Backend complete; mobile pending | Backend keyword search, details and favourites merged (#9, #10, plus fixes below); mobile discovery UI unmerged |
-| 3 | Periodic ingestion, embeddings and Milvus index | In progress: T01 Milvus feasibility and T02 CPU embeddings merged; T03-T09, T16-T23 planned (T03 WAL needs a fixed worker SQLite) | Repeatable ingestion, deduplication, updates and retrieval checks |
+| 3 | Periodic ingestion, embeddings and Milvus index | In progress: T01 Milvus feasibility and T02 CPU embeddings merged; T03 catalogue awaiting review with fixed worker SQLite 3.53.1; T04-T09, T16-T23 planned | Repeatable ingestion, deduplication, updates and retrieval checks |
 | 4 | Hybrid retrieval, ranking and AI similarity explanations | Planned (T10-T15, T27) | Agreed relevance evaluation, provenance and failure handling |
 | 5 | Mobile text discovery flow | Planned (blocked on unmerged mobile foundation; T24-T26) | Client tests and end-to-end submission/results verification |
 | 6 | Voice submission and transcription | Planned | Voice-to-search flow and privacy/error behavior verification |
@@ -287,9 +287,9 @@ Scope: the architect review's issues 2-4. Issue 1 (node-forge exception expiring
 
 | Feature | Status | Verification |
 | --- | --- | --- |
-| 2. Documentation drift | Complete (merged in PR #14) | backend README no longer calls search planned; invalid Latin-1 byte in README replaced with UTF-8 `·`; PR #11 and T00/PR #13 merges recorded here and in the hybrid TRACKER/READINESS with review/CI evidence; stale phase table and workflow checkboxes updated with evidence |
+| 2. Documentation drift | Complete (merged in PR #14) | backend README no longer calls search planned; invalid Latin-1 byte in README replaced with UTF-8 `Â·`; PR #11 and T00/PR #13 merges recorded here and in the hybrid TRACKER/READINESS with review/CI evidence; stale phase table and workflow checkboxes updated with evidence |
 | 3. Unmerged mobile path in the plan | Complete (merged in PR #14) | ARCHITECTURE/README of the handbook now label `mobile/src/features/discovery/...` as a local uncommitted workspace file and point at prerequisite P2; T24-T26 remain blocked. The mobile foundation itself cannot be delivered from this checkout because it exists only on the operator's machine. |
-| 4a. Non-ASCII ideas | Complete (merged in PR #14) | Keywords keep letters, digits and combining marks of any script. RED: Devanagari and CJK ideas returned 422 and `Café` became `caf`; GREEN after the change. Existing ASCII normalization tests unchanged. |
+| 4a. Non-ASCII ideas | Complete (merged in PR #14) | Keywords keep letters, digits and combining marks of any script. RED: Devanagari and CJK ideas returned 422 and `CafÃ©` became `caf`; GREEN after the change. Existing ASCII normalization tests unchanged. |
 | 4b. Per-user GitHub quota | Complete (merged in PR #14) (mitigation) | Using each user's own token is kept by design. Rate-limited discovery reads now return 503 with `Retry-After` (GitHub's Retry-After/reset, or 60 s when GitHub gives no timing headers). RED: header missing; GREEN after the change. |
 | 4c. Private `request._body` | Complete (merged in PR #14) | Replaced by a public-ASGI `BodyLimit` middleware that buffers up to `max_auth_body`, returns 413 and replays the body; it runs inside `protection`, so throttling still comes first. Chunked-body and direct ASGI tests cover delivery, oversize, disconnect and replay; real uvicorn smoke test returned 200 for a chunked login start and 413 for a 5,000-byte chunked body. |
 | 4d. Per-request SQLite pruning / single host | Not changed | Already documented as single-host; a shared PostgreSQL/Redis limiter belongs to the deployment phase. Rewriting the pruning without a measured problem would be speculative. |
@@ -312,7 +312,7 @@ Verification/handoff: **Awaiting review, not accepted**. Real Milvus 2.6.26 / Py
 Implementation checks (2026-10-25, before this docs sync): 138 backend/policy/probe tests pass (96.8% combined coverage / 92.4% branches); Ruff/format/Bandit/pip-check pass; 69 locked Python dependencies audit clean, npm passes the unchanged policy with the existing node-forge exception only. Static validation covers 44 Markdown files and 335 links/anchors, diagram XML, conflict/fence checks and unchecked T01 acceptance. New behavior regressions were observed failing before their fixes. No local mobile rerun solely for this probe; required remote CI remains authoritative. The probe now requires Finished/all 1,000 rows indexed/zero pending rows after review exposed the default small-segment flat-scan risk; two corrected live CPU runs passed. Test containers were stopped without deleting volumes and the task-started Docker Desktop was stopped to release RAM; pre-existing WSL settings and unrelated applications/workspace files remain unchanged. [PR #15](https://github.com/SumukhaK/open-source-projectFinder/pull/15) is open and awaiting review; no T02 work or merge. The user explicitly instructed that the PR remain unmerged.
 
 
-T01 documentation sync — 2026-10-25: update only the seven requested Markdown files with the existing [GPU execution results](https://github.com/SumukhaK/open-source-projectFinder/pull/15#issuecomment-6396209833), preserving the tested code at `20d7a84`. Plan/verification: check archived JSON/CSV hashes and exact measured values, clarify CPU/GPU timing limits and the separate T03 WAL prerequisite, run 138 tests/Ruff/format/link/diff/staged-secret checks, push one documentation commit, await new-head Quality pipeline and only then mark the PR ready for review. No code/tests/Compose/limits/dependencies/CI/security or host changes. Acceptance stays unchecked; no merge, approval marker or T02 work. The live PR head and full new SHA/CI link are maintained in the PR description because a commit cannot embed its own hash.
+T01 documentation sync â€” 2026-10-25: update only the seven requested Markdown files with the existing [GPU execution results](https://github.com/SumukhaK/open-source-projectFinder/pull/15#issuecomment-6396209833), preserving the tested code at `20d7a84`. Plan/verification: check archived JSON/CSV hashes and exact measured values, clarify CPU/GPU timing limits and the separate T03 WAL prerequisite, run 138 tests/Ruff/format/link/diff/staged-secret checks, push one documentation commit, await new-head Quality pipeline and only then mark the PR ready for review. No code/tests/Compose/limits/dependencies/CI/security or host changes. Acceptance stays unchecked; no merge, approval marker or T02 work. The live PR head and full new SHA/CI link are maintained in the PR description because a commit cannot embed its own hash.
 
 Documentation-sync verification (2026-10-25): `python -m pytest backend/tests scripts/tests -q` passed 138 tests; `ruff check backend scripts` and `ruff format --check backend scripts` passed. Local link/fence/diagram and diff checks pass. Staged-secret/private-value inspection passed; exactly seven Markdown files are staged, with no raw evidence or environment files. New-head CI remains required before ready-for-review delivery; live GPU measurements above are from the unchanged tested code, not a new hardware run.
 
@@ -327,7 +327,7 @@ Verification/handoff: **Awaiting review, not accepted.** The adapter is `backend
 Initial implementation limits: the first real evidence was a small Windows warm-cache sample. Linux execution is now measured in the follow-up below; relevance quality, sustained concurrency and archive capacity remain untested. Unit tests use a fake encoder and never download a model. The adapter rejects over-budget input rather than truncating and does not claim a 1,000-character idea always fits 512 tokens. The API does not import the adapter yet; no query/embedding persistence, paid API, GPU model load or generic provider framework is included. The optional stack is not installed by the main CI lock, so a separate operator environment is required. No self-acceptance, merge or T03 work.
 
 
-### T02 review follow-up recovery — 2026-10-25
+### T02 review follow-up recovery â€” 2026-10-25
 
 Resume the interrupted follow-up on PR #16 from reviewed head86457ec, retaining OpenCode's seven matching uncommitted files. Scope: enforce cached snapshot/safetensors and both manifest hashes on the real CPU load path; explicit setup only for downloads; distinguish UnsupportedInput from model faults; prove the unchanged CPU lock and real offline smoke on WSL; fail closed on audit-pin rewrite drift. No API wiring, Milvus/T01 edits, T03/T13 implementation, policy exception, approval marker or merge.
 
@@ -348,3 +348,43 @@ Scope: documentation only. Record the completed reviews and merges of T01 and T0
 - **T01** ([PR #15](https://github.com/SumukhaK/open-source-projectFinder/pull/15)): exact-head review of `403ec8f5b0f60c9daa40e8df92c700d1dcc21abe` ([review 5642730753](https://github.com/SumukhaK/open-source-projectFinder/pull/15#pullrequestreview-5642730753)), [CI 40184328241](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40184328241) passed, merged as `7f94e2f` on 2026-10-25. The sections above that say "awaiting review" or "remain unmerged" are the historical delivery notes. Open: host/archive and rebuild capacity; a WAL-fixed worker SQLite (3.51.3+, or the fixed 3.50.7/3.44.6 branches) before T03 uses WAL; the WSL runtime read `3.46.1 False`.
 - **T02** ([PR #16](https://github.com/SumukhaK/open-source-projectFinder/pull/16)): first review of `86457ec` raised four non-blocking notes, all fixed on the same PR; final exact-head review of `c1a5b5ea540ba794fa025c2602393b2641207424` ([review 5643007484](https://github.com/SumukhaK/open-source-projectFinder/pull/16#pullrequestreview-5643007484)), [CI 40189393293](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40189393293) passed, merged as `e400076` on 2026-10-25. Open: API wiring and UnsupportedInput mapping (T13), relevance and capacity.
 - Unchanged blockers: policy decisions D1-D8 and prerequisites P1-P3 in [READINESS](execution-plans/hybrid-search/READINESS.md); the node-forge 1.4.0 dependency exception expires 2026-11-01.
+
+
+## T03 isolated archive catalogue - 2026-10-25
+
+User request (verbatim):
+
+```text
+now Read execution-plans/hybrid-search/OPENCODE_PROMPT.md, replace TASK_ID with T03, and execute only that task. Read all referenced documents, follow its instructions, raise a PR, then stop and wait for review.
+
+Start from the latest origin/main (at or after 487cc52, which records T01/T02 as merged).
+
+Runtime for real WAL evidence: WSL venv /home/sumukha/reporadar-worker-venv
+(Python 3.11.17, SQLite 3.53.1, wal_is_fixed True, verified 2026-10-25).
+Run the T03 catalogue tests and the WAL-enable path with that interpreter in WSL,
+and record its sqlite3.sqlite_version in the T03 evidence. Keep the code check that
+refuses WAL on an unpatched runtime (e.g. system 3.46.1) and test that refusal.
+Do not modify the system Python/SQLite or this venv's interpreter.
+
+A version gate already exists as scripts/milvus_probe.py::wal_is_fixed. Do not keep two
+copies: if the catalogue needs it in backend/app, move it there with its tests and make the
+probe import it, keeping the probe's behaviour and tests unchanged.
+
+WSL needs about 6-7 GB of free RAM to start; if it fails with HCS_E_NO_SYSTEM_RESOURCES,
+stop and tell me rather than changing .wslconfig or closing my applications.
+
+If CI fails only because the node-forge exception expired (after 2026-11-01), report it;
+do not edit the exception or weaken any gate.
+```
+
+Base: `487cc52c54c6b03e553f183a1e5764fd50c77899`; branch `codex/hybrid-t03-catalogue`. T00/T01/T02 are merged. Scope is synthetic/offline catalogue work; no pending corpus/retention/scheduling policy is activated.
+
+| Slice | Status | Acceptance / verification |
+| --- | --- | --- |
+| Shared runtime gate and bounded central settings | Awaiting review | One WAL gate, refusal before DB creation, separate auth/archive paths |
+| Catalogue v1 migration and transactions | Awaiting review | Repeat migrations/reopen preserve IDs, constraints reject invalid relationships, rollback is atomic |
+| WSL evidence and handoff | Awaiting review | Real WAL reader/writer/checkpoint on SQLite 3.53.1; regressions, coverage, lint/security, PR awaiting review |
+
+Non-goals: no ingestion, raw-file writer, vector publication, durable jobs, API/mobile changes or system/runtime modifications. Architecture flow is unchanged; existing planned diagrams remain accurate.
+
+Verification: 222 tests pass in WSL Python 3.11.17 / SQLite 3.53.1; 97.8% combined / 95.3% branch coverage passes unchanged gates; Ruff lint/format and Bandit pass. Real catalogue WAL snapshots, commits, truncate checkpoint, reopen and integrity pass; system SQLite 3.46.1 fails the shared gate. Detailed RED/GREEN commands and rollback are in [T03 evidence](execution-plans/hybrid-search/T03_EVIDENCE.md). PR/current-head CI and independent trusted acceptance remain GitHub evidence; task is not accepted or merged.

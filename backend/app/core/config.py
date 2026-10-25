@@ -1,4 +1,6 @@
-from pydantic import Field
+from pathlib import Path
+
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,6 +11,9 @@ class Settings(BaseSettings):
     github_callback_url: str = "http://localhost:8000/auth/github/callback"
     token_encryption_key: str = ""
     database_path: str = "./data/auth.sqlite3"
+    archive_database_path: Path = Path("./data/archive/catalogue.sqlite3")
+    archive_content_path: Path = Path("./data/archive/content")
+    archive_busy_timeout_ms: int = Field(default=5000, ge=1, le=30000)
     allowed_redirects: list[str] = ["reporadar://auth/callback"]
     cors_origins: list[str] = []
     rate_limit: int = Field(default=20, ge=1)
@@ -28,3 +33,40 @@ class Settings(BaseSettings):
     max_github_search_response: int = Field(default=1048576, ge=1024, le=2097152)
     max_readme_chars: int = Field(default=60000, ge=1000)
     max_favourites: int = Field(default=500, ge=1)
+
+    @field_validator("archive_database_path", "archive_content_path", mode="before")
+    @classmethod
+    def archive_file_paths(cls, value):
+        text = str(value)
+        if (
+            not text.strip()
+            or text != text.strip()
+            or text == ":memory:"
+            or text.startswith("file:")
+        ):
+            raise ValueError("Archive paths must be ordinary filesystem paths")
+        return value
+
+    @model_validator(mode="after")
+    def separate_archive_paths(self):
+        auth = Path(self.database_path).expanduser().resolve()
+        archive = self.archive_database_path.expanduser().resolve()
+        content = self.archive_content_path.expanduser().resolve()
+        if not self.archive_database_path.name or archive.is_dir():
+            raise ValueError("Archive database path must include a filename")
+        if (
+            archive == auth
+            or archive
+            in (Path(str(auth) + suffix) for suffix in ("-wal", "-shm", "-journal"))
+            or auth
+            in (Path(str(archive) + suffix) for suffix in ("-wal", "-shm", "-journal"))
+            or (archive.exists() and auth.exists() and archive.samefile(auth))
+            or content == archive
+            or content == auth
+            or content in archive.parents
+            or content in auth.parents
+        ):
+            raise ValueError(
+                "Archive database, content directory and auth database must be separate"
+            )
+        return self

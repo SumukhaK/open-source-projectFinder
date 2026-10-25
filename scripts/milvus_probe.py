@@ -5,9 +5,15 @@ import json
 import math
 import os
 import random
+import sys
 import time
 import uuid
+from pathlib import Path
 from urllib.parse import urlsplit
+
+# Support direct invocation from any working directory, as with the embedding smoke CLI.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+from app.core.sqlite_runtime import wal_is_fixed  # noqa: E402, F401
 
 
 def vectors(count=1000):
@@ -47,15 +53,6 @@ def validate_settings(uri, token, profile):
         )
     if profile not in ("cpu", "gpu"):
         raise ValueError("Choose cpu or gpu")
-
-
-def wal_is_fixed(version):
-    current = tuple(int(part) for part in version.split("."))
-    return (
-        current >= (3, 51, 3)
-        or (current[:2] == (3, 50) and current >= (3, 50, 7))
-        or (current[:2] == (3, 44) and current >= (3, 44, 6))
-    )
 
 
 def run_probe(client, datatype, profile):
