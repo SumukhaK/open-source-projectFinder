@@ -26,12 +26,15 @@ def test_vectors_are_reproducible_normalized_and_bounded():
 @pytest.mark.parametrize(
     "uri,token,profile",
     [
-        ("http://example.com:19530", "root:private", "cpu"),
-        ("http://127.0.0.1:19530/path", "root:private", "cpu"),
-        ("http://user:password@127.0.0.1:19530", "root:private", "cpu"),
+        ("http://example.com:19530", "root:private-password", "cpu"),
+        ("http://127.0.0.1:19530/path", "root:private-password", "cpu"),
+        ("http://user:password@127.0.0.1:19530", "root:private-password", "cpu"),
         ("http://127.0.0.1:19530", "root:Milvus", "cpu"),
         ("http://127.0.0.1:19530", "", "cpu"),
-        ("http://127.0.0.1:19530", "root:private", "unknown"),
+        ("http://127.0.0.1:19530?x=1", "root:private-password", "cpu"),
+        ("http://127.0.0.1:19530#fragment", "root:private-password", "cpu"),
+        ("http://127.0.0.1", "root:private-password", "cpu"),
+        ("http://127.0.0.1:19530", "root:private-password", "unknown"),
     ],
 )
 def test_probe_rejects_remote_or_default_credentials(uri, token, profile):
