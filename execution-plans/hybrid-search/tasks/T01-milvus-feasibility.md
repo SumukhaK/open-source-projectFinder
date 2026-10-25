@@ -1,6 +1,6 @@
 # T01: Prove local Milvus CPU/GPU feasibility
 
-Status: Awaiting review; CPU proof passed, GPU/host/WAL gates blocked. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged (PR #15, `7f94e2f`); CPU and GPU 1k proofs passed. Host/archive capacity and the worker SQLite WAL prerequisite for T03 remain open. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

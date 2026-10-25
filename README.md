@@ -77,7 +77,7 @@ See [backend setup and checks](backend/README.md) and [mobile setup and checks](
 - Quality pipeline: free open-source validation, explicit coverage/security gates and review-controlled delivery.
 - Backend discovery: public GitHub search/details and account-specific favourites, with verified keyword search controls and limits.
 - Discovery hardening: non-ASCII ideas are searchable, GitHub rate limits return `Retry-After`, and request-size limits use a public ASGI middleware.
-- Hybrid search handbook: T00 readiness merged (PR #13); T01 awaiting review with CPU/GPU 1k proofs passed and capacity/SQLite gates open; T02-T29 not started.
+- Hybrid search handbook: T00 readiness (PR #13), T01 Milvus CPU/GPU feasibility (PR #15) and T02 CPU embedding adapter (PR #16) merged; capacity and the worker SQLite gate for T03 remain open; T03-T29 not started.
 - Semantic search, ingestion, mobile discovery and voice: planned; advanced search syntax needs an explicit input contract.
 
 See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md), and [project tracker](PROJECT_TRACKER.md).

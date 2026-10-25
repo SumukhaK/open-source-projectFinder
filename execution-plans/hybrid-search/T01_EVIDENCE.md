@@ -1,6 +1,6 @@
 # T01 feasibility evidence — 2026-10-25
 
-Status: **CPU and real GPU 1k proofs passed; host/archive capacity and the worker SQLite WAL gate remain open. Awaiting review, not accepted.** No T02 work, policy approval, GitHub ingestion, model download or schedule was performed.
+Status: **CPU and real GPU 1k proofs passed; host/archive capacity and the worker SQLite WAL gate remain open. Accepted and merged via [PR #15](https://github.com/SumukhaK/open-source-projectFinder/pull/15) as `7f94e2f` (2026-10-25); review evidence is in [TRACKER](TRACKER.md).** No T02 work, policy approval, GitHub ingestion, model download or schedule was performed.
 
 Continuation request: "awesome, please proceed". Prior handoff assessment verified the existing T01 worktree was clean at `6dc4233`. It was fast-forwarded to main `3fe801661d63e0b147f611f39f35f2f07a79e184` before edits, preserving PR#14's search/body-limit changes. [T00/#13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) is merged. The original dirty checkout and mobile WIP are untouched.
 
