@@ -1,6 +1,6 @@
 # T03: Add the isolated archive catalogue
 
-Status: Awaiting review. Implementation and real WSL verification: [T03 evidence](../T03_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged via PR #18 (`776bf654`, 2026-10-26). Implementation and real WSL verification: [T03 evidence](../T03_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

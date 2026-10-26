@@ -66,7 +66,7 @@ All backend settings live in `app/core/config.py`. `DATABASE_PATH` defaults to i
 
 Authentication can run locally without credentials for health checks; login then returns 503. An invalid configured encryption key fails startup. No production credentials or fake provider are included. The GitHub simulator exists only under tests.
 
-## Archive catalogue (T03, awaiting review)
+## Archive catalogue (T03, merged)
 
 `app/core/archive_store.py` provides an opt-in catalogue, independent of auth. It is not constructed by the app factory and creates no database during ordinary API startup. It uses only standard-library `sqlite3`; no ORM or new dependency is installed. `ARCHIVE_DATABASE_PATH` and `ARCHIVE_CONTENT_PATH` must be separate from auth, including auth/archive journal sidecars and hardlink aliases. `ARCHIVE_BUSY_TIMEOUT_MS` defaults to 5000 (1-30000 allowed).
 
@@ -95,6 +95,35 @@ Future schema changes must append migration 2 or later; never edit migration 1 a
 Rollback: stop catalogue consumers and revert the T03 code; the existing API continues using its unchanged auth DB. Preserve the catalogue and any WAL/SHM together. Before a future upgrade, take a consistent snapshot using SQLite's backup API rather than copying a live main DB file alone. T21 owns encrypted backup/restore tooling. Never point the catalogue at auth, delete the database to bypass a migration error, or move a live WAL database between filesystems.
 
 Evidence and reproducible tests: [T03 evidence](../execution-plans/hybrid-search/T03_EVIDENCE.md). Ingestion, raw-file writes, vector publication, queues, APIs and scheduling are later tasks.
+
+## Content preparation (T05, awaiting review)
+
+`app/services/archive_index.py::prepare_repository` prepares already-fetched metadata and decoded README bytes in memory. Reuse a loaded T02 `EmbeddingAdapter`; preparation only calls its real tokenizer counter, never vector inference. No model download, repository request, file write or database operation occurs here.
+
+```python
+from app.services.archive_index import prepare_repository
+
+prepared = prepare_repository(
+    {
+        "id": 42,
+        "full_name": "example/compass",
+        "description": "Offline maps",
+        "topics": ["maps"],
+        "language": "Python",
+    },
+    b"# Features\nShared route planning.",
+    adapter=adapter,  # the existing, loaded T02 adapter
+    source_truncated=False,
+)
+# A later ingestion task embeds [chunk.text for chunk in prepared.chunks]
+# with kind="passage"; text does not already contain the E5 prefix.
+```
+
+Metadata gets a strict 16 KiB budget. README input is capped at 256 KiB; at most 65,536 decoded characters are parsed with the already-locked `markdown-it-py==4.2.0`. HTML-bearing prose, images and navigation are discarded; ordinary Markdown/code becomes inert text. Output starts with an overview and continues through README sections in source order, at most eight chunks with zero overlap. Actual content counts are at most 400 tokens and final prefixed/titled counts at most 512. Bounds live in `core/config.py` and are part of the versioned format, not environment switches.
+
+Inspect `readme_status` and `omissions`; metadata-only, parser-clipped and chunk-capped output must not be represented as a complete README. `semantic_hash` includes normalized semantic metadata/content, model identity and preparation versions, but not stars. Chunk keys also bind numeric repository ID and ordinal. `text_hash` is the UTF-8 SHA-256 of unprefixed chunk text; embedding reuse additionally requires the same model/preparation contract. Future rule changes need a new normalizer/chunker version and regenerated content. T08 owns obsolete-vector cleanup/publication; this function does not perform either.
+
+Rollback is a code revert with no schema/data migration. Render output as plain text, never as trusted HTML. See [T05 evidence](../execution-plans/hybrid-search/T05_EVIDENCE.md) for tests, real-tokenizer verification, explicit clipping tradeoffs and remaining integration limits.
 
 ## API
 

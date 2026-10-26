@@ -1,6 +1,6 @@
 # T03 catalogue evidence - 2026-10-25
 
-Status: **Awaiting review** in [PR #18](https://github.com/SumukhaK/open-source-projectFinder/pull/18), not accepted or merged. This is T03 only. The PR's current full head SHA and required CI run are authoritative in GitHub; this file cannot embed its own commit SHA.
+Status: **Accepted and merged** via [PR #18](https://github.com/SumukhaK/open-source-projectFinder/pull/18) as `776bf654551fd0466386c6bc008df6ae606b0dcb` on 2026-10-26; exact review/CI evidence is in [TRACKER](TRACKER.md). The pending-review statements below preserve the original handoff history. This is T03 only. The PR's current full head SHA and required CI run are authoritative in GitHub; this file cannot embed its own commit SHA.
 
 ## Scope and prerequisites
 
@@ -106,7 +106,7 @@ Local and downloaded CI logs are retained under ignored `reports/t03/ci-runtime-
 
 ## Migration, compatibility and rollback
 
-See [backend operator instructions](../../backend/README.md#archive-catalogue-t03-awaiting-review). Explicit opt-in initialization creates a new private catalogue; normal auth/API startup stays unchanged. `PRAGMA application_id` identifies this DB and `PRAGMA user_version` advances with atomic DDL. Repeated migration/reopen preserves IDs/content. Unknown schemas and future versions fail closed. A failed initial migration leaves no partial tables/version markers and can be retried; no reset/downgrade path exists.
+See [backend operator instructions](../../backend/README.md#archive-catalogue-t03-merged). Explicit opt-in initialization creates a new private catalogue; normal auth/API startup stays unchanged. `PRAGMA application_id` identifies this DB and `PRAGMA user_version` advances with atomic DDL. Repeated migration/reopen preserves IDs/content. Unknown schemas and future versions fail closed. A failed initial migration leaves no partial tables/version markers and can be retried; no reset/downgrade path exists.
 
 On rollback, stop any catalogue consumer, revert the code and retain the catalogue plus any WAL/SHM. Auth data requires no migration or rollback. Use SQLite's backup API for a live snapshot; copying only a live main DB may omit committed WAL data. Encryption, suppression-aware restore, raw files and retention are later tasks; this slice implements none of those policies.
 

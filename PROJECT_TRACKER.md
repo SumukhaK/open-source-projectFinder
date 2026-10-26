@@ -430,3 +430,26 @@ NEVER merge, approve, write a review marker, or start another task.
 Plan on the same branch/PR: (1) reproduce the 28 WAL refusals with the unchanged suite on an isolated system-SQLite venv; (2) pin the worker-family CPython archive by release, version and SHA-256 in the backend job, keeping the existing pip cache and checks, and add an explicit shared WAL gate step; (3) run the workflow steps locally with that archive, update evidence/operator migration notes and await all required CI before review handoff. No catalogue schema or dependency changes. Status: In progress; baseline head `46ff60f2acece4c7aa4c45fb7918b41da6444784`.
 
 Progress as of 2026-10-26: phases 1 and 2 verified. The unchanged suite on actual SQLite 3.46.1 reproduced 5 failures and 23 errors; all nine backend workflow commands then passed using the checksum-verified standalone CPython 3.11.17 / SQLite 3.53.1 (222 tests, 97.8% combined / 95.3% branch coverage, Ruff and Bandit). The POSIX-only marker skips 40 catalogue tests on native Windows while all 8 shared gate tests pass; Linux skips none. All existing workflow steps, permissions, timeouts, caching, dependency locks, schema and safety gates remain unchanged. Phase 3: local verification and documentation complete; [CI run 40260379712](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40260379712) passed all five jobs at implementation head `4b8bebec510a92dab57619dae44eb60610de2037`, confirming the same runtime and coverage in GitHub. This documentation-only follow-up still requires current-head CI. Status: Awaiting trusted review, not accepted or merged. See [T03 evidence](execution-plans/hybrid-search/T03_EVIDENCE.md#ci-runtime-review-follow-up---2026-10-2526).
+
+## T05 deterministic content preparation - 2026-10-26
+
+User request (verbatim):
+
+```text
+PR merged. well done. now Read execution-plans/hybrid-search/OPENCODE_PROMPT.md, replace TASK_ID with T05, and execute only that task. Read all referenced documents, follow its instructions, raise a PR, then stop and wait for review.
+```
+
+Base `origin/main`: `776bf654551fd0466386c6bc008df6ae606b0dcb`. Branch: `codex/hybrid-t05-chunking`. T02 / PR #16 (`e4000764c97b3648ec0b08fe42989ee8d2e56463`) is an ancestor of this base; T03 / PR #18 is now merged. T04 is not a T05 dependency. No pending policy decision is activated by synthetic/offline preparation.
+
+| Phase | Status | Verification criteria |
+| --- | --- | --- |
+| Read boundaries and baseline | Verified | Existing Windows suite: 182 pass, 40 existing POSIX-only catalogue skips; no failures |
+| Normalize bounded metadata and Markdown | In progress | Behavioral RED/GREEN for Unicode, code fences, HTML/images/navigation, malformed/binary/oversized/absent README and repeated sections |
+| Bound chunks and stable versioned identity | Planned | Metadata overview + selected sections; real tokenizer counts including prefix/title/special tokens <=512, content <=400, <=8 chunks, explicit omissions, stable IDs and semantic changes without star-count churn |
+| Review and handoff | Planned | Full suite/coverage, Ruff/Bandit, real pinned-tokenizer smoke, required CI, one PR; await trusted review |
+
+Scope: new `archive_index.py`, central hard bounds in `config.py`, explicit direct declaration of the already-locked Markdown parser, tests and documentation. Existing embedding adapter/counting and manifest are reused; no new tokenizer loader, dependency upgrade, schema, file writer, API, worker or vector publication.
+
+Rulings: use zero overlap (within the task's <=50 bound) to avoid repeated content; chunker version records this policy. Drop raw-HTML blocks/HTML-bearing paragraphs rather than render them; retain ordinary Markdown prose/code as inert text. Reject an oversized or binary README to a metadata-only document with an explicit status; bound parser input separately and record clipping. Metadata inputs have a strict byte/type budget; invalid metadata fails before parsing. Preparation uses the loaded T02 adapter's actual tokenizer counts, with fake counters only in unit tests and a separate real-tokenizer check. These choices trade some coverage for bounded local work and require relevance evaluation in T27, not additional T05 features.
+
+T05 implementation verification: 50 preparation tests pass; final Windows full suite 232 passed / 40 existing POSIX catalogue skips. Coverage 91.9% combined / 88.1% branches passes unchanged gates; Ruff and Bandit pass. Real hash-verified E5 tokenizer smoke passes seven synthetic cases offline (all <=400 content / <=512 final tokens, <=8 chunks, repeat deterministic). No WSL start due to 3 GiB available RAM; Linux tests remain required CI. Algorithm/metadata bounds and exact operator contract: [T05 evidence](execution-plans/hybrid-search/T05_EVIDENCE.md). Status: Awaiting review; fresh author-independent preflight and PR CI pending, no acceptance.
