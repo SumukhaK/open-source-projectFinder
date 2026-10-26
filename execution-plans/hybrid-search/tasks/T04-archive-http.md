@@ -1,6 +1,6 @@
 # T04: Add bounded conditional GitHub archive reads
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review. Implementation and verification: [T04 evidence](../T04_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
