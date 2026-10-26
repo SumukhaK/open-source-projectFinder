@@ -431,6 +431,45 @@ Plan on the same branch/PR: (1) reproduce the 28 WAL refusals with the unchanged
 
 Progress as of 2026-10-26: phases 1 and 2 verified. The unchanged suite on actual SQLite 3.46.1 reproduced 5 failures and 23 errors; all nine backend workflow commands then passed using the checksum-verified standalone CPython 3.11.17 / SQLite 3.53.1 (222 tests, 97.8% combined / 95.3% branch coverage, Ruff and Bandit). The POSIX-only marker skips 40 catalogue tests on native Windows while all 8 shared gate tests pass; Linux skips none. All existing workflow steps, permissions, timeouts, caching, dependency locks, schema and safety gates remain unchanged. Phase 3: local verification and documentation complete; [CI run 40260379712](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40260379712) passed all five jobs at implementation head `4b8bebec510a92dab57619dae44eb60610de2037`, confirming the same runtime and coverage in GitHub. This documentation-only follow-up still requires current-head CI. Status: Awaiting trusted review, not accepted or merged. See [T03 evidence](execution-plans/hybrid-search/T03_EVIDENCE.md#ci-runtime-review-follow-up---2026-10-2526).
 
+
+## T04 requested review fixes - 2026-10-26
+
+User request (verbatim):
+
+```text
+Address the "Changes requested" review on PR #19 (T04, branch codex/hybrid-t04-archive-http,
+reviewed head 2593688). Work on the SAME branch/PR; do not start T05 or other tasks.
+TDD: for each item write the failing test first, record RED, then fix (GREEN).
+
+1. 5xx Retry-After: in ArchiveGitHubReader._get, a 5xx with a short retry_at must wait
+   max(backoff, retry_at - now), capped by archive_github_retry_max_wait (longer waits keep
+   raising ArchiveUnavailable with retry_at). Test: 503 + Retry-After: 4 then 200 -> recorded
+   sleep >= 4.
+2. Secondary rate limit: a 403 whose JSON "message" mentions a (secondary) rate limit and has
+   no Retry-After/X-RateLimit headers must be ArchiveRateLimited with retry_at = now + 60s via
+   the existing _wait_or_raise. Plain 403 stays ArchiveForbidden; non-JSON 403 bodies must not
+   crash. Tests for all three.
+3. Content-verified blob identity: after base64 decoding, require
+   hashlib.sha1(b"blob %d\0" % len(data) + data, usedforsecurity=False).hexdigest() == blob_sha
+   for inline README content and for fetch_blob. Mismatch -> ReadmeInvalid / BlobIdentityMismatch.
+   Skip only for README encoding "none" (no content). Update fixtures to use real git blob SHAs;
+   add tests: correct hash accepted, one changed byte rejected (both paths).
+Optional: note in T04_EVIDENCE.md that decoded-byte limits are enforced per decoded chunk, so a
+single compressed network chunk may transiently inflate before the cap (GitHub-only origin).
+
+Verify on Linux with the CI runtime if possible (WSL venv /home/sumukha/reporadar-worker-venv),
+else Windows + rely on CI: full pytest + coverage gate, ruff check/format, bandit, git diff --check.
+Update T04_EVIDENCE.md (RED/GREEN for these fixes) and the PR description (new head, CI link).
+Push to the same PR, wait for CI, report the new head SHA, then STOP for review.
+NEVER merge, approve, write a review marker, change dependencies/CI gates, or start another task.
+```
+
+Scope: only `archive_github.py`, its tests, backend README, evidence and this tracker. Reuse `_backoff`, `_wait_or_raise` and bounded JSON parsing; preserve OAuth, cache/redirect/size behavior and all dependencies/gates. Worktree `E:/OpenSourceProjectFinder-t04`, branch `codex/hybrid-t04-archive-http`, reviewed base `2593688c4baf4e75e7c92a8c7551f94f9c20e3bb`. Existing focused baseline: 128 passed on Windows Python 3.11.9. WSL stopped with 1.74 GiB free RAM; use allowed Windows checks plus required Linux CI without closing apps or changing system settings.
+
+Plan: (1) RED/GREEN short 5xx retry delay and cap; (2) RED/GREEN secondary-rate-limit classification with safe plain/non-JSON fallbacks; (3) RED/GREEN byte-verified blob identity on README/blob paths and realistic fixtures; (4) full regression, unchanged coverage/lint/security checks, evidence, same-PR push and exact-head CI. Status: In progress. No merge, acceptance marker or later task work.
+
+Progress: phases 1-3 verified with separate RED/GREEN runs, including malformed 403 parser edges. Phase 4 local verification passed: 147 focused tests; 329 full-suite tests with 40 existing Windows POSIX skips; 94.0% combined / 91.2% branch coverage; Ruff check/format and Bandit clean. Backend README and [T04 evidence](execution-plans/hybrid-search/T04_EVIDENCE.md#requested-review-fixes---2026-10-26) record behavior and the per-decoded-chunk memory limit. Status: Awaiting exact-head Linux CI and trusted review on PR #19; no acceptance, approval or merge.
+
 ## T05 deterministic content preparation - 2026-10-26
 
 User request (verbatim):
