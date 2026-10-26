@@ -1,6 +1,6 @@
 # T04 archive HTTP evidence - 2026-10-26
 
-Status: **Awaiting review**. This is T04 only; it does not accept, merge or start another task. The PR's current full head SHA and required CI run are authoritative in GitHub; this file cannot embed its own commit SHA. Review/merge evidence belongs in [TRACKER](TRACKER.md).
+Status: **Awaiting review** in [PR #19](https://github.com/SumukhaK/open-source-projectFinder/pull/19). This is T04 only; it does not accept, merge or start another task. The PR's current full head SHA and required CI run are authoritative in GitHub; this file cannot embed its own commit SHA. Review/merge evidence belongs in [TRACKER](TRACKER.md).
 
 ## Scope and prerequisites
 
