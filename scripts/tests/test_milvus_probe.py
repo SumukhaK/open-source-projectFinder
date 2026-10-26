@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from scripts.milvus_probe import run_probe, validate_settings, vectors, wal_is_fixed
+from scripts.milvus_probe import run_probe, validate_settings, vectors
 
 
 def test_vectors_are_reproducible_normalized_and_bounded():
@@ -44,23 +44,6 @@ def test_probe_rejects_remote_or_default_credentials(uri, token, profile):
 
 def test_probe_accepts_explicit_local_authenticated_settings():
     validate_settings("http://127.0.0.1:19530", "root:private-password", "gpu")
-
-
-@pytest.mark.parametrize(
-    "version,fixed",
-    [
-        ("3.46.1", False),
-        ("3.51.2", False),
-        ("3.51.3", True),
-        ("3.50.7", True),
-        ("3.50.6", False),
-        ("3.44.6", True),
-        ("3.45.1", False),
-        ("3.52.0", True),
-    ],
-)
-def test_sqlite_gate_requires_a_documented_fixed_release(version, fixed):
-    assert wal_is_fixed(version) is fixed
 
 
 def client_fixture():

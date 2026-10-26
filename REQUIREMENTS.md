@@ -67,4 +67,12 @@ Discovery API integration now exposes account-scoped app favourites and GitHub p
 - Verify actual outbound parameters and response values, configured defaults, exact boundaries, compatibility, authentication, throttling, body limits, defensive public filtering and search response budgets. Delivery requires the full backend suite, coverage gates, review of the exact PR commit and all required repository checks.
 - Advanced qualifiers/quoted phrases and Boolean expressions are later phases requiring an explicit input contract. Semantic search and combining retrieval results remain separate planned work.
 
-T01 feasibility uses pinned Milvus2.6.26 / PyMilvus2.6.17 and 1k synthetic384-dimensional normalized vectors. CPU and real GPU 1k proofs passed on driver 617.42; host/archive capacity and worker SQLite gates remain open. A WAL-fixed worker is required before T03 WAL use, not T01 review. See [evidence](execution-plans/hybrid-search/T01_EVIDENCE.md).
+T01 feasibility uses pinned Milvus2.6.26 / PyMilvus2.6.17 and 1k synthetic384-dimensional normalized vectors. CPU and real GPU 1k proofs passed on driver 617.42; host/archive capacity remains open; T03 now records a WAL-fixed worker runtime and catalogue verification, awaiting review. A WAL-fixed worker is required before T03 WAL use, not T01 review. See [evidence](execution-plans/hybrid-search/T01_EVIDENCE.md).
+
+
+## Isolated archive catalogue (T03, awaiting review)
+
+- Auth and archive remain separate databases; ordinary API startup does not initialize the catalogue. Reject equal/aliased paths and overlapping SQLite sidecars before file creation.
+- Central archive DB/content paths and a bounded 1-30000 ms lock timeout; no direct environment reads in the store. Private Linux directory/file permissions and linked-SQLite WAL-reset fix required for every connection.
+- Versioned atomic migrations preserve stable numeric repository IDs, document revisions and chunk IDs; enforce primary/foreign keys, revision/vector state values and unique chunk ordinals. Refuse unrelated databases or a newer schema; never reset or downgrade.
+- Short explicit transactions commit/roll back and close; real WSL evidence covers reader snapshots, concurrent commits, truncate checkpoint, reopen and integrity. No raw-content acquisition, embeddings, vector publication or user-query storage in T03. See [evidence](execution-plans/hybrid-search/T03_EVIDENCE.md).

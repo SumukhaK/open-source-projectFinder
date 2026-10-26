@@ -66,6 +66,36 @@ All backend settings live in `app/core/config.py`. `DATABASE_PATH` defaults to i
 
 Authentication can run locally without credentials for health checks; login then returns 503. An invalid configured encryption key fails startup. No production credentials or fake provider are included. The GitHub simulator exists only under tests.
 
+## Archive catalogue (T03, awaiting review)
+
+`app/core/archive_store.py` provides an opt-in catalogue, independent of auth. It is not constructed by the app factory and creates no database during ordinary API startup. It uses only standard-library `sqlite3`; no ORM or new dependency is installed. `ARCHIVE_DATABASE_PATH` and `ARCHIVE_CONTENT_PATH` must be separate from auth, including auth/archive journal sidecars and hardlink aliases. `ARCHIVE_BUSY_TIMEOUT_MS` defaults to 5000 (1-30000 allowed).
+
+Run with a WAL-patched interpreter on a Linux-native WSL filesystem, never `/mnt/c`, `/mnt/e`, a network share or simultaneous Windows/Linux access. The verified local worker is `/home/sumukha/reporadar-worker-venv/bin/python` (Python 3.11.17, SQLite 3.53.1). Native Windows archive opening is refused; auth remains supported as before. The shared `app/core/sqlite_runtime.py::wal_is_fixed` checks the linked SQLite on every catalogue connection before opening/creating a file. It accepts 3.51.3+ and the documented 3.50.7/3.44.6 backport families; 3.46.1 is refused. Do not override the gate or replace system libraries.
+
+The `.env.example` archive paths are relative to the working directory. If the checkout is under `/mnt/c` or `/mnt/e`, set absolute Linux-native archive paths as below before initializing it. Backend CI downloads the pinned CPython 3.11.17 standalone build from release `20261021`, verifies its SHA-256, and fails before testing unless its linked SQLite passes the same gate. The existing pip cache remains enabled. Archive tests skip only non-POSIX platforms; an unpatched SQLite on Linux fails rather than skipping tests.
+
+From the checkout's `backend/` directory in WSL, an operator can initialize an empty catalogue explicitly:
+
+```sh
+export ARCHIVE_DATABASE_PATH="$HOME/.local/share/reporadar/archive/catalogue.sqlite3"
+export ARCHIVE_CONTENT_PATH="$HOME/.local/share/reporadar/archive/content"
+/home/sumukha/reporadar-worker-venv/bin/python -c 'from app.core.config import Settings; from app.core.archive_store import ArchiveStore; ArchiveStore(Settings()); print("Archive catalogue v1 ready")'
+```
+
+New catalogue directories are 0700; database/WAL/SHM files are 0600. Shared existing directories/files are refused without changing their permissions. Choose a new private directory instead of changing a shared parent. The content path is reserved configuration only: T03 creates no raw-content directory/files.
+
+`ArchiveStore(Settings()).connect(write=True)` yields a short `BEGIN IMMEDIATE` write transaction; `connect()` yields a deferred transaction with a stable reader snapshot. Both commit on success, roll back on error and close the connection. Keep network calls, parsing, embedding and user work outside these contexts. Readers must also use the patched runtime. The lock wait is bounded by the configured timeout; a lock error must not trigger a reset.
+
+Schema v1 has only `archive_repositories`, `archive_documents` and `archive_chunks`, with numeric repository IDs, unique revisions/chunk ordinals, foreign keys and pending/published/superseded document states. Repository metadata is an object-shaped JSON column; document provenance/hash/version fields remain nullable until acquisition supplies them. Renames update `full_name` for the same ID; names are deliberately not unique because an old name may be reused by a different repository. Active revision references are constrained to the same repository. T08 must enforce publication readiness before switching that pointer; T03 does not claim SQL/Milvus atomic publication.
+
+Migrations are ordered in `MIGRATIONS`, use transactional individual statements (not implicitly committing `executescript`) and advance `PRAGMA user_version` only atomically. `PRAGMA application_id` identifies this catalogue. Repeated initialization preserves records; unknown databases and future schema versions are refused without migration. A failed first migration rolls back every table and version marker and can be retried. There is no destructive reset or downgrade command.
+
+Future schema changes must append migration 2 or later; never edit migration 1 after delivery. Existing catalogues must upgrade through the same versioned path as new installations.
+
+Rollback: stop catalogue consumers and revert the T03 code; the existing API continues using its unchanged auth DB. Preserve the catalogue and any WAL/SHM together. Before a future upgrade, take a consistent snapshot using SQLite's backup API rather than copying a live main DB file alone. T21 owns encrypted backup/restore tooling. Never point the catalogue at auth, delete the database to bypass a migration error, or move a live WAL database between filesystems.
+
+Evidence and reproducible tests: [T03 evidence](../execution-plans/hybrid-search/T03_EVIDENCE.md). Ingestion, raw-file writes, vector publication, queues, APIs and scheduling are later tasks.
+
 ## API
 
 - `POST /auth/github/start`: app PKCE challenge and exact allowlisted return URI; returns GitHub authorization URL and state.

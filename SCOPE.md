@@ -16,4 +16,7 @@ Users sign up or log in with a single GitHub button. RepoRadar does not request 
 
 Every change is automatically tested and checked for code/security issues before review and merging. The checks use free tools and need no additional account keys. The app can recover from a screen-rendering failure, and the backend records safe local crash events. Production crash monitoring and deployment remain future work. GitHub's included runner allowance still limits hosted automation.
 
-A small local database feasibility experiment now proves CPU and GPU operations on 1,000 synthetic vectors. GPU 1k proof passed; capacity and SQLite gates remain open, with SQLite required before archive WAL use. It does not ingest GitHub projects or implement hybrid search; weekly archive operation remains planned. This experiment and the component that turns text into searchable vectors have both been reviewed and merged.
+A small local database feasibility experiment now proves CPU and GPU operations on 1,000 synthetic vectors. GPU 1k proof passed; archive capacity remains open. A separate archive catalogue and a compatible SQLite runtime are now tested in T03, awaiting review. It does not ingest GitHub projects or implement hybrid search; weekly archive operation remains planned. This experiment and the component that turns text into searchable vectors have both been reviewed and merged.
+
+
+The T03 change adds a private local filing catalogue for repository records and content revisions, separate from account data. It has been tested with synthetic records on this laptop and is awaiting review. It does not download GitHub projects, refresh them weekly or change the app's search results. Those remain later tasks.
