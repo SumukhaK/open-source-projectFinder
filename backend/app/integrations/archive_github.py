@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import math
 import re
@@ -228,6 +229,12 @@ def _blob_sha(value) -> str:
             "not a branch or commit ref"
         )
     return value
+
+
+def _content_blob_sha(data: bytes) -> str:
+    return hashlib.sha1(
+        b"blob %d\0" % len(data) + data, usedforsecurity=False
+    ).hexdigest()
 
 
 def _readme_path(value) -> str:
@@ -476,9 +483,14 @@ class ArchiveGitHubReader:
                     response=response,
                 )
             if response.status == 403:
+                try:
+                    message = _json_object(response, "forbidden").get("message")
+                except (ArchiveProtocolError, RecursionError, ValueError):
+                    message = None
                 if (
                     response.retry_at is not None
                     or response.headers.get("x-ratelimit-remaining") == "0"
+                    or (isinstance(message, str) and "rate limit" in message.lower())
                 ):
                     retry_at = response.retry_at or (
                         self._utcnow() + timedelta(seconds=60)
@@ -498,6 +510,7 @@ class ArchiveGitHubReader:
                 )
                 continue
             if response.status in (500, 502, 503, 504):
+                wait = 0.0
                 if response.retry_at is not None:
                     wait = (response.retry_at - self._utcnow()).total_seconds()
                     if wait > self.settings.archive_github_retry_max_wait:
@@ -512,7 +525,7 @@ class ArchiveGitHubReader:
                         retry_at=response.retry_at,
                         response=response,
                     )
-                self._backoff(attempt)
+                self._backoff(attempt, minimum_wait=wait)
                 continue
             raise ArchiveRequestError(
                 f"unexpected archive response status {response.status}",
@@ -669,9 +682,11 @@ class ArchiveGitHubReader:
             )
         self.sleep(max(0.0, wait) + self._jitter())
 
-    def _backoff(self, attempt):
+    def _backoff(self, attempt, *, minimum_wait=0.0):
         delay = self.settings.retry_base_delay * (2**attempt) + self._jitter()
-        self.sleep(min(delay, self.settings.archive_github_retry_max_wait))
+        self.sleep(
+            min(max(delay, minimum_wait), self.settings.archive_github_retry_max_wait)
+        )
 
     def _jitter(self):
         if self.settings.retry_jitter <= 0:
@@ -783,6 +798,8 @@ class ArchiveGitHubReader:
             )
         if len(decoded) != size:
             raise ReadmeInvalid("README size does not match its decoded content")
+        if _content_blob_sha(decoded) != blob_sha:
+            raise ReadmeInvalid("README blob SHA does not match its decoded content")
         try:
             text = decoded.decode("utf-8")
         except UnicodeDecodeError as error:
@@ -826,6 +843,8 @@ class ArchiveGitHubReader:
             )
         if len(data) != size:
             raise BlobInvalid("blob size does not match its decoded content")
+        if _content_blob_sha(data) != expected_blob_sha:
+            raise BlobIdentityMismatch("blob SHA does not match its decoded content")
         return ArchiveBlob(
             blob_sha=returned_sha,
             data=data,

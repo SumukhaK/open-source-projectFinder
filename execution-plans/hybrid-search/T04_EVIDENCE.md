@@ -34,6 +34,33 @@ Bandit 1.9.4 and pip-audit 2.10.1 were installed in a disposable temp venv for t
 
 Local WSL could not start on this host (`Wsl/Service/CreateInstance/CreateVm/HCS/ERROR_NO_SYSTEM_RESOURCES`), so the POSIX-only T03 catalogue tests were skipped locally. The unchanged Linux CI job runs them and is the authoritative combined coverage run; the local Windows gate still passed at 93.9%/91.1%. This is a local runtime limitation, not a claim that the POSIX path was exercised here.
 
+## Requested review fixes - 2026-10-26
+
+This follow-up addresses the review of `2593688c4baf4e75e7c92a8c7551f94f9c20e3bb` on the same branch and PR. The original delivery results above are historical; the following results cover the updated implementation. No dependency, workflow, gate or security exception changed.
+
+| Fix | RED observed before its implementation | GREEN evidence |
+| --- | --- | --- |
+| Short 5xx Retry-After | `-k short_retry_after`: 1 failed, 3 passed; a 503 with `Retry-After: 4` slept 0.5 seconds instead of 4 | `-k '5xx or retry or network'`: 31 passed; tests cover provider delay, larger backoff and configured cap. Existing long-wait deferral remains green |
+| Headerless secondary limit | `-k 'headerless or malformed_forbidden'`: 2 failed, 6 passed; rate-limit messages incorrectly raised `ArchiveForbidden` | `-k 'headerless or forbidden or rate_limit or 403'`: 13 passed; rate-limit messages defer for 60 seconds through `_wait_or_raise`, while plain/non-JSON messages remain forbidden |
+| Content-verified Git blob identity | `-k git_blob_content_identity`: 2 failed, 4 passed; one changed byte was incorrectly accepted on both paths | Known empty/`abc` Git blobs accepted and changed-byte content rejected for both README and blob paths; complete focused suite then 145 passed |
+| Malformed 403 parser edges | Separate RED runs: deeply nested malformed JSON raised `RecursionError`; an oversized JSON integer raised `ValueError` | Both return `ArchiveForbidden`; final focused suite **147 passed** |
+
+Each selector above ran with `python -B -m pytest backend/tests/test_archive_github.py -q -p no:cacheprovider`. Fixtures now compute real content SHAs, and the new positive identity cases use literal known Git object IDs independently checked with `git hash-object --stdin`. README `encoding: none` still returns a reference without checking absent content. SHA-1 uses `usedforsecurity=False` for Git object compatibility.
+
+Final local verification (Windows Python **3.11.9**):
+
+- `python -B -m pytest backend/tests scripts/tests -q -p no:cacheprovider --cov=backend/app --cov-branch --cov-report=term-missing --cov-report=json:reports/t04/review-fixes/backend-coverage.json`: exit 0, **329 passed, 40 skipped**, one inherited Starlette/httpx warning, 16.92s.
+- `python scripts/quality.py coverage reports/t04/review-fixes/backend-coverage.json`: exit 0, **94.0% combined / 91.2% branches**; required 90/80 unchanged.
+- `ruff check backend scripts` and `ruff format --check backend scripts`: exit 0; 28 files already formatted.
+- `bandit -r backend/app -q -f json -o reports/t04/review-fixes/bandit.json`: exit 0; no findings or scanner errors.
+- `git diff --check`: clean. Raw RED/GREEN and final reports are under ignored `reports/t04/review-fixes/`.
+
+WSL was stopped and Windows had only 1.74 GiB available RAM, so this follow-up used the explicitly permitted Windows + Linux CI path without starting WSL, closing applications or changing system settings. The 40 local skips are the existing POSIX-only catalogue tests. The unchanged Linux CI runs those tests with the pinned WAL-fixed interpreter; the PR description records the exact follow-up head and CI run. Review remains pending.
+
+The retry behavior follows [GitHub's rate-limit guidance](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api); content identity follows the [Git object header and hash format](https://git-scm.com/book/en/v2/Git-Internals-Git-Objects).
+
+Known limit: decoded-byte limits are checked per decoded chunk. A single compressed network chunk may transiently inflate before the limit is checked. The reader remains restricted to its configured GitHub API origin; no arbitrary download endpoint is added.
+
 ## Behavior and acceptance mapping
 
 | Requirement | Implemented evidence |

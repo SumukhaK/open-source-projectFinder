@@ -1,5 +1,6 @@
 import base64
 import gzip
+import hashlib
 import json
 import logging
 from dataclasses import replace
@@ -66,7 +67,13 @@ def repo_payload(repo_id=101, full_name="owner/project", **overrides):
     return payload
 
 
-def readme_payload(text="# Project\n", path="README.md", sha="a" * 40, **overrides):
+def git_blob_sha(data):
+    return hashlib.sha1(
+        b"blob %d\0" % len(data) + data, usedforsecurity=False
+    ).hexdigest()
+
+
+def readme_payload(text="# Project\n", path="README.md", sha=None, **overrides):
     raw = text.encode()
     payload = {
         "type": "file",
@@ -75,15 +82,15 @@ def readme_payload(text="# Project\n", path="README.md", sha="a" * 40, **overrid
         "name": path.rsplit("/", 1)[-1],
         "path": path,
         "content": base64.b64encode(raw).decode() + "\n",
-        "sha": sha,
+        "sha": git_blob_sha(raw) if sha is None else sha,
     }
     payload.update(overrides)
     return payload
 
 
-def blob_payload(data=b"abc", sha="a" * 40, **overrides):
+def blob_payload(data=b"abc", sha=None, **overrides):
     payload = {
-        "sha": sha,
+        "sha": git_blob_sha(data) if sha is None else sha,
         "encoding": "base64",
         "size": len(data),
         "content": base64.b64encode(data).decode(),
@@ -322,7 +329,7 @@ def test_readme_base64_decodes_with_blob_provenance():
     reader, recorder = make_reader(
         json_response(repo_payload()),
         json_response(
-            readme_payload(text, path="docs/README.md", sha="b" * 40),
+            readme_payload(text, path="docs/README.md"),
             headers={"X-GitHub-Request-Id": "req-readme"},
         ),
     )
@@ -331,7 +338,7 @@ def test_readme_base64_decodes_with_blob_provenance():
 
     assert snapshot.readme.text == text
     assert snapshot.readme.path == "docs/README.md"
-    assert snapshot.readme.blob_sha == "b" * 40
+    assert snapshot.readme.blob_sha == git_blob_sha(text.encode())
     assert snapshot.readme.repo_id == 101
     assert snapshot.readme.inline is True
     assert snapshot.readme.size == len(text.encode())
@@ -408,6 +415,7 @@ def test_binary_readme_is_rejected():
     payload = readme_payload()
     payload["content"] = base64.b64encode(b"\xff\xfe").decode()
     payload["size"] = 2
+    payload["sha"] = git_blob_sha(b"\xff\xfe")
     reader, _ = make_reader(json_response(repo_payload()), json_response(payload))
 
     with pytest.raises(ReadmeInvalid, match="UTF-8"):
@@ -423,7 +431,7 @@ def test_readme_without_inline_content_returns_a_blob_reference():
 
     assert snapshot.readme.inline is False
     assert snapshot.readme.text is None
-    assert snapshot.readme.blob_sha == "a" * 40
+    assert snapshot.readme.blob_sha == git_blob_sha(b"# Project\n")
     assert snapshot.readme.size == 300000
 
 
@@ -583,29 +591,29 @@ def test_blob_fetch_rejects_a_returned_sha_that_differs_from_the_requested_blob(
     reader, recorder = make_reader(json_response(payload))
 
     with pytest.raises(BlobIdentityMismatch):
-        reader.fetch_blob(fake_metadata(), "a" * 40)
+        reader.fetch_blob(fake_metadata(), git_blob_sha(b"abc"))
 
-    assert str(recorder.requests[0].url).endswith("/git/blobs/" + "a" * 40)
+    assert str(recorder.requests[0].url).endswith("/git/blobs/" + git_blob_sha(b"abc"))
     assert "/commits/" not in str(recorder.requests[0].url)
 
 
 def test_blob_fetch_decodes_and_validates_the_blob_identity():
     data = b"# README\n"
     payload = {
-        "sha": "a" * 40,
+        "sha": git_blob_sha(data),
         "encoding": "base64",
         "size": len(data),
         "content": base64.b64encode(data).decode(),
     }
     reader, recorder = make_reader(json_response(payload))
 
-    result = reader.fetch_blob(fake_metadata(), "a" * 40)
+    result = reader.fetch_blob(fake_metadata(), git_blob_sha(data))
 
     assert result.blob.data == data
-    assert result.blob.blob_sha == "a" * 40
+    assert result.blob.blob_sha == git_blob_sha(data)
     assert result.blob.size == len(data)
     assert str(recorder.requests[0].url) == (
-        BASE + "/repos/owner/project/git/blobs/" + "a" * 40
+        BASE + "/repos/owner/project/git/blobs/" + git_blob_sha(data)
     )
 
 
@@ -622,7 +630,7 @@ def test_blob_fetch_decodes_and_validates_the_blob_identity():
 def test_malformed_blob_payloads_are_rejected(overrides, error):
     data = b"abc"
     payload = {
-        "sha": "a" * 40,
+        "sha": git_blob_sha(b"abc"),
         "encoding": "base64",
         "size": len(data),
         "content": base64.b64encode(data).decode(),
@@ -631,14 +639,14 @@ def test_malformed_blob_payloads_are_rejected(overrides, error):
     reader, _ = make_reader(json_response(payload))
 
     with pytest.raises(error):
-        reader.fetch_blob(fake_metadata(), "a" * 40)
+        reader.fetch_blob(fake_metadata(), git_blob_sha(b"abc"))
 
 
 def test_oversize_blob_is_rejected():
     settings = make_settings(archive_github_readme_bytes=1024)
     data = b"x" * 2048
     payload = {
-        "sha": "a" * 40,
+        "sha": git_blob_sha(data),
         "encoding": "base64",
         "size": len(data),
         "content": base64.b64encode(data).decode(),
@@ -646,7 +654,7 @@ def test_oversize_blob_is_rejected():
     reader, _ = make_reader(json_response(payload), settings=settings)
 
     with pytest.raises(BlobTooLarge):
-        reader.fetch_blob(fake_metadata(), "a" * 40)
+        reader.fetch_blob(fake_metadata(), git_blob_sha(data))
 
 
 def test_authentication_and_plain_forbidden_are_not_retried(caplog):
@@ -969,7 +977,7 @@ def test_readme_and_blob_require_verified_metadata():
     with pytest.raises(ArchiveRequestError, match="README fetch requires"):
         reader.fetch_readme(object())
     with pytest.raises(ArchiveRequestError, match="blob fetch requires"):
-        reader.fetch_blob(object(), "a" * 40)
+        reader.fetch_blob(object(), git_blob_sha(b"abc"))
 
     assert recorder.requests == []
 
@@ -981,14 +989,17 @@ def test_blob_conditional_cache_and_missing_paths():
         httpx.Response(304),
         httpx.Response(404),
     )
-    first = reader.fetch_blob(fake_metadata(), "a" * 40)
+    first = reader.fetch_blob(fake_metadata(), git_blob_sha(b"abc"))
     second = reader.fetch_blob(
-        fake_metadata(), "a" * 40, etag=first.response.etag, cached=first.blob
+        fake_metadata(),
+        git_blob_sha(b"abc"),
+        etag=first.response.etag,
+        cached=first.blob,
     )
     with pytest.raises(CacheMiss):
-        reader.fetch_blob(fake_metadata(), "a" * 40)
+        reader.fetch_blob(fake_metadata(), git_blob_sha(b"abc"))
     with pytest.raises(BlobNotFound):
-        reader.fetch_blob(fake_metadata(), "a" * 40)
+        reader.fetch_blob(fake_metadata(), git_blob_sha(b"abc"))
 
     assert second.blob is first.blob
     assert second.response.status == 304
@@ -1006,7 +1017,7 @@ def test_cached_blob_must_match_the_requested_sha():
     )
 
     with pytest.raises(ArchiveRequestError, match="cached blob"):
-        reader.fetch_blob(fake_metadata(), "a" * 40, cached=cached)
+        reader.fetch_blob(fake_metadata(), git_blob_sha(b"abc"), cached=cached)
 
 
 def test_acquire_rejects_a_metadata_result_without_a_body(monkeypatch):
@@ -1230,4 +1241,111 @@ def test_malformed_blob_size_and_decoded_oversize_are_rejected(overrides, error)
     )
 
     with pytest.raises(error):
-        reader.fetch_blob(fake_metadata(), "a" * 40)
+        reader.fetch_blob(fake_metadata(), git_blob_sha(b"abc"))
+
+
+@pytest.mark.parametrize("backoff, expected_wait", [(0.5, 4), (4.5, 4.5), (20, 5)])
+def test_5xx_short_retry_after_respects_provider_backoff_and_cap(
+    backoff, expected_wait
+):
+    waits = []
+    reader, recorder = make_reader(
+        httpx.Response(503, headers={"Retry-After": "4"}),
+        json_response(repo_payload()),
+        waits=waits,
+        settings=make_settings(retry_base_delay=backoff),
+    )
+
+    result = reader.fetch_metadata(101, "owner/project")
+
+    assert result.metadata.repo_id == 101
+    assert waits == [expected_wait]
+    assert len(recorder.requests) == 2
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "You have exceeded a secondary rate limit.",
+        "API RATE LIMIT exceeded for the worker.",
+    ],
+)
+def test_headerless_rate_limit_message_defers_for_sixty_seconds(message):
+    waits = []
+    reader, recorder = make_reader(
+        json_response({"message": message}, status=403),
+        waits=waits,
+    )
+
+    with pytest.raises(ArchiveRateLimited) as caught:
+        reader.fetch_metadata(101, "owner/project")
+
+    assert caught.value.retry_at == NOW + timedelta(seconds=60)
+    assert caught.value.response.status == 403
+    assert waits == []
+    assert len(recorder.requests) == 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"message":"Resource not accessible by integration"}',
+        b"<html>Forbidden</html>",
+        pytest.param(b"[" * 2000, id="deep-malformed-json"),
+        pytest.param(b'{"message":' + b"9" * 5000 + b"}", id="oversized-json-number"),
+        b"\xff",
+        b"[]",
+        b'{"message":null}',
+        b'{"message":{"rate limit":true}}',
+    ],
+)
+def test_plain_and_malformed_forbidden_messages_remain_forbidden(body):
+    waits = []
+    reader, recorder = make_reader(httpx.Response(403, content=body), waits=waits)
+
+    with pytest.raises(ArchiveForbidden):
+        reader.fetch_metadata(101, "owner/project")
+
+    assert waits == []
+    assert len(recorder.requests) == 1
+
+
+@pytest.mark.parametrize("via_blob", [False, True], ids=["readme", "blob"])
+@pytest.mark.parametrize(
+    "data, sha",
+    [
+        (b"abc", "f2ba8f84ab5c1bce84a7b441cb1959cfc7093b7f"),
+        (b"", "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"),
+    ],
+)
+def test_git_blob_content_identity_accepts_known_objects(via_blob, data, sha):
+    payload = (
+        blob_payload(data, sha=sha)
+        if via_blob
+        else readme_payload(data.decode(), sha=sha)
+    )
+    reader, _ = make_reader(json_response(payload))
+
+    if via_blob:
+        result = reader.fetch_blob(fake_metadata(), sha)
+        assert result.blob.data == data
+        assert result.blob.blob_sha == sha
+    else:
+        result = reader.fetch_readme(fake_metadata())
+        assert result.readme.text.encode() == data
+        assert result.readme.blob_sha == sha
+
+
+@pytest.mark.parametrize("via_blob", [False, True], ids=["readme", "blob"])
+def test_git_blob_content_identity_rejects_one_changed_byte(via_blob):
+    sha = "f2ba8f84ab5c1bce84a7b441cb1959cfc7093b7f"  # Git blob for b"abc".
+    payload = (
+        blob_payload(b"abd", sha=sha) if via_blob else readme_payload("abd", sha=sha)
+    )
+    reader, _ = make_reader(json_response(payload))
+
+    with pytest.raises(BlobIdentityMismatch if via_blob else ReadmeInvalid):
+        if via_blob:
+            reader.fetch_blob(fake_metadata(), sha)
+        else:
+            reader.fetch_readme(fake_metadata())
