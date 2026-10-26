@@ -96,7 +96,7 @@ Rollback: stop catalogue consumers and revert the T03 code; the existing API con
 
 Evidence and reproducible tests: [T03 evidence](../execution-plans/hybrid-search/T03_EVIDENCE.md). Ingestion, raw-file writes, vector publication, queues, APIs and scheduling are later tasks.
 
-## Archive GitHub reads (T04, awaiting review)
+## Archive GitHub reads (T04, merged)
 
 `app/integrations/archive_github.py` is a worker-only reader. It is not imported by the API app and does not change the OAuth provider in `app/integrations/github.py`. It requires a dedicated `ARCHIVE_GITHUB_TOKEN` with public-read access; never configure an end-user OAuth token or reuse `GITHUB_CLIENT_SECRET`. The reader refuses to start without its own token and never logs it or forwards it to another origin.
 
@@ -107,6 +107,35 @@ The reader fetches repository metadata, verifies the returned numeric ID against
 Responses are typed with status, URL, headers, body, request ID, ETag, Last-Modified, retry-at and encoded/decoded byte counts. Bodies are streamed with encoded/decoded limits checked per decoded chunk before accumulation; a single compressed network chunk can transiently inflate before the cap is checked. Conditional `304` responses return the supplied cached metadata/README/blob only when it matches the expected repository ID/blob SHA; otherwise `CacheMiss` or a request error is raised. Long rate-limit waits (429, or 403 with exhausted quota or a rate-limit message) and long 5xx `Retry-After` values become `retry_at` values instead of sleeps. A headerless rate-limit `403` defaults to a 60-second retry time; plain or malformed `403` bodies remain `ArchiveForbidden`. Short 5xx waits honor the larger of provider delay and exponential backoff, capped by the configured wait limit. `401` stops the run; bounded 5xx and network failures are retried.
 
 The reader does not crawl links, clone repositories, download arbitrary URLs or fetch submodules. It is not wired into an API route or worker yet; persistence, scheduling and ingestion are later tasks. Evidence: [T04 evidence](../execution-plans/hybrid-search/T04_EVIDENCE.md).
+
+## Content preparation (T05, awaiting review)
+
+`app/services/archive_index.py::prepare_repository` prepares already-fetched metadata and decoded README bytes in memory. Reuse a loaded T02 `EmbeddingAdapter`; preparation only calls its real tokenizer counter, never vector inference. No model download, repository request, file write or database operation occurs here.
+
+```python
+from app.services.archive_index import prepare_repository
+
+prepared = prepare_repository(
+    {
+        "id": 42,
+        "full_name": "example/compass",
+        "description": "Offline maps",
+        "topics": ["maps"],
+        "language": "Python",
+    },
+    b"# Features\nShared route planning.",
+    adapter=adapter,  # the existing, loaded T02 adapter
+    source_truncated=False,
+)
+# A later ingestion task embeds [chunk.text for chunk in prepared.chunks]
+# with kind="passage"; text does not already contain the E5 prefix.
+```
+
+Metadata gets a strict 16 KiB budget. README input is capped at 256 KiB; at most 65,536 decoded characters are parsed with the already-locked `markdown-it-py==4.2.0`. HTML-bearing prose, images and navigation are discarded; ordinary Markdown/code becomes inert text. Output starts with an overview and continues through README sections in source order, at most eight chunks with zero overlap. Actual content counts are at most 400 tokens and final prefixed/titled counts at most 512. If a body chunk would end mid-word, it retreats to the nearest whitespace within the final 20% of the fitted piece, then rechecks both token budgets. Without a nearby boundary, it keeps the hard cut for CJK and long URLs/tokens. The next piece starts after whitespace; words remain in source order. `CHUNKER_VERSION` remains `sections-v1` because no content has been ingested. Bounds live in `core/config.py` and are part of the versioned format, not environment switches.
+
+Inspect `readme_status` and `omissions`; metadata-only, parser-clipped and chunk-capped output must not be represented as a complete README. `semantic_hash` includes normalized semantic metadata/content, model identity and preparation versions, but not stars. Chunk keys also bind numeric repository ID and ordinal. `text_hash` is the UTF-8 SHA-256 of unprefixed chunk text; embedding reuse additionally requires the same model/preparation contract. Future rule changes need a new normalizer/chunker version and regenerated content. T08 owns obsolete-vector cleanup/publication; this function does not perform either.
+
+Rollback is a code revert with no schema/data migration. Render output as plain text, never as trusted HTML. See [T05 evidence](../execution-plans/hybrid-search/T05_EVIDENCE.md) for tests, real-tokenizer verification, explicit clipping tradeoffs and remaining integration limits.
 
 ## API
 

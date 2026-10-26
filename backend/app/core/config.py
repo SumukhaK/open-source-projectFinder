@@ -4,6 +4,16 @@ from urllib.parse import urlsplit
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Content-format bounds; changes require a new archive chunker version.
+ARCHIVE_README_MAX_BYTES = 256 * 1024
+ARCHIVE_PARSE_MAX_CHARS = 64 * 1024
+ARCHIVE_METADATA_MAX_BYTES = 16 * 1024
+ARCHIVE_CHUNK_TOKENS = 400
+ARCHIVE_MAX_CHUNKS = 8
+ARCHIVE_TITLE_TOKENS = 64
+ARCHIVE_TOKEN_PROBE_CHARS = 8192
+ARCHIVE_MARKDOWN_MAX_NESTING = 20
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
