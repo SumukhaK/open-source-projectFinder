@@ -390,3 +390,43 @@ Non-goals: no ingestion, raw-file writer, vector publication, durable jobs, API/
 Verification: 222 tests pass in WSL Python 3.11.17 / SQLite 3.53.1; 97.8% combined / 95.3% branch coverage passes unchanged gates; Ruff lint/format and Bandit pass. Real catalogue WAL snapshots, commits, truncate checkpoint, reopen and integrity pass; system SQLite 3.46.1 fails the shared gate. Detailed RED/GREEN commands and rollback are in [T03 evidence](execution-plans/hybrid-search/T03_EVIDENCE.md). PR/current-head CI and independent trusted acceptance remain GitHub evidence; task is not accepted or merged.
 
 T03 handoff: [PR #18](https://github.com/SumukhaK/open-source-projectFinder/pull/18), Awaiting review. Independent trusted acceptance and required current-head CI remain pending; no merge or next-task execution.
+
+
+### T03 CI runtime review follow-up - 2026-10-25
+
+User request (verbatim):
+
+```text
+Address the "Changes requested" review on PR #18 (T03, branch codex/hybrid-t03-catalogue,
+reviewed head 46ff60f). Work on the SAME branch and PR; do not start T04.
+
+Blocking fix: CI Backend quality fails (run 40195929309: 5 failed, 23 errors) because
+actions/setup-python's Python 3.11.17 links an unpatched SQLite, so ArchiveStore correctly
+refuses it. Make CI run the backend job on a WAL-fixed runtime, like the worker venv:
+- In .github/workflows/quality.yml backend job, provision a pinned CPython 3.11
+  python-build-standalone interpreter (e.g. via a pinned uv release with checksum
+  verification, or an action pinned by full commit SHA) whose sqlite3.sqlite_version
+  passes app.core.sqlite_runtime.wal_is_fixed. Install backend/requirements.lock.txt into
+  it and run the existing ruff/pytest/coverage/quality.py/Bandit steps with it.
+- Add a step that prints Python + sqlite3.sqlite_version and exits 1 unless
+  wal_is_fixed(...) is True.
+- Keep job permissions read-only, timeouts, caching and the quality gate unchanged.
+  Do not weaken any gate, add exceptions or change dependency pins.
+- Do NOT skip/xfail archive tests on unpatched runtimes and do NOT monkeypatch
+  sqlite3.sqlite_version in the shared catalogue fixture. Keep the existing refusal tests.
+Non-blocking (include if small): add pytest.mark.skipif(os.name != "posix") to the archive
+store tests with a clear reason (platform restriction only; CI is Linux); note in
+backend/README.md that the catalogue must live on a Linux-native path, not /mnt/c or /mnt/e.
+Future schema changes go in migration 2+, never by editing migration 1.
+
+Verify: reproduce the CI failure first (run the suite under a Python with SQLite < 3.51.3,
+e.g. the system /usr/bin/python3 in a throwaway venv, expect the same RuntimeErrors), then
+show the new CI-equivalent runtime passing: full pytest with coverage gate, ruff, Bandit.
+Update T03_EVIDENCE.md with the CI interpreter/SQLite version and the new CI run link.
+Push to the same PR, wait for CI, report the new head SHA and run link, then STOP for review.
+NEVER merge, approve, write a review marker, or start another task.
+```
+
+Plan on the same branch/PR: (1) reproduce the 28 WAL refusals with the unchanged suite on an isolated system-SQLite venv; (2) pin the worker-family CPython archive by release, version and SHA-256 in the backend job, keeping the existing pip cache and checks, and add an explicit shared WAL gate step; (3) run the workflow steps locally with that archive, update evidence/operator migration notes and await all required CI before review handoff. No catalogue schema or dependency changes. Status: In progress; baseline head `46ff60f2acece4c7aa4c45fb7918b41da6444784`.
+
+Progress as of 2026-10-26: phases 1 and 2 verified. The unchanged suite on actual SQLite 3.46.1 reproduced 5 failures and 23 errors; all nine backend workflow commands then passed using the checksum-verified standalone CPython 3.11.17 / SQLite 3.53.1 (222 tests, 97.8% combined / 95.3% branch coverage, Ruff and Bandit). The POSIX-only marker skips 40 catalogue tests on native Windows while all 8 shared gate tests pass; Linux skips none. All existing workflow steps, permissions, timeouts, caching, dependency locks, schema and safety gates remain unchanged. Phase 3: local verification and documentation complete; remote CI and trusted review pending. See [T03 evidence](execution-plans/hybrid-search/T03_EVIDENCE.md#ci-runtime-review-follow-up---2026-10-2526).

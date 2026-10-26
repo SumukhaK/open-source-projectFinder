@@ -9,6 +9,10 @@ from app.core.config import Settings
 from app.core.store import Store
 from pydantic import ValidationError
 
+pytestmark = pytest.mark.skipif(
+    os.name != "posix", reason="Archive catalogue requires a private POSIX filesystem"
+)
+
 
 def settings_for(tmp_path, **overrides):
     return Settings(

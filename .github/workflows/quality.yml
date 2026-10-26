@@ -23,6 +23,30 @@ jobs:
           python-version: '3.11'
           cache: pip
           cache-dependency-path: backend/requirements.lock.txt
+      - name: Provision checksum-verified CPython with patched SQLite
+        shell: bash
+        run: |
+          # Keep setup-python's pip cache; all checks use this standalone runtime.
+          curl --fail --silent --show-error --location --retry 3 --max-time 120 \
+            'https://github.com/astral-sh/python-build-standalone/releases/download/20261021/cpython-3.11.17%2B20261021-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz' \
+            --output "$RUNNER_TEMP/backend-python.tar.gz"
+          printf '%s  %s\n' '224ca8be2d28841e7a382a27c51e74f4ed0aabe249a79294684e782363165948' "$RUNNER_TEMP/backend-python.tar.gz" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/backend-python"
+          tar -xzf "$RUNNER_TEMP/backend-python.tar.gz" -C "$RUNNER_TEMP/backend-python"
+          "$RUNNER_TEMP/backend-python/python/bin/python3.11" -m venv "$RUNNER_TEMP/backend-venv"
+          echo "$RUNNER_TEMP/backend-venv/bin" >> "$GITHUB_PATH"
+      - name: Require a WAL-fixed linked SQLite
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sqlite3
+          import sys
+          sys.path.insert(0, "backend")
+          from app.core.sqlite_runtime import wal_is_fixed
+          print(f"Python {sys.version.split()[0]}; SQLite {sqlite3.sqlite_version}", flush=True)
+          if sys.version_info[:3] != (3, 11, 17) or not wal_is_fixed(sqlite3.sqlite_version):
+              raise SystemExit("Backend CI requires pinned CPython 3.11.17 with the SQLite WAL-reset fix")
+          PY
       - run: python -m pip install -r backend/requirements.lock.txt
       - run: mkdir -p reports
       - run: ruff check backend scripts

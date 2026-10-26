@@ -75,6 +75,33 @@ The final fresh-context reviewer could not run because its model usage limit was
 
 No dependencies were added or changed. Required remote CI still audits both Python locks and npm, tests the mobile client/E2E, and scans secrets. The existing node-forge exception remains unchanged and expires 2026-11-01; any resulting gate failure must be reported, not waived. Local mobile/export, fresh dependency audits and full-history secret scanning are delegated to that unchanged required CI, not claimed as local passes.
 
+## CI runtime review follow-up - 2026-10-25/26
+
+The review of `46ff60f2acece4c7aa4c45fb7918b41da6444784` identified a real runtime mismatch: [CI run 40195929309](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40195929309) used setup-python's unpatched linked SQLite, and the catalogue correctly refused it. The production refusal remains unchanged.
+
+Before changing the workflow or tests, a throwaway Linux venv based on `/usr/bin/python3` installed the unchanged backend lock. Its actual runtime was **Python 3.14.4 / SQLite 3.46.1**. The full suite exited **1** with **5 failed, 194 passed and 23 errors** in 8.81s, reproducing the same catalogue WAL refusal errors without substituting the SQLite version. Ubuntu's system Python lacks `ensurepip`, so the existing worker's pip targeted this disposable venv; no system packages, system interpreter or worker interpreter were changed.
+
+The backend job now downloads the official [python-build-standalone release 20261021](https://github.com/astral-sh/python-build-standalone/releases/tag/20261021):
+
+- Asset: `cpython-3.11.17+20261021-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz`.
+- SHA-256: `224ca8be2d28841e7a382a27c51e74f4ed0aabe249a79294684e782363165948`, verified before extraction.
+- Runtime measured from the downloaded archive: **Python 3.11.17 / SQLite 3.53.1**. The workflow prints both and requires the pinned Python version plus the existing shared `wal_is_fixed` check before installing dependencies or running tests.
+- A fresh venv's executables are placed on `GITHUB_PATH`. The existing setup-python step still restores/saves its pip cache; every subsequent backend check runs in the standalone venv. No additional installer dependency or action was introduced.
+
+All nine backend `run` steps were executed verbatim from the workflow in a fresh WSL `/tmp` directory, with the environment/PATH updates used by Actions. Provisioning, checksum verification, the runtime gate, locked dependency installation and every quality command exited **0** on 2026-10-25:
+
+| Check | Result |
+| --- | --- |
+| Full pytest with coverage, XML and JUnit reports | **222 passed**, no skips, 15.58s; one inherited Starlette/httpx deprecation warning |
+| Existing coverage policy | **97.8% combined / 95.3% branches**, unchanged 90/80 gate passes |
+| Ruff lint / format | All checks passed / 26 files already formatted |
+| Bandit | No findings or scanner errors |
+| Native Windows platform marker, checked 2026-10-26 | 40 catalogue tests skipped for the POSIX restriction; all 8 shared runtime-gate tests passed |
+
+The sole test change is a module-level `os.name != "posix"` marker. Linux runs every catalogue test, including the existing old-SQLite refusal tests; no fixture changes or SQLite-based skips were added. A structural comparison confirms that removing the two new runtime steps restores the prior workflow exactly: job permissions, timeouts, caching, existing commands, other jobs and the quality gate are unchanged. Dependency locks, the catalogue/schema, shared gate and refusal tests are unchanged. Backend operator notes clarify Linux-native absolute paths and append-only migrations starting with migration 2.
+
+Local logs are retained under ignored `reports/t03/ci-runtime-fix/`. This local execution verifies the backend commands; GitHub must separately verify action integration, cache handling and the remaining jobs. The new remote run will be recorded here after it completes. Trusted review and merge remain pending.
+
 ## Migration, compatibility and rollback
 
 See [backend operator instructions](../../backend/README.md#archive-catalogue-t03-awaiting-review). Explicit opt-in initialization creates a new private catalogue; normal auth/API startup stays unchanged. `PRAGMA application_id` identifies this DB and `PRAGMA user_version` advances with atomic DDL. Repeated migration/reopen preserves IDs/content. Unknown schemas and future versions fail closed. A failed initial migration leaves no partial tables/version markers and can be retried; no reset/downgrade path exists.
