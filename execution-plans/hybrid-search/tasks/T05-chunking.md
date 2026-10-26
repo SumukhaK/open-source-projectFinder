@@ -1,6 +1,6 @@
 # T05: Normalize and chunk bounded content deterministically
 
-Status: Awaiting review. Implementation and verification: [T05 evidence](../T05_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review in [PR #20](https://github.com/SumukhaK/open-source-projectFinder/pull/20). Implementation and verification: [T05 evidence](../T05_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

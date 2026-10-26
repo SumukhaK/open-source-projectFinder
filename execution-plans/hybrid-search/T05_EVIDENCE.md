@@ -1,6 +1,6 @@
 # T05 deterministic content preparation evidence - 2026-10-26
 
-Status: **Awaiting review**, not accepted or merged. This implements only [T05](tasks/T05-chunking.md). The PR's current head and required CI are authoritative in GitHub.
+Status: **Awaiting review** in [PR #20](https://github.com/SumukhaK/open-source-projectFinder/pull/20), not accepted or merged. This implements only [T05](tasks/T05-chunking.md). The PR's current head and required CI are authoritative in GitHub.
 
 ## Scope and prerequisites
 
