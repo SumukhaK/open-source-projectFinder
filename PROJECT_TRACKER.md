@@ -569,3 +569,18 @@ security exceptions; touch the system Python/SQLite or the worker venv interpret
 Revised phases: (1) merge latest main with both sides preserved and immediately run the full suite; (2) RED/GREEN the boundary fix; (3) sync only T04's completed review/merge evidence while keeping T03 unchanged and T05 unaccepted; (4) full verification, evidence, same-PR push and exact-head CI. Phase 1 verified: merge commit `e7579f3` has reviewed T05 and main `d2354e95b47d8cf4d2d668d09d937e26669c0ed1` as parents. Immediate combined suite: 382 passed, 40 existing Windows POSIX skips, 94.9% combined / 92.9% branch coverage. T04 tests pass unchanged; no application edit preceded this run. Phases 2-4 in progress.
 
 Follow-up progress: phases 1-3 verified. The boundary tests recorded 3 expected failures before implementation; 105 preparation/embedding tests now pass. Final combined Windows suite: 390 passed with 40 existing POSIX skips; 94.9% combined / 93.0% branch coverage; Ruff, Bandit and offline pinned-tokenizer checks passed. T04 tracker sync records its accepted head, review, CI and merge; T03 remains unchanged and T05 unaccepted. Phase 4 local verification complete; same-PR push and exact-head CI pending. See [T05 follow-up evidence](execution-plans/hybrid-search/T05_EVIDENCE.md#main-merge-and-word-boundary-review-follow-up---2026-10-26).
+
+
+## Tracker sync for T04 and T05 - 2026-10-26
+
+User request (verbatim):
+
+```text
+merge and then update the tracker and project readme
+```
+
+Scope: documentation only. PR #20 was merged by the reviewed-merge workflow on its exact reviewed head before this sync. This records the T05 merge in the task tracker and refreshes README status lines that still described T04 as not started and T05 as awaiting review. T04's tracker row and history were already synced inside PR #20. No code, tests, configuration, dependencies or CI changed.
+
+- **T04** ([PR #19](https://github.com/SumukhaK/open-source-projectFinder/pull/19)): exact-head acceptance of `1ada43a36382baa7c790f0c829a810b5f4a0c590` ([review 5649001232](https://github.com/SumukhaK/open-source-projectFinder/pull/19#pullrequestreview-5649001232)), [CI 40289498384](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40289498384) passed, merged as `d2354e9` on 2026-10-26. Open: worker wiring (T09/T18) and live GitHub calls.
+- **T05** ([PR #20](https://github.com/SumukhaK/open-source-projectFinder/pull/20)): exact-head acceptance of `99c9c1711e8fa2decb1384871e144b7a3adc5e18` ([review 5652759721](https://github.com/SumukhaK/open-source-projectFinder/pull/20#pullrequestreview-5652759721)), [CI 40330742961](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40330742961) passed, merged as `adfd0f8` on 2026-10-26. Open: inline-HTML paragraphs are dropped whole (revisit in T27 relevance evaluation); `CHUNKER_VERSION` must be bumped for any later boundary change once content is ingested.
+- Unchanged blockers: policy decisions D1-D8 and prerequisites P1-P3 in [READINESS](execution-plans/hybrid-search/READINESS.md); the node-forge 1.4.0 dependency exception expires 2026-11-01, after which every PR's dependency audit fails until it is resolved.
