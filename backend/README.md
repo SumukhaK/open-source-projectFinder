@@ -96,7 +96,7 @@ Rollback: stop catalogue consumers and revert the T03 code; the existing API con
 
 Evidence and reproducible tests: [T03 evidence](../execution-plans/hybrid-search/T03_EVIDENCE.md). Ingestion, raw-file writes, vector publication, queues, APIs and scheduling are later tasks.
 
-## Archive GitHub reads (T04, awaiting review)
+## Archive GitHub reads (T04, merged)
 
 `app/integrations/archive_github.py` is a worker-only reader. It is not imported by the API app and does not change the OAuth provider in `app/integrations/github.py`. It requires a dedicated `ARCHIVE_GITHUB_TOKEN` with public-read access; never configure an end-user OAuth token or reuse `GITHUB_CLIENT_SECRET`. The reader refuses to start without its own token and never logs it or forwards it to another origin.
 
@@ -131,7 +131,7 @@ prepared = prepare_repository(
 # with kind="passage"; text does not already contain the E5 prefix.
 ```
 
-Metadata gets a strict 16 KiB budget. README input is capped at 256 KiB; at most 65,536 decoded characters are parsed with the already-locked `markdown-it-py==4.2.0`. HTML-bearing prose, images and navigation are discarded; ordinary Markdown/code becomes inert text. Output starts with an overview and continues through README sections in source order, at most eight chunks with zero overlap. Actual content counts are at most 400 tokens and final prefixed/titled counts at most 512. Bounds live in `core/config.py` and are part of the versioned format, not environment switches.
+Metadata gets a strict 16 KiB budget. README input is capped at 256 KiB; at most 65,536 decoded characters are parsed with the already-locked `markdown-it-py==4.2.0`. HTML-bearing prose, images and navigation are discarded; ordinary Markdown/code becomes inert text. Output starts with an overview and continues through README sections in source order, at most eight chunks with zero overlap. Actual content counts are at most 400 tokens and final prefixed/titled counts at most 512. If a body chunk would end mid-word, it retreats to the nearest whitespace within the final 20% of the fitted piece, then rechecks both token budgets. Without a nearby boundary, it keeps the hard cut for CJK and long URLs/tokens. The next piece starts after whitespace; words remain in source order. `CHUNKER_VERSION` remains `sections-v1` because no content has been ingested. Bounds live in `core/config.py` and are part of the versioned format, not environment switches.
 
 Inspect `readme_status` and `omissions`; metadata-only, parser-clipped and chunk-capped output must not be represented as a complete README. `semantic_hash` includes normalized semantic metadata/content, model identity and preparation versions, but not stars. Chunk keys also bind numeric repository ID and ordinal. `text_hash` is the UTF-8 SHA-256 of unprefixed chunk text; embedding reuse additionally requires the same model/preparation contract. Future rule changes need a new normalizer/chunker version and regenerated content. T08 owns obsolete-vector cleanup/publication; this function does not perform either.
 

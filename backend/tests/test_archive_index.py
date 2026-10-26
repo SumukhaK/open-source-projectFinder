@@ -176,6 +176,62 @@ def test_all_text_fits_without_character_loss_or_overlap(adapter):
     assert not result.omissions
 
 
+def test_long_english_section_preserves_whole_words_in_order(adapter):
+    words = (
+        "Offline routing keeps shared maps available during remote journeys".split()
+        * 25
+    )
+    result = prepare(adapter, ("# Features\n" + " ".join(words)).encode())
+    pieces = [chunk.text.partition("\n\n")[2] for chunk in result.chunks[1:]]
+
+    assert len(pieces) > 1
+    assert not result.omissions
+    assert all(piece == piece.strip() for piece in pieces)
+    assert all(word in words for piece in pieces for word in piece.split())
+    assert " ".join(pieces).split() == words
+
+
+@pytest.mark.parametrize(
+    "prose", ["界" * 900, "x" * 900, "https://example.test/" + "a" * 900]
+)
+def test_no_whitespace_section_keeps_hard_cuts_within_budget(adapter, prose):
+    result = prepare(adapter, prose.encode())
+    chunks = result.chunks[1:]
+    pieces = [chunk.text.partition("\n\n")[2] for chunk in chunks]
+
+    assert len(chunks) > 1
+    assert not result.omissions
+    assert "".join(pieces) == prose
+    assert all(len(piece) + 2 <= 400 for piece in pieces)
+    assert all(
+        chunk.token_count == len("passage: " + chunk.text) + 2 <= 512
+        for chunk in chunks
+    )
+
+
+@pytest.mark.parametrize("boundary, expected_cut", [(318, 398), (319, 319), (398, 398)])
+def test_only_nearby_whitespace_changes_a_midword_cut(adapter, boundary, expected_cut):
+    prose = "a" * boundary + " " + "b" * 500
+    result = prepare(adapter, prose.encode())
+    pieces = [chunk.text.partition("\n\n")[2] for chunk in result.chunks[1:]]
+
+    assert pieces[0] == prose[:expected_cut]
+    assert "".join(pieces).replace(" ", "") == prose.replace(" ", "")
+    assert all(piece == piece.strip() for piece in pieces)
+
+
+def test_adjusted_word_boundary_is_rechecked_against_token_budget(adapter, monkeypatch):
+    # A shorter prefix can have more tokens; never emit it without checking again.
+    adjusted = "a" * 350
+
+    def count_tokens(texts):
+        return [600 if text == adjusted else len(text) + 2 for text in texts]
+
+    monkeypatch.setattr(adapter.encoder, "count_tokens", count_tokens)
+    with pytest.raises(ValueError, match="token budget"):
+        prepare(adapter, (adjusted + " " + "b" * 500).encode())
+
+
 def test_parser_budget_and_upstream_clipping_are_explicit(adapter):
     result = prepare(adapter, b"a " * 100000)
     assert "parse_chars" in result.omissions

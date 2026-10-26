@@ -25,6 +25,7 @@ Metadata uses `id`, `full_name`, optional `description`, `topics` and `language`
 | Duplicate content | Repeated section bodies are included once, in source order |
 | Chunk selection | One metadata overview, then README sections in source order; at most eight chunks total |
 | Token budget | Actual T02 tokenizer counts, including special tokens, at most 400 content tokens and 512 final tokens after repository/section titles and E5 prefix; title components capped at 64 tokens each |
+| Word boundaries | After fitting a body piece, if the next character is not whitespace, retreat to the nearest whitespace in the final 20% of the piece; otherwise retain the hard cut. Re-check `fits()` after adjustment. Skip whitespace before the next chunk without losing or duplicating words; CJK/long tokens remain bounded hard cuts |
 | Bounded probes | Binary search on at most 8,192 Unicode characters per candidate; every emitted candidate is checked with the actual tokenizer, no regex/character token estimate |
 | Truncation | Sorted omission flags: `readme_bytes`, `parse_chars`, `source_truncated`, `title_tokens`, `overview_tokens`, `chunk_limit`, as applicable |
 
@@ -72,6 +73,38 @@ The smoke harness loaded that verified local file using `tokenizers.Tokenizer.fr
 These are single-run preparation measurements, not latency/relevance guarantees. Logs, the exact smoke harness and JSON are ignored under `reports/t05/`. Reproduction uses the same manifest-verified cached tokenizer and counter contract; ordinary unit tests require no model/network. A continuation check on 2026-10-26 re-ran the same offline smoke script (exit 0); all seven cases remained deterministic, within the eight-chunk/400-content/512-final bounds and matched the recorded token counts.
 
 Sources checked: [markdown-it-py parsing](https://markdown-it-py.readthedocs.io/en/latest/using.html), [Markdown security](https://markdown-it-py.readthedocs.io/en/latest/security.html), [Hugging Face tokenizer interface](https://huggingface.co/docs/transformers/main_classes/tokenizer), and the merged [T02 manifest/runtime evidence](T02_EVIDENCE.md). HTML is inspected as tokens for removal, never rendered.
+
+## Main merge and word-boundary review follow-up - 2026-10-26
+
+Same branch and PR #20, starting from reviewed head `bdd021cb76973ec3bab49d77d09e9ef8899231e9`. Earlier test counts and smoke timings above describe the original delivery; the following results cover this follow-up.
+
+### Merge first
+
+Fetched and merged `origin/main` at `d2354e95b47d8cf4d2d668d09d937e26669c0ed1` (T04 / PR #19) using merge commit `e7579f3d1514dd5a74a83befa844f05580cb68c5`. Its parents are the reviewed T05 head and that main commit. No rebase, amend or force-push.
+
+- `config.py` merged both sets of bounds: all T04 archive-reader settings/validators and all T05 content-format constants. AST comparison confirmed no values or validators changed from their respective sides.
+- Resolved the three documentation conflicts by retaining both T04 and T05 sections in the project tracker and backend README; the task tracker retains T04's main-branch entry and the T03 row exactly as on the reviewed T05 branch.
+- Immediately after the merge commit, before further tracked edits, ran the complete combined suite: **382 passed, 40 existing Windows POSIX skips**, one inherited warning, exit 0; coverage **94.9% combined / 92.9% branches**. All T04 tests passed unchanged.
+- After the boundary fix, separately synced T04 to Merged using [the accepted review](https://github.com/SumukhaK/open-source-projectFinder/pull/19#pullrequestreview-5649001232), reviewed head `1ada43a36382baa7c790f0c829a810b5f4a0c590`, [CI 40289498384](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40289498384) and main merge `d2354e9`. T05 remains unchecked and Awaiting review.
+
+### Boundary behavior and TDD
+
+Only body chunk selection changes. After `_fit`, inspect a truncated piece whose next character is not whitespace and scan backward for the nearest whitespace within its final 20% (character positions at or beyond `ceil(0.8 * len(piece))`). Cut before that boundary, then run the existing `fits()` check on the adjusted text. A shorter prefix can tokenize to more tokens, so failure still raises the existing token-budget error. The existing remainder slice plus `lstrip()` starts the next chunk after whitespace. No boundary means the original hard cut, preserving CJK and long URLs/tokens. Title fitting and all budgets/caps stay unchanged.
+
+`CHUNKER_VERSION` deliberately remains **`sections-v1`**, as requested: nothing has been ingested. This revises the unaccepted initial chunker, not a published data format. Normalizer version, model identity, dependencies, locks, workflows, gates and security exceptions are unchanged.
+
+| Stage | Command / actual result |
+| --- | --- |
+| RED | `python -B -m pytest backend/tests/test_archive_index.py -q -p no:cacheprovider -k 'long_english or no_whitespace or nearby_whitespace or adjusted_word'`: exit 1, **3 failed / 5 passed**. English words were split; a whitespace at position 319 of a 398-character fit was ignored; a shorter candidate needing 600 tokens was not rejected. Hard-cut and outside-window controls passed |
+| GREEN | `python -B -m pytest backend/tests/test_archive_index.py backend/tests/test_embeddings.py -q -p no:cacheprovider`: exit 0, **105 passed**. Tests reconstruct English words in order, preserve all no-whitespace characters, forbid leading spaces, check both 400/512 budgets and exercise the 20% threshold and recheck failure |
+| Final full suite | `python -B -m pytest backend/tests scripts/tests -q -p no:cacheprovider --cov=backend/app --cov-branch --cov-report=term-missing --cov-report=json:reports/t05/review-fixes/backend-coverage.json`: exit 0, **390 passed / 40 skipped**, one inherited Starlette/httpx warning, 19.29s |
+| Coverage gate | `python scripts/quality.py coverage reports/t05/review-fixes/backend-coverage.json`: exit 0, **94.9% combined / 93.0% branches**, unchanged 90/80 gate. Chunker module 100% lines/branches |
+| Lint / format | `ruff check backend scripts`; `ruff format --check backend scripts`: exit 0, 30 files already formatted |
+| Security / whitespace | `bandit -r backend/app -q -f json -o reports/t05/review-fixes/bandit.json`: exit 0, no findings or scanner errors; `git diff --check`: clean |
+
+Local runtime: Windows Python 3.11.9, using the existing project environment without installing packages. WSL was stopped with 4.34 GiB RAM available, below the prior startup headroom; no WSL startup, application shutdown or interpreter/system configuration changes were attempted. The unchanged Linux CI supplies full catalogue evidence with Python 3.11.17 / SQLite 3.53.1. Exact follow-up head and run link are recorded in the PR description; trusted review remains pending.
+
+Re-ran the existing hash-verified pinned-tokenizer smoke harness offline after the fix. All seven cases were deterministic and obeyed the eight-chunk/400-content/512-final bounds. Maximum body/final tokens: missing 18/34, English 400/417, Unicode 393/409, long title 400/476, brackets 400/416, parse limit 399/415, byte limit 18/34. No model download or vector inference. Logs and reports remain under ignored `reports/t05/review-fixes/`.
 
 ## Rollback and limits
 

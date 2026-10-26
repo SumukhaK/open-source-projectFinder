@@ -492,3 +492,80 @@ Scope: new `archive_index.py`, central hard bounds in `config.py`, explicit dire
 Rulings: use zero overlap (within the task's <=50 bound) to avoid repeated content; chunker version records this policy. Drop raw-HTML blocks/HTML-bearing paragraphs rather than render them; retain ordinary Markdown prose/code as inert text. Reject an oversized or binary README to a metadata-only document with an explicit status; bound parser input separately and record clipping. Metadata inputs have a strict byte/type budget; invalid metadata fails before parsing. Preparation uses the loaded T02 adapter's actual tokenizer counts, with fake counters only in unit tests and a separate real-tokenizer check. These choices trade some coverage for bounded local work and require relevance evaluation in T27, not additional T05 features.
 
 T05 implementation verification: 53 preparation tests pass; final Windows full suite 235 passed / 40 existing POSIX catalogue skips. Coverage 92.4% combined / 89.2% branches passes unchanged gates (new module 100%); Ruff and Bandit pass. Real hash-verified E5 tokenizer smoke passes seven synthetic cases offline (all <=400 content / <=512 final tokens, <=8 chunks, repeat deterministic), re-run on 2026-10-26 with the same result. No WSL start due to 3 GiB available RAM; Linux tests remain required CI. Algorithm/metadata bounds and exact operator contract: [T05 evidence](execution-plans/hybrid-search/T05_EVIDENCE.md). Status: Awaiting review; fresh author-independent preflight and PR CI pending, no acceptance.
+
+## T05 word-boundary review follow-up - 2026-10-26
+
+User request (verbatim):
+
+```text
+Follow-up on PR #20 (T05, branch codex/hybrid-t05-chunking, reviewed head bdd021c). Same branch/PR.
+TDD: failing test first, then fix.
+In backend/app/services/archive_index.py, after _fit returns a piece that ends mid-word (next
+char is not whitespace) and a whitespace boundary exists within the last 20% of the piece, cut at
+that whitespace instead; otherwise keep the hard cut (CJK, long URLs/tokens). Re-check fits() on the
+adjusted piece. Tests: a long English section never splits a word; a no-whitespace section still
+chunks within budget. Keep CHUNKER_VERSION "sections-v1" (nothing has been ingested yet) and note
+the boundary rule in T05_EVIDENCE.md. Run full pytest + coverage gate, ruff, bandit; push, wait for
+CI, report the new head SHA, then STOP. Never merge, approve or write a review marker.
+```
+
+Scope: body chunk selection in `archive_index.py`, its existing tests, backend README, T05 evidence and this tracker. Keep title fitting, tokenizer/prefix budgets, normalization, hard-cut fallback, chunk cap, version, dependencies and gates unchanged. The only caller is the offline preparation entry point; there is no ingested data or migration. Work on existing branch/PR #20 from clean reviewed head `bdd021cb76973ec3bab49d77d09e9ef8899231e9`.
+
+Plan: (1) record RED for English word preservation and adjusted-piece budget validation, with bounded hard-cut/20% boundary controls; (2) retreat to the nearest qualifying whitespace after `_fit`, retaining the existing `fits()` check; (3) full tests/coverage, Ruff, Bandit, offline pinned-tokenizer smoke if available, documentation and exact-head CI on the same PR. Status: In progress; no acceptance, review marker, merge or later task. WSL is stopped with 4.34 GiB available RAM, below the prior startup target; use Windows checks plus Linux CI without changing applications or machine settings.
+
+Expanded user request (verbatim; supersedes the earlier sequence):
+
+```text
+Follow-up on PR #20 (T05, branch codex/hybrid-t05-chunking, reviewed head bdd021c). Work on the SAME
+branch/PR; do not start T06 or any other task.
+
+STEP 1: Bring in main (T04 merged as d2354e9).
+- git fetch origin && git merge origin/main into codex/hybrid-t05-chunking with a MERGE COMMIT.
+  No rebase, amend or force-push.
+- Resolve conflicts by keeping both sides:
+  * backend/app/core/config.py: keep ALL ARCHIVE_GITHUB_* settings/validators from T04 AND all T05
+    README/parse/metadata/token/chunk constants. Don't change any value from either side.
+  * PROJECT_TRACKER.md: keep both the T04 and T05 sections, in chronological order.
+  * execution-plans/hybrid-search/TRACKER.md: keep the T03 row exactly as on this branch, and keep any
+    T04 text from main.
+  * backend/README.md: keep both the archive reader (T04) and chunking (T05) sections.
+- Run the full suite right after the merge, before any other edit. Everything must pass, including
+  the T04 tests.
+
+STEP 2: Word-boundary fix (TDD: write the failing test first and record RED, then GREEN).
+- In backend/app/services/archive_index.py, _fit may return a piece that ends mid-word (the next
+  character is not whitespace). When that happens and a whitespace boundary exists within the last
+  20% of the piece, cut at that whitespace instead. Otherwise keep the hard cut (CJK, long
+  URLs/tokens). Re-check fits() on the adjusted piece. The next chunk must start after the skipped
+  whitespace: no leading spaces, no lost or duplicated characters.
+- Tests:
+  (a) a long English section never splits a word across chunks;
+  (b) a section with no whitespace still chunks within the 400/512 token budget;
+  (c) re-joining all chunk texts reproduces the section's words in order.
+- Keep CHUNKER_VERSION "sections-v1" (nothing has been ingested yet). Document the boundary rule in
+  T05_EVIDENCE.md.
+
+STEP 3: T04 tracker sync (docs only).
+In execution-plans/hybrid-search/TRACKER.md, mark T04 Merged with:
+  - review: https://github.com/SumukhaK/open-source-projectFinder/pull/19#pullrequestreview-5649001232
+    (accepted on head 1ada43a36382baa7c790f0c829a810b5f4a0c590)
+  - CI: https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40289498384
+  - merge commit: d2354e9 (PR #19)
+Match the format of the existing T01-T03 rows. Leave T05 un-accepted: it is still under review.
+
+STEP 4: Verify, push, stop.
+- Linux with the CI runtime if WSL has RAM (venv /home/sumukha/reporadar-worker-venv, Python 3.11.17 /
+  SQLite 3.53.1). Otherwise use Windows and rely on Linux CI.
+- Run: python -m pytest backend/tests scripts/tests with the unchanged coverage gate, ruff check,
+  ruff format --check, bandit -r backend/app, git diff --check.
+- Update T05_EVIDENCE.md (merge result plus RED/GREEN for the boundary fix) and the PR description
+  (new head SHA, CI link, note that main d2354e9 is merged in).
+- Push to the same PR, wait for CI to go green on the new head, report the new head SHA, then STOP.
+
+NEVER: merge, approve, or write a review marker; change dependencies, lockfiles, workflows, CI gates or
+security exceptions; touch the system Python/SQLite or the worker venv interpreter; start another task.
+```
+
+Revised phases: (1) merge latest main with both sides preserved and immediately run the full suite; (2) RED/GREEN the boundary fix; (3) sync only T04's completed review/merge evidence while keeping T03 unchanged and T05 unaccepted; (4) full verification, evidence, same-PR push and exact-head CI. Phase 1 verified: merge commit `e7579f3` has reviewed T05 and main `d2354e95b47d8cf4d2d668d09d937e26669c0ed1` as parents. Immediate combined suite: 382 passed, 40 existing Windows POSIX skips, 94.9% combined / 92.9% branch coverage. T04 tests pass unchanged; no application edit preceded this run. Phases 2-4 in progress.
+
+Follow-up progress: phases 1-3 verified. The boundary tests recorded 3 expected failures before implementation; 105 preparation/embedding tests now pass. Final combined Windows suite: 390 passed with 40 existing POSIX skips; 94.9% combined / 93.0% branch coverage; Ruff, Bandit and offline pinned-tokenizer checks passed. T04 tracker sync records its accepted head, review, CI and merge; T03 remains unchanged and T05 unaccepted. Phase 4 local verification complete; same-PR push and exact-head CI pending. See [T05 follow-up evidence](execution-plans/hybrid-search/T05_EVIDENCE.md#main-merge-and-word-boundary-review-follow-up---2026-10-26).

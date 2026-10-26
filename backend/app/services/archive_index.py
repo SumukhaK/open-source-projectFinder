@@ -4,6 +4,7 @@ import hashlib
 import json
 import unicodedata
 from dataclasses import asdict, dataclass
+from math import ceil
 
 from app.core.config import (
     ARCHIVE_CHUNK_TOKENS,
@@ -110,6 +111,11 @@ def prepare_repository(
                 ) <= min(512, adapter.manifest.max_tokens)
 
             piece = _fit(body, fits)
+            if len(piece) < len(body) and not body[len(piece)].isspace():
+                for boundary in range(len(piece) - 1, ceil(len(piece) * 0.8) - 1, -1):
+                    if piece[boundary].isspace():
+                        piece = piece[:boundary]
+                        break
             if (body and not piece) or not fits(piece):
                 raise EmbeddingError("token budget cannot hold a repository passage")
             text = _passage(title, piece)
