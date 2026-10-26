@@ -127,6 +127,8 @@ Track search and ordinary REST buckets separately. Persist `next_attempt_at` for
 
 Store ETag/Last-Modified with endpoint, media type, API version and credential identity. An authenticated conditional request returning 304 does not consume the primary rate budget, but still has network/secondary-limit costs. A 304 without the cached body is a cache miss requiring recovery. Keep the existing OAuth reader's behavior stable while adding a typed archive response carrying status, headers, body and request ID. [Conditional requests](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api).
 
+T04 status (2026-10-26): the worker-only reader is `backend/app/integrations/archive_github.py`, with central settings in `backend/app/core/config.py` and tests in `backend/tests/test_archive_github.py`. It implements the typed conditional response, verified metadata/README/blob reads, same-origin redirects, bounded streaming and retry-at handling. It is not wired into a worker or API yet, and it does not change the OAuth provider. See [T04 evidence](T04_EVIDENCE.md).
+
 ## 6. Archive data and indexing schema
 
 | Entity | Key and material fields |

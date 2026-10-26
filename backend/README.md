@@ -96,6 +96,18 @@ Rollback: stop catalogue consumers and revert the T03 code; the existing API con
 
 Evidence and reproducible tests: [T03 evidence](../execution-plans/hybrid-search/T03_EVIDENCE.md). Ingestion, raw-file writes, vector publication, queues, APIs and scheduling are later tasks.
 
+## Archive GitHub reads (T04, awaiting review)
+
+`app/integrations/archive_github.py` is a worker-only reader. It is not imported by the API app and does not change the OAuth provider in `app/integrations/github.py`. It requires a dedicated `ARCHIVE_GITHUB_TOKEN` with public-read access; never configure an end-user OAuth token or reuse `GITHUB_CLIENT_SECRET`. The reader refuses to start without its own token and never logs it or forwards it to another origin.
+
+`ARCHIVE_GITHUB_API_URL` must be an HTTPS origin (default `https://api.github.com`). Redirects are followed only within that origin, with `ARCHIVE_GITHUB_MAX_REDIRECTS` (default 3, 0-5). `ARCHIVE_GITHUB_TIMEOUT` defaults to 10 seconds (greater than 0, up to 30), `ARCHIVE_GITHUB_ATTEMPTS` to 3 (1-5), `ARCHIVE_GITHUB_METADATA_BYTES` to 512 KiB (1 KiB-2 MiB), `ARCHIVE_GITHUB_README_BYTES` to 256 KiB (1 KiB-1 MiB) and `ARCHIVE_GITHUB_RETRY_MAX_WAIT` to 5 seconds (greater than 0, up to 60).
+
+The reader fetches repository metadata, verifies the returned numeric ID against the expected ID (including redirects), rejects non-public metadata and then fetches `/readme`. A metadata 404 is ambiguous (private, transferred, inaccessible or deleted) and raises `RepositoryNotFound`; it is not proof of deletion. After verified metadata, a README 404 means `readme_missing=True`. README JSON/base64 is decoded with strict size, padding and UTF-8 checks, and the decoded bytes must match the Git blob SHA retained as provenance. `fetch_blob` accepts only a 40-character file blob SHA and uses `/git/blobs/{sha}`, never a branch or commit ref, and verifies the decoded bytes against that SHA. If the README has no inline content, the caller can fetch that immutable blob separately.
+
+Responses are typed with status, URL, headers, body, request ID, ETag, Last-Modified, retry-at and encoded/decoded byte counts. Bodies are streamed with encoded/decoded limits checked per decoded chunk before accumulation; a single compressed network chunk can transiently inflate before the cap is checked. Conditional `304` responses return the supplied cached metadata/README/blob only when it matches the expected repository ID/blob SHA; otherwise `CacheMiss` or a request error is raised. Long rate-limit waits (429, or 403 with exhausted quota or a rate-limit message) and long 5xx `Retry-After` values become `retry_at` values instead of sleeps. A headerless rate-limit `403` defaults to a 60-second retry time; plain or malformed `403` bodies remain `ArchiveForbidden`. Short 5xx waits honor the larger of provider delay and exponential backoff, capped by the configured wait limit. `401` stops the run; bounded 5xx and network failures are retried.
+
+The reader does not crawl links, clone repositories, download arbitrary URLs or fetch submodules. It is not wired into an API route or worker yet; persistence, scheduling and ingestion are later tasks. Evidence: [T04 evidence](../execution-plans/hybrid-search/T04_EVIDENCE.md).
+
 ## API
 
 - `POST /auth/github/start`: app PKCE challenge and exact allowlisted return URI; returns GitHub authorization URL and state.
