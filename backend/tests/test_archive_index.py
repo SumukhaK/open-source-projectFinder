@@ -310,3 +310,25 @@ def test_plaintext_line_breaks_and_indented_code_remain_searchable(adapter):
     result = prepare(adapter, b"Line one\nline two  \nline three\n\n    tool.run()")
     assert "Line one line two line three" in result.chunks[1].text
     assert "tool.run()" in result.chunks[1].text
+
+
+def test_non_object_metadata_is_rejected_before_parsing(adapter):
+    with pytest.raises(ValueError, match="metadata must be an object"):
+        prepare_repository([], None, adapter=adapter)
+
+
+def test_undecoded_readme_text_is_rejected(adapter):
+    with pytest.raises(ValueError, match="README must be decoded bytes"):
+        prepare_repository(
+            {"id": 42, "full_name": "acme/compass"}, "readme", adapter=adapter
+        )
+
+
+def test_non_boolean_source_truncated_is_rejected(adapter):
+    with pytest.raises(ValueError, match="source_truncated"):
+        prepare_repository(
+            {"id": 42, "full_name": "acme/compass"},
+            None,
+            adapter=adapter,
+            source_truncated=1,
+        )

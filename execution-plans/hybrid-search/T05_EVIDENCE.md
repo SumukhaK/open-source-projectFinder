@@ -46,8 +46,9 @@ Platform/date: Windows, Python 3.11.9, 2026-10-26. Commands run from the isolate
 | RED edge cases | Focus `-k 'named_overview or falsey'` -> exit 1, 4 failed / 1 passed: README heading named Overview was clipped like metadata, falsey wrong topic types and metadata controls were accepted |
 | GREEN focused regression | `python -B -m pytest backend/tests/test_archive_index.py backend/tests/test_embeddings.py -q -p no:cacheprovider` -> exit 0, 91 passed |
 | Additional boundary checks | Exact byte limit, insufficient prefixed budget, line breaks/indented code -> focused module exit 0, 50 passed |
-| Final full regression | `python -B -m pytest backend/tests scripts/tests -q -p no:cacheprovider --cov=backend/app --cov-branch --cov-report=term-missing --cov-report=json:reports/t05/backend-coverage.json` -> exit 0, 232 passed / 40 existing POSIX skips, 17.03s |
-| Coverage policy | `python scripts/quality.py coverage reports/t05/backend-coverage.json` -> exit 0, 91.9% combined / 88.1% branches; unchanged 90/80 gate |
+| Input-guard regression | Added non-object metadata, undecoded README text and non-boolean `source_truncated` cases -> focused module exit 0, 53 passed |
+| Final full regression | `python -B -m pytest backend/tests scripts/tests -q -p no:cacheprovider --cov=backend/app --cov-branch --cov-report=term-missing --cov-report=json:reports/t05/backend-coverage.json` -> exit 0, 235 passed / 40 existing POSIX skips, 16.21s |
+| Coverage policy | `python scripts/quality.py coverage reports/t05/backend-coverage.json` -> exit 0, 92.4% combined / 89.2% branches; unchanged 90/80 gate. New module: 100% lines and branches |
 | Static/security | `ruff check backend scripts`, `ruff format --check backend scripts`, `bandit -r backend/app -q -f json -o reports/t05/bandit.json` -> exit 0, 28 files formatted, no Bandit findings/errors |
 
 The existing Starlette/httpx deprecation warning remains. Linux catalogue tests are not claimed as a new local pass: WSL is stopped and available RAM was approximately 3 GiB, below the previously required startup headroom. No applications were closed or WSL settings changed. Required CI uses the pinned Python 3.11.17 / SQLite 3.53.1 runtime and runs the catalogue tests without platform skips.
@@ -68,7 +69,7 @@ The smoke harness loaded that verified local file using `tokenizers.Tokenizer.fr
 | Parse-clipped source, 250,000 bytes | 8 | 400 / 416 | 0.2281s |
 | Over-byte-limit source, 300,000 bytes | 1 | 18 / 34 | 0.0017s |
 
-These are single-run preparation measurements, not latency/relevance guarantees. Logs, the exact smoke harness and JSON are ignored under `reports/t05/`. Reproduction uses the same manifest-verified cached tokenizer and counter contract; ordinary unit tests require no model/network.
+These are single-run preparation measurements, not latency/relevance guarantees. Logs, the exact smoke harness and JSON are ignored under `reports/t05/`. Reproduction uses the same manifest-verified cached tokenizer and counter contract; ordinary unit tests require no model/network. A continuation check on 2026-10-26 re-ran the same offline smoke script (exit 0); all seven cases remained deterministic, within the eight-chunk/400-content/512-final bounds and matched the recorded token counts.
 
 Sources checked: [markdown-it-py parsing](https://markdown-it-py.readthedocs.io/en/latest/using.html), [Markdown security](https://markdown-it-py.readthedocs.io/en/latest/security.html), [Hugging Face tokenizer interface](https://huggingface.co/docs/transformers/main_classes/tokenizer), and the merged [T02 manifest/runtime evidence](T02_EVIDENCE.md). HTML is inspected as tokens for removal, never rendered.
 
