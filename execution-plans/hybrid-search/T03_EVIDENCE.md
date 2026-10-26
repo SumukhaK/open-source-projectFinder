@@ -100,7 +100,9 @@ All nine backend `run` steps were executed verbatim from the workflow in a fresh
 
 The sole test change is a module-level `os.name != "posix"` marker. Linux runs every catalogue test, including the existing old-SQLite refusal tests; no fixture changes or SQLite-based skips were added. A structural comparison confirms that removing the two new runtime steps restores the prior workflow exactly: job permissions, timeouts, caching, existing commands, other jobs and the quality gate are unchanged. Dependency locks, the catalogue/schema, shared gate and refusal tests are unchanged. Backend operator notes clarify Linux-native absolute paths and append-only migrations starting with migration 2.
 
-Local logs are retained under ignored `reports/t03/ci-runtime-fix/`. This local execution verifies the backend commands; GitHub must separately verify action integration, cache handling and the remaining jobs. The new remote run will be recorded here after it completes. Trusted review and merge remain pending.
+Remote verification on 2026-10-26: [CI run 40260379712](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40260379712) passed for implementation head `4b8bebec510a92dab57619dae44eb60610de2037`. All five jobs passed: backend, mobile/E2E, dependency audit, secret scan and quality gate. The backend log confirms the pip cache restored, the archive checksum matched, **Python 3.11.17 / SQLite 3.53.1**, **222 tests passed** in 5.03s with no skips, and **97.8% combined / 95.3% branch coverage**. Ruff, Bandit and the cache post-step also succeeded.
+
+Local and downloaded CI logs are retained under ignored `reports/t03/ci-runtime-fix/`. This evidence update changes documentation only; the PR's latest commit must still pass its own required CI and trusted review. The run above identifies the verified implementation exactly, not a later commit. Trusted review and merge remain pending.
 
 ## Migration, compatibility and rollback
 
