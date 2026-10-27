@@ -137,7 +137,7 @@ Inspect `readme_status` and `omissions`; metadata-only, parser-clipped and chunk
 
 Rollback is a code revert with no schema/data migration. Render output as plain text, never as trusted HTML. See [T05 evidence](../execution-plans/hybrid-search/T05_EVIDENCE.md) for tests, real-tokenizer verification, explicit clipping tradeoffs and remaining integration limits.
 
-## Raw content and provenance (T06, awaiting review)
+## Raw content and provenance (T06, merged)
 
 `app/services/archive_content.py::persist_revision` writes bounded raw/normalized files and one `pending` catalogue revision in the same caller-owned write transaction. It requires `ArchiveStore.connect(write=True)` and schema v2. It does not call GitHub, embed text, write `archive_chunks`, publish a revision or use Milvus; T08/T09 own those steps.
 

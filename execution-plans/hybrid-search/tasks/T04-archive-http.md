@@ -1,6 +1,6 @@
 # T04: Add bounded conditional GitHub archive reads
 
-Status: Awaiting review in [PR #19](https://github.com/SumukhaK/open-source-projectFinder/pull/19). Implementation and verification: [T04 evidence](../T04_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged via [PR #19](https://github.com/SumukhaK/open-source-projectFinder/pull/19) as `d2354e9` (2026-10-26). Implementation and verification: [T04 evidence](../T04_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

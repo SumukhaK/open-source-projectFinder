@@ -84,7 +84,7 @@ T01 feasibility uses pinned Milvus2.6.26 / PyMilvus2.6.17 and 1k synthetic384-di
 - Use T02's pinned tokenizer to verify at most 400 content tokens, 512 final prefixed/titled tokens and eight chunks; metadata description/topics/language affect semantic identity while stars do not.
 - Bind stable chunk IDs to numeric repository identity, semantic revision and ordinal; algorithm/model changes invalidate hashes. No schema/publication/ingestion work in this slice. [Evidence](execution-plans/hybrid-search/T05_EVIDENCE.md).
 
-## Raw content and provenance (T06, awaiting review)
+## Raw content and provenance (T06, merged)
 
 - Persist only bounded, private, content-addressed raw README bytes and canonical normalized JSON; reject traversal, absolute paths, symlink escapes and non-regular targets. POSIX roots/shards are 0700 and files 0600.
 - Store revision identity (`semantic_hash`), Git file blob SHA, optional resolved commit SHA, source endpoint, ETag/Last-Modified, byte count, truncation and preparation/model versions in schema v2. Never conflate the blob SHA with a commit or branch ref.
