@@ -50,6 +50,23 @@ MIGRATIONS = (
                 REFERENCES archive_documents (repo_id, revision) ON DELETE CASCADE
         ) STRICT""",
     ),
+    (
+        "ALTER TABLE archive_documents ADD COLUMN normalized_path TEXT",
+        """ALTER TABLE archive_documents ADD COLUMN source_endpoint TEXT CHECK (
+            source_endpoint IS NULL OR length(trim(source_endpoint)) > 0)""",
+        """ALTER TABLE archive_documents ADD COLUMN source_ref TEXT CHECK (
+            source_ref IS NULL OR (length(source_ref) = 40
+                AND source_ref NOT GLOB '*[^0-9a-f]*'))""",
+        """ALTER TABLE archive_documents ADD COLUMN blob_sha TEXT CHECK (
+            blob_sha IS NULL OR (length(blob_sha) = 40
+                AND blob_sha NOT GLOB '*[^0-9a-f]*'))""",
+        "ALTER TABLE archive_documents ADD COLUMN etag TEXT",
+        "ALTER TABLE archive_documents ADD COLUMN last_modified TEXT",
+        """ALTER TABLE archive_documents ADD COLUMN raw_bytes INTEGER CHECK (
+            raw_bytes IS NULL OR raw_bytes >= 0)""",
+        """ALTER TABLE archive_documents ADD COLUMN truncated INTEGER NOT NULL
+            DEFAULT 0 CHECK (truncated IN (0, 1))""",
+    ),
 )
 
 

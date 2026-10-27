@@ -101,7 +101,7 @@ def test_migration_is_idempotent_and_preserves_stable_ids(tmp_path):
     store.migrate()
     reopened = archive_store.ArchiveStore(settings)
     with reopened.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 2
         assert db.execute(
             "SELECT repo_id, full_name FROM archive_repositories"
         ).fetchall()[0][:] == (101, "owner/project")
@@ -112,6 +112,48 @@ def test_migration_is_idempotent_and_preserves_stable_ids(tmp_path):
             row[0]
             for row in db.execute("SELECT name FROM sqlite_schema WHERE type='table'")
         } == {"archive_repositories", "archive_documents", "archive_chunks"}
+
+
+def test_existing_v1_catalogue_upgrades_to_v2_without_data_loss(tmp_path):
+    directory = tmp_path / "private"
+    directory.mkdir(mode=0o700)
+    path = directory / "catalogue.sqlite3"
+    with sqlite3.connect(path) as db:
+        db.execute("PRAGMA foreign_keys=ON")
+        for statement in archive_store.MIGRATIONS[0]:
+            db.execute(statement)
+        db.execute("PRAGMA user_version=1")
+        db.execute(f"PRAGMA application_id={archive_store.APPLICATION_ID}")
+        db.execute(
+            "INSERT INTO archive_repositories (repo_id, full_name) VALUES (101, 'owner/project')"
+        )
+        db.execute(
+            "INSERT INTO archive_documents (repo_id, revision) VALUES (101, 'rev-one')"
+        )
+    path.chmod(0o600)
+
+    store = archive_store.ArchiveStore(settings_for(tmp_path))
+
+    with store.connect() as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 2
+        row = db.execute(
+            "SELECT state, normalized_path, blob_sha, raw_bytes, truncated "
+            "FROM archive_documents"
+        ).fetchone()
+        assert row[:] == ("pending", None, None, None, 0)
+        columns = {
+            item[1] for item in db.execute("PRAGMA table_info(archive_documents)")
+        }
+        assert {
+            "normalized_path",
+            "source_endpoint",
+            "source_ref",
+            "blob_sha",
+            "etag",
+            "last_modified",
+            "raw_bytes",
+            "truncated",
+        } <= columns
 
 
 def test_auth_database_is_untouched(tmp_path):
@@ -315,7 +357,7 @@ def test_migration_failure_rolls_back_ddl_and_version(tmp_path, monkeypatch):
     monkeypatch.undo()
     store = archive_store.ArchiveStore(settings_for(tmp_path))
     with store.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 2
 
 
 def test_private_file_and_wal_sidecars_and_bounded_lock_wait(catalogue):

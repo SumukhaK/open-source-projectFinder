@@ -13,6 +13,8 @@ ARCHIVE_MAX_CHUNKS = 8
 ARCHIVE_TITLE_TOKENS = 64
 ARCHIVE_TOKEN_PROBE_CHARS = 8192
 ARCHIVE_MARKDOWN_MAX_NESTING = 20
+# Defensive storage bound; acquisition and preparation already enforce smaller limits.
+ARCHIVE_CONTENT_MAX_BYTES = 1024 * 1024
 
 
 class Settings(BaseSettings):

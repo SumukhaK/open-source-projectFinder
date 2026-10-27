@@ -77,9 +77,17 @@ T01 feasibility uses pinned Milvus2.6.26 / PyMilvus2.6.17 and 1k synthetic384-di
 - Versioned atomic migrations preserve stable numeric repository IDs, document revisions and chunk IDs; enforce primary/foreign keys, revision/vector state values and unique chunk ordinals. Refuse unrelated databases or a newer schema; never reset or downgrade.
 - Short explicit transactions commit/roll back and close; real WSL evidence covers reader snapshots, concurrent commits, truncate checkpoint, reopen and integrity. No raw-content acquisition, embeddings, vector publication or user-query storage in T03. See [evidence](execution-plans/hybrid-search/T03_EVIDENCE.md).
 
-## Deterministic archive preparation (T05, awaiting review)
+## Deterministic archive preparation (T05, merged)
 
 - Prepare bounded metadata and decoded README bytes without network, execution or persistence; missing/invalid/oversized README retains a metadata overview with explicit status.
 - Normalize Markdown/Unicode deterministically, discard HTML/images/navigation, deduplicate section bodies and record source/parser/token/chunk clipping.
 - Use T02's pinned tokenizer to verify at most 400 content tokens, 512 final prefixed/titled tokens and eight chunks; metadata description/topics/language affect semantic identity while stars do not.
 - Bind stable chunk IDs to numeric repository identity, semantic revision and ordinal; algorithm/model changes invalidate hashes. No schema/publication/ingestion work in this slice. [Evidence](execution-plans/hybrid-search/T05_EVIDENCE.md).
+
+## Raw content and provenance (T06, awaiting review)
+
+- Persist only bounded, private, content-addressed raw README bytes and canonical normalized JSON; reject traversal, absolute paths, symlink escapes and non-regular targets. POSIX roots/shards are 0700 and files 0600.
+- Store revision identity (`semantic_hash`), Git file blob SHA, optional resolved commit SHA, source endpoint, ETag/Last-Modified, byte count, truncation and preparation/model versions in schema v2. Never conflate the blob SHA with a commit or branch ref.
+- Write files through a temporary file plus atomic replace before the catalogue insert; on database failure remove newly created files so no active row references missing content. Identical replay is idempotent and repairs missing files; differing provenance is refused.
+- Reject mismatched repository IDs and SHAs, absent required provenance, oversized content and a missing write transaction. Absent README content stores normalized metadata with explicit status and no raw/blob reference.
+- No chunks, embeddings, vector publication, user-query storage, object store, clone or live ingestion. Files must be rebuildable without Milvus. [Evidence](execution-plans/hybrid-search/T06_EVIDENCE.md).
