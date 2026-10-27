@@ -502,6 +502,7 @@ def test_existing_content_with_the_wrong_hash_is_not_overwritten(content):
     target = content.root / content.path_for("raw", digest)
     target.parent.mkdir(parents=True)
     target.write_bytes(b"corrupt")
+    target.chmod(0o600)
 
     with pytest.raises(ContentIdentityError):
         content.ensure("raw", data)
@@ -609,6 +610,7 @@ def test_existing_content_with_the_wrong_size_is_not_overwritten(content):
     target = content.root / content.path_for("raw", digest)
     target.parent.mkdir(parents=True)
     target.write_bytes(b"short")
+    target.chmod(0o600)
 
     with pytest.raises(ContentIdentityError):
         content.ensure("raw", data)

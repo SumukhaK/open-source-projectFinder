@@ -142,7 +142,7 @@ def test_existing_v1_catalogue_upgrades_to_v2_without_data_loss(tmp_path):
         ).fetchone()
         assert row[:] == ("pending", None, None, None, 0)
         columns = {
-            item[0] for item in db.execute("PRAGMA table_info(archive_documents)")
+            item[1] for item in db.execute("PRAGMA table_info(archive_documents)")
         }
         assert {
             "normalized_path",
