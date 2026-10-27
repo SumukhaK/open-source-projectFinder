@@ -1,6 +1,6 @@
 # T06: Persist bounded raw content and provenance atomically
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review in the T06 PR. Implementation and verification: [T06 evidence](../T06_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

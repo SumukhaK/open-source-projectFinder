@@ -1,6 +1,6 @@
 # Task acceptance tracker
 
-T00-T05 are **Merged**; T06-T29 are **Not started**. T03's listed prerequisites (T00, T01) are merged, and its real WAL path passes with the dedicated WSL worker's SQLite 3.53.1 (see [T03 evidence](T03_EVIDENCE.md)). Publishing this handbook completes none of the implementation tasks. Owner: the implementer records progress/PR links; only a trusted reviewer records acceptance. [Review format](REVIEW_CHECKLIST.md).
+T00-T05 are **Merged**; T06 is **Awaiting review**; T07-T29 are **Not started**. T03's listed prerequisites (T00, T01) are merged, and its real WAL path passes with the dedicated WSL worker's SQLite 3.53.1 (see [T03 evidence](T03_EVIDENCE.md)). Publishing this handbook completes none of the implementation tasks. Owner: the implementer records progress/PR links; only a trusted reviewer records acceptance. [Review format](REVIEW_CHECKLIST.md).
 
 Status values: Not started, In progress, Awaiting review, Changes requested, Blocked, Accepted, Merged. The `[ ]` marker in a row is editable: change it to `[x]` only after exact-head review acceptance and passing required checks. This table uses explicit checkbox text for row alignment; it is not an automatic GitHub task-list widget.
 

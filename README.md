@@ -4,11 +4,12 @@ Turn a project idea into a search for existing open-source implementations.
 
 RepoRadar is a planned AI-driven discovery service with a React-based mobile client and a Python FastAPI backend. Users describe an idea by text or voice; the backend combines semantic retrieval from Milvus with GitHub public repository search to find similar projects.
 
-**Status (2026-10-26):**
+**Status (2026-10-27):**
 
 - **Implemented:** mobile branding and GitHub-only signup/login (Expo / React Native + FastAPI); authenticated public GitHub keyword search with page-size/sort controls, repository details and account-specific favourites.
 - **Hybrid-search foundations merged:** local Milvus runs on the development laptop's CPU and GPU (T01), and a pinned CPU embedding model turns text into vectors (T02). Neither is connected to search yet.
 - **Archive building blocks merged:** a separate private SQLite archive catalogue (T03), a worker-only bounded GitHub reader that verifies repository identity and Git blob hashes (T04), and deterministic metadata/README chunking within the real tokenizer limits (T05). None is wired into ingestion, search or auth yet. See the [T03](execution-plans/hybrid-search/T03_EVIDENCE.md), [T04](execution-plans/hybrid-search/T04_EVIDENCE.md) and [T05](execution-plans/hybrid-search/T05_EVIDENCE.md) evidence.
+- **Archive content storage awaiting review:** T06 adds a private content-addressed raw/normalized file store, schema v2 provenance columns and atomic revision persistence; it is not merged and does not ingest or publish content. See [T06 evidence](execution-plans/hybrid-search/T06_EVIDENCE.md).
 - **Planned:** repository ingestion into Milvus, semantic and hybrid matching, the mobile discovery screens and voice input.
 - **Still to validate:** live GitHub OAuth and native-device checks.
 
@@ -91,7 +92,7 @@ See [backend setup and checks](backend/README.md) and [mobile setup and checks](
 - Quality pipeline: free open-source validation, explicit coverage/security gates and review-controlled delivery.
 - Backend discovery: public GitHub search/details and account-specific favourites, with verified keyword search controls and limits.
 - Discovery hardening: non-ASCII ideas are searchable, GitHub rate limits return `Retry-After`, and request-size limits use a public ASGI middleware.
-- Hybrid search handbook: T00 readiness (PR #13), T01 Milvus CPU/GPU feasibility (PR #15) and T02 CPU embedding adapter (PR #16), T03 archive catalogue (PR #18), T04 bounded archive GitHub reads (PR #19) and T05 content preparation (PR #20) merged; corpus capacity and T06-T29 remain planned.
+- Hybrid search handbook: T00 readiness (PR #13), T01 Milvus CPU/GPU feasibility (PR #15), T02 CPU embedding adapter (PR #16), T03 archive catalogue (PR #18), T04 bounded archive GitHub reads (PR #19) and T05 content preparation (PR #20) merged; T06 raw content/provenance is awaiting review; corpus capacity and T07-T29 remain planned.
 - Semantic search, ingestion, mobile discovery and voice: planned; advanced search syntax needs an explicit input contract.
 
 See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md), and [project tracker](PROJECT_TRACKER.md).
@@ -123,6 +124,7 @@ The [OpenCode execution handbook](execution-plans/hybrid-search/README.md) conta
 | T03 catalogue | Merged (PR #18) | Isolated SQLite v1 migrations; real WAL proof on worker SQLite 3.53.1; auth unchanged ([evidence](execution-plans/hybrid-search/T03_EVIDENCE.md)) |
 | T04 archive GitHub reads | Merged (PR #19) | Worker-only bounded reader; numeric repository identity, Git blob SHA content checks, `Retry-After` and secondary rate limits honoured ([evidence](execution-plans/hybrid-search/T04_EVIDENCE.md)) |
 | T05 content preparation | Merged (PR #20) | Bounded Markdown/metadata passages cut at word boundaries, versioned identity and tokenizer budgets ([evidence](execution-plans/hybrid-search/T05_EVIDENCE.md)) |
-| T06-T29 | Not started | Require their task-specific merged prerequisites and policy approvals |
+| T06 raw content and provenance | Awaiting review | Private content-addressed raw/normalized files, schema v2 provenance and atomic revision persistence; no ingestion or publication ([evidence](execution-plans/hybrid-search/T06_EVIDENCE.md)) |
+| T07-T29 | Not started | Require their task-specific merged prerequisites and policy approvals |
 
 Still open: archive and rebuild capacity on the 16 GB development laptop, the eight policy decisions (corpus cap, licences, retention and others) and the unmerged mobile discovery foundation. Search quality is not measured until T27.
