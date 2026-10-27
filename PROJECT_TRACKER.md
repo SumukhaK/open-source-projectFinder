@@ -656,3 +656,18 @@ Plan and acceptance:
 Progress: implementation, TDD and real GPU 1k verification complete; [evidence](execution-plans/hybrid-search/T07_EVIDENCE.md). Windows 464 passed (41 platform/integration skips), WSL 504 passed (only opt-in integration skipped), with 98.4% combined / 97.3% branch coverage on the unchanged Linux gate. Ruff/format/Bandit passed. Two implementation-review findings were fixed through RED/GREEN. Required PR CI and independent trusted acceptance remain pending; no merge. The code index covers an older checkout and misses the archive modules; current source reads were used instead.
 
 Main advanced through T06 and T16 while T07 was running. Merged main `e9b95ded3455dec7ee61df74c1fae2cb5300c0e2` into the same branch, preserving both tasks' code/settings/docs and all tracker history. The full WSL suite after conflict resolution passed: **598 tests**, one opt-in server skip, **97.5% combined / 96.2% branch coverage**, Ruff/format/Bandit pass. [PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28) remains T07 only relative to main.
+
+
+## Tracker sync for T07 - 2026-10-27
+
+User request (verbatim):
+
+```text
+merge, update tracker and hsow me what is the overall status so far
+```
+
+Scope: documentation only, on a separate docs branch the owner approved (`claude/docs-t07-sync`), because the reviewer's usual branch holds the node-forge bump PR #27 (planned merge 2026-10-29). PR #28 was merged by the reviewed-merge workflow on its exact reviewed head before this sync.
+
+- **T07** ([PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28)): the first review of `c721b8d` found sound code but a merge conflict with main and no required CI. Main was merged in, and the exact-head acceptance of `265d34201f679d21059450a71d7c031b7f28944d` ([review 5665285392](https://github.com/SumukhaK/open-source-projectFinder/pull/28#pullrequestreview-5665285392)) followed, with [CI 40484923241](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40484923241) passing. Merged as `21e6db3` on 2026-10-27.
+- Open: three optional nits (ordinal bound, manifest dimensions, `close()` guard); capacity, relevance and latency beyond the 1k synthetic proof; the serving alias and activation (T08/T13).
+- Next unblocked: **T08** (publish revisions with crash-safe reconciliation; needs T06 + T07, both merged). T17 then needs T08 and T16.

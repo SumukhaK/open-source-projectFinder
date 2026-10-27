@@ -167,7 +167,7 @@ The store rejects traversal, absolute paths, symlinked components/targets and no
 
 Rollback: migration 2 is forward-only. Reverting only the T06 code after upgrade makes the T03 version check refuse the newer schema, so stop consumers and restore a pre-upgrade consistent snapshot, or keep the T06 code. Do not edit migration 1 or delete the catalogue to bypass a migration error. Content files are immutable; remove only unreferenced files after confirming no document points at them. See [T06 evidence](../execution-plans/hybrid-search/T06_EVIDENCE.md) for tests, the local Windows limitation and Linux-CI coverage of POSIX permission/symlink and upgrade cases.
 
-## Local vector collection adapter (T07, awaiting review)
+## Local vector collection adapter (T07, merged)
 
 `app/integrations/milvus.py` provides synchronous `MilvusAdapter`, `VectorChunk` and `ScalarFilters`. Nothing imports it from API startup. Create it explicitly with `MilvusAdapter.connect(Settings(), ModelManifest.load())`, then call `ensure_collection()` from the worker setup path; close the client in `finally`. Keep blocking SDK calls outside an async request loop. T13 owns request admission/cancellation and the total hybrid deadline.
 

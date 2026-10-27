@@ -1,6 +1,6 @@
 # T07 Milvus adapter evidence — 2026-10-27
 
-Status: **Awaiting review** in [PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28). T07 only; no acceptance, merge, ingestion, alias activation, API wiring or T06/T08 work. Exact head/CI links are recorded in the PR description and [TRACKER](TRACKER.md).
+Status: **Merged** via [PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28) as `21e6db3` (2026-10-27) after exact-head review of `265d342` and passing [CI 40484923241](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40484923241). T07 only; no acceptance, merge, ingestion, alias activation, API wiring or T06/T08 work. Exact head/CI links are recorded in the PR description and [TRACKER](TRACKER.md).
 
 ## Base and scope
 

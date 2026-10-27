@@ -25,4 +25,4 @@ T05 prepares small, repeatable text sections from supplied repository descriptio
 
 T06 stores the bounded README bytes and prepared sections in a private local archive, together with provenance such as source hashes and versions. It is merged. It does not download repositories, publish them to the search index or change the app's search results.
 
-T07 adds a small component for storing and retrieving the archive's searchable vectors in local Milvus. A real GPU test used 1,000 synthetic records and verified filtering, updates and deletion. It is awaiting review; projects are not being downloaded or added to the app's search yet.
+T07 adds a small component for storing and retrieving the archive's searchable vectors in local Milvus. A real GPU test used 1,000 synthetic records and verified filtering, updates and deletion. It is merged; projects are not being downloaded or added to the app's search yet.
