@@ -235,8 +235,9 @@ def persist_revision(
     """Write files first, then insert a pending catalogue revision atomically.
 
     The caller owns the SQL transaction and must pass an open write transaction
-    (``ArchiveStore.connect(write=True)``). A replay with identical provenance
-    is idempotent and repairs missing content files; any difference is refused.
+    (``ArchiveStore.connect(write=True)``). A replay with identical content
+    identity is idempotent, refreshes the observation provenance and repairs
+    missing content files; a content identity difference is refused.
     """
     if not isinstance(content, ArchiveContentStore):
         raise TypeError("content must be an ArchiveContentStore")
@@ -309,6 +310,8 @@ def persist_revision(
 
     if raw is None and readme is not None and readme.text is not None:
         raw = readme.text.encode("utf-8")
+    if raw is not None and readme is None:
+        raise RevisionIdentityError("raw content requires a README document")
     if raw is not None:
         if not isinstance(raw, bytes):
             raise RevisionIdentityError("raw content must be bytes or None")
@@ -337,34 +340,40 @@ def persist_revision(
     normalized_path = content.path_for("normalized", normalized_sha)
     raw_bytes = len(raw) if raw is not None else None
     truncated = int(source_truncated)
-    expected = (
+    identity = (
         raw_path,
         raw_sha,
         normalized_path,
         normalized_sha,
+        blob_sha,
+        raw_bytes,
+        truncated,
         prepared.model_revision,
         prepared.normalizer_version,
         prepared.chunker_version,
+    )
+    observation = (
         endpoint,
         source_ref,
-        blob_sha,
         source.etag,
         source.last_modified,
-        raw_bytes,
-        truncated,
     )
     existing = db.execute(
         "SELECT raw_path, raw_sha256, normalized_path, normalized_sha256, "
-        "model_revision, normalizer_version, chunker_version, source_endpoint, "
-        "source_ref, blob_sha, etag, last_modified, raw_bytes, truncated "
-        "FROM archive_documents WHERE repo_id=? AND revision=?",
+        "blob_sha, raw_bytes, truncated, model_revision, normalizer_version, "
+        "chunker_version FROM archive_documents WHERE repo_id=? AND revision=?",
         (repo_id, revision),
     ).fetchone()
     if existing is not None:
-        if tuple(existing) != expected:
+        if tuple(existing) != identity:
             raise RevisionConflict(
-                "revision already exists with different content or provenance"
+                "revision already exists with different content identity"
             )
+        db.execute(
+            "UPDATE archive_documents SET source_endpoint=?, source_ref=?, "
+            "etag=?, last_modified=? WHERE repo_id=? AND revision=?",
+            (*observation, repo_id, revision),
+        )
         if raw is not None:
             content.ensure("raw", raw)
         content.ensure("normalized", normalized)

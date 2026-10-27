@@ -26,7 +26,9 @@ Status: **Awaiting review** in [PR #22](https://github.com/SumukhaK/open-source-
 | Path confinement | Reject traversal, absolute paths, backslashes, symlinked components/targets and non-regular targets; POSIX roots/shards are 0700 and files 0600; existing shared permissions are refused, not repaired |
 | Atomic write | Exclusive temporary file in the target shard, flush + fsync, then `os.replace`; POSIX also fsyncs the parent directory; temporary files are removed on failure |
 | Database failure | Newly created files are removed when the document insert fails, so no active catalogue row points at missing content |
-| Replay | Identical content and provenance is idempotent, creates no duplicate row/file and repairs a missing file; any provenance difference raises `RevisionConflict` without overwriting |
+| Replay | Identical content identity is idempotent, creates no duplicate row/file and repairs a missing file; a changed content identity raises `RevisionConflict` without overwriting |
+| Observation refresh | A replay with identical content identity updates `source_endpoint`, `source_ref`, `etag` and `last_modified` in the same transaction and returns `replayed=True`, so a T19 refresh does not fail on unchanged content |
+| Repository metadata | `archive_repositories.full_name` and `metadata_json` are first-seen values and are not refreshed by a replay; T10/T19 own refreshing repository metadata |
 | Existing content | A file whose size or digest does not match is rejected and left untouched |
 | Recovery read | Reads verify the expected SHA-256 and refuse tampered or shared-permission files; no GitHub, model or Milvus call is needed |
 
@@ -55,6 +57,27 @@ Platform/date: Windows, Python 3.11.9, 2026-10-27. Commands ran from the isolate
 The focused tests cover path traversal and absolute paths, symlinked directories/targets/roots (POSIX), shared POSIX permissions, duplicate replay with file repair, conflicting provenance, interrupted replace and fsync disk-full failures, wrong-size/wrong-digest existing files, database-trigger failure rollback, absent optional content, mismatched repository IDs, strict SHA validation, oversize content/metadata, open-transaction requirement, unmigrated schema refusal, tamper detection and portable v1 -> v2 migration. `test_archive_store.py` adds a POSIX v1 -> v2 upgrade through `ArchiveStore` and updates the existing version assertions to 2.
 
 The first Linux run exposed two test-fixture defects, not production failures: fixture files were created with default POSIX modes, so the privacy check fired before the intended size/digest assertion, and the `sqlite3.Row` column probe iterated values instead of column names. Commit `d8029c8` sets the fixtures to 0600 and reads the name column; the rerun above passes. No production behavior or gate changed.
+
+## Review follow-up: identity vs observation
+
+Review of PR #22 found that `persist_revision` compared fetch observation (`source_endpoint`, `source_ref`, `etag`, `last_modified`) as part of content identity, so an unchanged repository would be rejected on its next refresh. The comparison is now split:
+
+- Content identity: `raw_path`, `raw_sha256`, `normalized_path`, `normalized_sha256`, `blob_sha`, `raw_bytes`, `truncated`, `model_revision`, `normalizer_version`, `chunker_version`. Any difference still raises `RevisionConflict`.
+- Observation provenance: the four fetch fields are updated on a matching replay in the caller's transaction. Missing content files are still repaired and `replayed=True` is returned.
+- A caller that supplies `raw` bytes without a `ReadmeDocument` now raises `RevisionIdentityError`; no file or row is written.
+- `archive_repositories.full_name`/`metadata_json` remain first-seen values (`ON CONFLICT(repo_id) DO NOTHING`); T10/T19 own refreshing them.
+
+| Stage | Command / actual result |
+| --- | --- |
+| Review RED | `pytest backend/tests/test_archive_content.py -q -k 'replay_updates or different_blob or different_normalized or raw_content_without_readme'` -> exit 1, **5 failed / 2 passed / 51 deselected**: four observation refreshes raised `RevisionConflict`, raw-without-README did not raise |
+| Review GREEN focused | `pytest backend/tests/test_archive_content.py -q` -> exit 0, **52 passed / 6 skipped** |
+| Review full regression | `pytest backend/tests scripts/tests -q --cov=backend/app --cov-branch --cov-report=term-missing --cov-report=json:reports/t06/backend-coverage.json` -> exit 0, **442 passed / 47 skipped**, one inherited Starlette/httpx warning, 22.04s |
+| Review coverage gate | `python scripts/quality.py coverage reports/t06/backend-coverage.json` -> exit 0, **93.6% combined / 91.2% branches**, unchanged gate; new module 88% locally (POSIX-only cases skipped) |
+| Review lint / format | `ruff check backend scripts`; `ruff format --check backend scripts` -> exit 0 |
+| Review security | `bandit -r backend/app -f json -o reports/t06/bandit.json` -> exit 0, 0 findings, 2,769 LOC |
+| Review whitespace | `git diff --check` -> clean |
+
+The new tests cover README ETag/Last-Modified refresh, metadata ETag refresh when no README exists, `source_ref` refresh, endpoint refresh after a rename, rejection of a different `blob_sha` under the same revision, rejection of different normalized content under the same revision, and raw bytes without a README.
 
 ## Migration compatibility and rollback
 

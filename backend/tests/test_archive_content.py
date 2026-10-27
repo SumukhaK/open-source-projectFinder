@@ -36,6 +36,13 @@ BLOB_SHA = hashlib.sha1(
 COMMIT_SHA = "b" * 40
 
 
+def git_blob_sha(text):
+    encoded = text.encode("utf-8")
+    return hashlib.sha1(
+        b"blob %d\0" % len(encoded) + encoded, usedforsecurity=False
+    ).hexdigest()
+
+
 class CharacterEncoder:
     max_seq_length = 512
 
@@ -296,6 +303,186 @@ def test_conflicting_replay_is_rejected_without_overwriting(db, content, adapter
     assert row["model_revision"] == prepared.model_revision
     assert row["normalized_path"] == stored.normalized_path
     assert content_files(content.root) == before
+
+
+def test_replay_updates_readme_observation_provenance(db, content, adapter):
+    prepared = prepared_for(adapter)
+    metadata = metadata_for()
+    readme = readme_for()
+    stored = persist(db, content, metadata=metadata, prepared=prepared, readme=readme)
+    files = content_files(content.root)
+
+    updated = replace(
+        readme,
+        response=replace(
+            readme.response,
+            etag='"new-readme-etag"',
+            last_modified="Tue, 27 Oct 2026 10:00:00 GMT",
+        ),
+    )
+    replay = persist(db, content, metadata=metadata, prepared=prepared, readme=updated)
+
+    row = document_row(db)
+    assert replay.replayed is True
+    assert replay.normalized_path == stored.normalized_path
+    assert row["etag"] == '"new-readme-etag"'
+    assert row["last_modified"] == "Tue, 27 Oct 2026 10:00:00 GMT"
+    assert row["source_endpoint"] == readme.response.url
+    assert row["source_ref"] is None
+    assert db.execute("SELECT count(*) FROM archive_documents").fetchone()[0] == 1
+    assert content_files(content.root) == files
+
+
+def test_replay_updates_metadata_observation_provenance_without_readme(
+    db, content, adapter
+):
+    prepared = prepared_for(adapter, readme=None)
+    metadata = metadata_for()
+    stored = persist(db, content, metadata=metadata, prepared=prepared, readme=None)
+
+    updated = replace(
+        metadata,
+        response=replace(
+            metadata.response,
+            etag='"new-metadata-etag"',
+            last_modified="Tue, 27 Oct 2026 11:00:00 GMT",
+        ),
+    )
+    replay = persist(db, content, metadata=updated, prepared=prepared, readme=None)
+
+    row = document_row(db)
+    assert replay.replayed is True
+    assert replay.normalized_path == stored.normalized_path
+    assert row["etag"] == '"new-metadata-etag"'
+    assert row["last_modified"] == "Tue, 27 Oct 2026 11:00:00 GMT"
+    assert row["source_endpoint"] == metadata.response.url
+    assert row["source_ref"] is None
+
+
+def test_replay_updates_source_ref_observation_provenance(db, content, adapter):
+    prepared = prepared_for(adapter)
+    metadata = metadata_for()
+    readme = readme_for()
+    persist(
+        db,
+        content,
+        metadata=metadata,
+        prepared=prepared,
+        readme=readme,
+        source_ref=COMMIT_SHA,
+    )
+
+    new_ref = "c" * 40
+    replay = persist(
+        db,
+        content,
+        metadata=metadata,
+        prepared=prepared,
+        readme=readme,
+        source_ref=new_ref,
+    )
+
+    row = document_row(db)
+    assert replay.replayed is True
+    assert row["source_ref"] == new_ref
+    assert row["blob_sha"] == BLOB_SHA
+
+
+def test_replay_updates_endpoint_observation_provenance_after_rename(
+    db, content, adapter
+):
+    prepared = prepared_for(adapter)
+    metadata = metadata_for()
+    readme = readme_for()
+    persist(db, content, metadata=metadata, prepared=prepared, readme=readme)
+
+    renamed_url = "https://api.github.com/repos/new-owner/new-name/readme"
+    renamed = replace(
+        readme,
+        response=replace(readme.response, url=renamed_url),
+    )
+    renamed_metadata = replace(
+        metadata,
+        full_name="new-owner/new-name",
+        response=replace(
+            metadata.response,
+            url="https://api.github.com/repos/new-owner/new-name",
+        ),
+    )
+    replay = persist(
+        db,
+        content,
+        metadata=renamed_metadata,
+        prepared=prepared,
+        readme=renamed,
+    )
+
+    row = document_row(db)
+    assert replay.replayed is True
+    assert row["source_endpoint"] == renamed_url
+    assert row["etag"] == readme.response.etag
+    assert db.execute("SELECT count(*) FROM archive_documents").fetchone()[0] == 1
+
+
+def test_replay_rejects_a_different_blob_sha_under_the_same_revision(
+    db, content, adapter
+):
+    prepared = prepared_for(adapter)
+    metadata = metadata_for()
+    readme = readme_for()
+    stored = persist(db, content, metadata=metadata, prepared=prepared, readme=readme)
+
+    changed_text = "# Project\n\nDifferent bytes.\n"
+    changed = replace(
+        readme,
+        text=changed_text,
+        size=len(changed_text.encode("utf-8")),
+        blob_sha=git_blob_sha(changed_text),
+    )
+    with pytest.raises(RevisionConflict):
+        persist(db, content, metadata=metadata, prepared=prepared, readme=changed)
+
+    row = document_row(db)
+    assert row["blob_sha"] == BLOB_SHA
+    assert row["raw_path"] == stored.raw_path
+
+
+def test_replay_rejects_different_normalized_content_under_the_same_revision(
+    db, content, adapter
+):
+    prepared = prepared_for(adapter)
+    metadata = metadata_for()
+    readme = readme_for()
+    stored = persist(db, content, metadata=metadata, prepared=prepared, readme=readme)
+    before = content_files(content.root)
+
+    with pytest.raises(RevisionConflict):
+        persist(
+            db,
+            content,
+            metadata=metadata,
+            prepared=replace(prepared, omissions=("chunk_limit",)),
+            readme=readme,
+        )
+
+    row = document_row(db)
+    assert row["normalized_path"] == stored.normalized_path
+    assert content_files(content.root) == before
+
+
+def test_raw_content_without_readme_is_rejected(db, content, adapter):
+    with pytest.raises(RevisionIdentityError):
+        persist(
+            db,
+            content,
+            metadata=metadata_for(),
+            prepared=prepared_for(adapter, readme=None),
+            readme=None,
+            raw=b"orphan raw bytes",
+        )
+
+    assert document_row(db) is None
+    assert content_files(content.root) == []
 
 
 @pytest.mark.parametrize(
