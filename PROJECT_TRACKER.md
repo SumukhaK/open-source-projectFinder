@@ -584,3 +584,20 @@ Scope: documentation only. PR #20 was merged by the reviewed-merge workflow on i
 - **T04** ([PR #19](https://github.com/SumukhaK/open-source-projectFinder/pull/19)): exact-head acceptance of `1ada43a36382baa7c790f0c829a810b5f4a0c590` ([review 5649001232](https://github.com/SumukhaK/open-source-projectFinder/pull/19#pullrequestreview-5649001232)), [CI 40289498384](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40289498384) passed, merged as `d2354e9` on 2026-10-26. Open: worker wiring (T09/T18) and live GitHub calls.
 - **T05** ([PR #20](https://github.com/SumukhaK/open-source-projectFinder/pull/20)): exact-head acceptance of `99c9c1711e8fa2decb1384871e144b7a3adc5e18` ([review 5652759721](https://github.com/SumukhaK/open-source-projectFinder/pull/20#pullrequestreview-5652759721)), [CI 40330742961](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40330742961) passed, merged as `adfd0f8` on 2026-10-26. Open: inline-HTML paragraphs are dropped whole (revisit in T27 relevance evaluation); `CHUNKER_VERSION` must be bumped for any later boundary change once content is ingested.
 - Unchanged blockers: policy decisions D1-D8 and prerequisites P1-P3 in [READINESS](execution-plans/hybrid-search/READINESS.md); the node-forge 1.4.0 dependency exception expires 2026-11-01, after which every PR's dependency audit fails until it is resolved.
+
+## T07: minimal Milvus collection adapter (2026-10-27, awaiting review)
+
+Request, verbatim:
+
+> PR merged. well done. now Read execution-plans/hybrid-search/OPENCODE_PROMPT.md, replace TASK_ID with T07, and execute only that task. Read all referenced documents, follow its instructions, raise a PR, then stop and wait for review.
+
+Base: `c821ce1e93c144482c6aaf934e7db6d88306464c`, latest fetched main. Branch: `codex/hybrid-t07-milvus-adapter`. T01/PR #15 (`7f94e2f`), T02/PR #16 (`e400076`) and T03/PR #18 (`776bf65`) are merged prerequisites. T06 is not a prerequisite and is not included. Pending corpus/retention/visibility decisions do not block synthetic adapter verification.
+
+Plan and acceptance:
+
+1. Read current manifest, catalogue/chunk identities, pinned SDK/server contracts and baseline tests. Baseline Windows suite: 390 passed, 40 platform skips; Docker/WSL stopped and 2.79 GiB RAM available, so real-server checks await headroom.
+2. TDD: central settings and bounded vector/filter records; collection schema/generation/profile checks; idempotent bounded upsert, readiness, search and ID-only deletion. Reject mismatched model/dimension/metric, malformed filters, partial writes and stale aliases. Keep raw content in the catalogue, disable dynamic fields, use normalized IP and explicit CPU/GPU selection.
+3. Verify against a real selected GPU server using synthetic data only, including filter/update/delete and maximum supported top-K. Record unavailable evidence honestly; preserve host settings and existing data. No ingestion, SQL publication, alias switching, API wiring or scheduler.
+4. Full tests/coverage, Ruff/format, Bandit, whitespace and secret inspection; update evidence/docs; inspect diff, push one PR, wait for required CI and independent review. Do not accept or merge.
+
+Progress: implementation, TDD and real GPU 1k verification complete; [evidence](execution-plans/hybrid-search/T07_EVIDENCE.md). Windows 464 passed (41 platform/integration skips), WSL 504 passed (only opt-in integration skipped), with 98.4% combined / 97.3% branch coverage on the unchanged Linux gate. Ruff/format/Bandit passed. Two implementation-review findings were fixed through RED/GREEN. Required PR CI and independent trusted acceptance remain pending; no merge. The code index covers an older checkout and misses the archive modules; current source reads were used instead.

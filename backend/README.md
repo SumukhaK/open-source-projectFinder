@@ -137,6 +137,37 @@ Inspect `readme_status` and `omissions`; metadata-only, parser-clipped and chunk
 
 Rollback is a code revert with no schema/data migration. Render output as plain text, never as trusted HTML. See [T05 evidence](../execution-plans/hybrid-search/T05_EVIDENCE.md) for tests, real-tokenizer verification, explicit clipping tradeoffs and remaining integration limits.
 
+## Local vector collection adapter (T07, awaiting review)
+
+`app/integrations/milvus.py` provides synchronous `MilvusAdapter`, `VectorChunk` and `ScalarFilters`. Nothing imports it from API startup. Create it explicitly with `MilvusAdapter.connect(Settings(), ModelManifest.load())`, then call `ensure_collection()` from the worker setup path; close the client in `finally`. Keep blocking SDK calls outside an async request loop. T13 owns request admission/cancellation and the total hybrid deadline.
+
+Use the already-pinned `pymilvus==2.6.17` and Milvus 2.6.26 from [the local runbook](../infra/milvus/README.md). Settings are `MILVUS_URI` (explicit HTTP 127.0.0.1 port), `MILVUS_TOKEN` (non-default `user:password`, at least 16 password characters), `MILVUS_PROFILE` (`gpu` default, or explicitly `cpu`), `MILVUS_COLLECTION` (`repo_chunks_e5small_v1`), `MILVUS_TIMEOUT` (10 seconds, >0 to 30), `MILVUS_BUILD_TIMEOUT` (120 seconds, >0 to 120), and `MILVUS_BATCH_SIZE` (64, 1-64). Secrets belong only in ignored environment files. Ordinary auth/search startup still needs no Milvus credentials/server.
+
+The generation fingerprint covers the complete T02 manifest, query/passage prefixes, normalized IP, schema version and scalar bounds. Collection description and every row carry that identity. Setup checks exact fields, dimensions, primary key, Strong consistency and disabled dynamic fields before creating a missing vector index or loading. An existing mismatch is refused without repair/drop. GPU_CAGRA and HNSW use IP; only the selected collection is loaded. A configured alias is rejected by checking the canonical collection name, so an old alias cannot silently direct writes/search to another generation. Alias switching and a durable activation record belong to T08; T07 never changes an alias.
+
+`upsert(chunks)` accepts a nonempty list/tuple of at most the configured batch size, rejects duplicate IDs within a batch, and checks the returned count and IDs. Repeating the same deterministic keys updates the same records. There is no automatic adapter replay after an uncertain or partial write: retry the complete stable-ID batch, then use `ready(chunks)` to compare all expected metadata and vectors under Strong consistency. A missing/old/mismatched row yields false; an unavailable/unloaded index raises an error. Readiness is not SQL activation or proof that growing rows have finished indexing. `delete(chunk_ids)` accepts bounded explicit SHA256 keys only; it cannot execute a caller-supplied delete expression.
+
+Rows contain `chunk_id`, `repo_id`, SHA256 content `revision`, `model_revision`, derived `generation`, `language`, `license`, Unix-seconds `pushed_at`, ordinal 0-7, `section`, bounded `snippet` and `vector`. The caller supplies the snippet (max 2048 UTF-8 bytes); full chunk text stays in the catalogue. Section is at most 512 bytes and language/license at most 128 each. Oversized values are rejected, never silently clipped. Unit-normalized finite vectors must have exactly 384 components.
+
+`search(vector, limit=200, filters=ScalarFilters(...))` accepts 1-1000 hits and only language/license strings, a nonnegative Unix-seconds `pushed_after`, and a positive numeric `repo_id`. Values go through Milvus filter parameters, never expression interpolation. It returns bounded chunk metadata and raw IP scores, without vectors. Scores are not probabilities. No implicit rolling cutoff, visibility/license policy, active-revision filtering or repository-level ranking is applied here; later services must enforce those before serving results. The query vector is transient and never written.
+
+Each operation passes the remaining configured budget to SDK calls; the adapter adds no retry loop and rejects responses arriving after its deadline. The pinned synchronous SDK has its own finite retries and can overshoot an operation budget during an in-flight call/backoff. This is not a hard cancellation guarantee; a late write may have committed, so reconcile/retry the same IDs. Retryable transport/timeouts/rate limits become `MilvusUnavailable`; other SDK errors become sanitized `MilvusOperationError`; input/schema mismatches become `MilvusContractError`. SDK loggers used by this synchronous path suppress raw diagnostics process-wide once the adapter is initialized; preserve private server logs separately when diagnosing failures.
+
+Real synthetic verification (after starting exactly one profile with private credentials):
+
+```powershell
+$env:PYTHONPATH = 'backend'
+$env:RUN_MILVUS_INTEGRATION = '1'
+$env:MILVUS_PROFILE = 'gpu'
+# Set MILVUS_URI/MILVUS_TOKEN privately using infra/milvus/README.md.
+python -m pytest backend/tests/test_milvus_integration.py -q -s
+Remove-Item Env:MILVUS_TOKEN,Env:RUN_MILVUS_INTEGRATION
+```
+
+Run from the repo root; Linux uses the equivalent exports and the supported worker interpreter. This opt-in test creates a unique `reporadar_t07_*` collection and synthetic alias, drops only its own resources, and never resets a configured archive. It proves all 1000 rows indexed, Strong read-back, max top-K, parameter filters (including quote injection), repeat/update/delete and alias rejection. It does not ingest user ideas or GitHub content. See [T07 evidence](../execution-plans/hybrid-search/T07_EVIDENCE.md) for exact versions, resource samples and limits.
+
+Rollback: stop consumers and revert T07; auth and existing keyword search are unaffected. No SQL migration or alias activation occurs. Preserve real collection data; never delete a collection to repair a generation mismatch. A future model/schema change requires a newly named collection and T08's validated activation, not modifying the existing collection in place.
+
 ## API
 
 - `POST /auth/github/start`: app PKCE challenge and exact allowlisted return URI; returns GitHub authorization URL and state.

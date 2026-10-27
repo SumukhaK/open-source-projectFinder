@@ -83,3 +83,9 @@ T01 feasibility uses pinned Milvus2.6.26 / PyMilvus2.6.17 and 1k synthetic384-di
 - Normalize Markdown/Unicode deterministically, discard HTML/images/navigation, deduplicate section bodies and record source/parser/token/chunk clipping.
 - Use T02's pinned tokenizer to verify at most 400 content tokens, 512 final prefixed/titled tokens and eight chunks; metadata description/topics/language affect semantic identity while stars do not.
 - Bind stable chunk IDs to numeric repository identity, semantic revision and ordinal; algorithm/model changes invalidate hashes. No schema/publication/ingestion work in this slice. [Evidence](execution-plans/hybrid-search/T05_EVIDENCE.md).
+## Minimal Milvus adapter (T07, awaiting review)
+
+- Select an explicit local GPU_CAGRA or CPU HNSW profile using the existing pinned server/SDK; use normalized 384-dimensional IP vectors and the pinned E5 manifest. Do not silently fall back.
+- Use one generation-bound collection, stable SHA256 chunk/revision keys, numeric repository IDs and bounded UTF-8 scalar fields; disable dynamic fields. Refuse incompatible schema, dimensions, generation, metric or a collection alias.
+- Bound every batch to at most 64 chunks/IDs and each search to 1-1000 hits. Use typed parameterized language/license/activity/repository filters. Reject incomplete upserts and verify complete rows with Strong read-back before a later publisher may activate them.
+- Keep raw text outside Milvus and transient query vectors out of logs/storage. Sanitize SDK diagnostics. This adapter does not implement publication, visibility validation, ingestion, scheduling or the hybrid API. [Evidence](execution-plans/hybrid-search/T07_EVIDENCE.md).

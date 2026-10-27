@@ -4,12 +4,13 @@ Turn a project idea into a search for existing open-source implementations.
 
 RepoRadar is a planned AI-driven discovery service with a React-based mobile client and a Python FastAPI backend. Users describe an idea by text or voice; the backend combines semantic retrieval from Milvus with GitHub public repository search to find similar projects.
 
-**Status (2026-10-26):**
+**Status (2026-10-27):**
 
 - **Implemented:** mobile branding and GitHub-only signup/login (Expo / React Native + FastAPI); authenticated public GitHub keyword search with page-size/sort controls, repository details and account-specific favourites.
 - **Hybrid-search foundations merged:** local Milvus runs on the development laptop's CPU and GPU (T01), and a pinned CPU embedding model turns text into vectors (T02). Neither is connected to search yet.
 - **Archive building blocks merged:** a separate private SQLite archive catalogue (T03), a worker-only bounded GitHub reader that verifies repository identity and Git blob hashes (T04), and deterministic metadata/README chunking within the real tokenizer limits (T05). None is wired into ingestion, search or auth yet. See the [T03](execution-plans/hybrid-search/T03_EVIDENCE.md), [T04](execution-plans/hybrid-search/T04_EVIDENCE.md) and [T05](execution-plans/hybrid-search/T05_EVIDENCE.md) evidence.
 - **Planned:** repository ingestion into Milvus, semantic and hybrid matching, the mobile discovery screens and voice input.
+- **T07 awaiting review:** a bounded Milvus collection adapter, verified on the local GPU with synthetic vectors. It is not connected to ingestion or search. See [T07 evidence](execution-plans/hybrid-search/T07_EVIDENCE.md).
 - **Still to validate:** live GitHub OAuth and native-device checks.
 
 Standalone GitHub search controls are implemented: configurable page size, sorting, validated query/pagination limits and bounded search responses. Tests preserve existing parsing, authentication and public-only scope. Review, CI and delivery evidence: [PR #10](https://github.com/SumukhaK/open-source-projectFinder/pull/10) and [the tracker](PROJECT_TRACKER.md). Advanced qualifiers, Boolean expressions and semantic search remain planned.
