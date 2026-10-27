@@ -1,6 +1,6 @@
 # T16 partitioned rolling-year discovery evidence - 2026-10-27
 
-Status: **Awaiting review** in [PR #24](https://github.com/SumukhaK/open-source-projectFinder/pull/24). This implements only [T16](tasks/T16-discovery-partitions.md): a pure planner with no HTTP calls, persistence, worker or scheduler.
+Status: **Merged** via [PR #24](https://github.com/SumukhaK/open-source-projectFinder/pull/24) as `539d02e` (2026-10-27), after exact-head review of `e821192` and passing [CI 40458476274](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40458476274). This implements only [T16](tasks/T16-discovery-partitions.md): a pure planner with no HTTP calls, persistence, worker or scheduler.
 
 ## Authorship
 
