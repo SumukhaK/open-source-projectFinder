@@ -46,12 +46,15 @@ Platform/date: Windows, Python 3.11.9, 2026-10-27. Commands ran from the isolate
 | GREEN focused | `python -B -m pytest backend/tests/test_archive_content.py backend/tests/test_archive_store.py -q -p no:cacheprovider` -> exit 0, **45 passed / 6 skipped** (36 test functions, parameterized cases) |
 | Full regression | `python -B -m pytest backend/tests scripts/tests -q -p no:cacheprovider --cov=backend/app --cov-branch --cov-report=term-missing --cov-report=json:reports/t06/backend-coverage.json` -> exit 0, **435 passed / 47 skipped**, one inherited Starlette/httpx warning, 27.39s |
 | Coverage gate | `python scripts/quality.py coverage reports/t06/backend-coverage.json` -> exit 0, **93.5% combined / 91.0% branches**, unchanged 90/80 gate. `archive_index.py` and `embeddings.py` remain 100%; the new module reports 87% on Windows because six POSIX-only cases are skipped |
+| Linux CI | [run 40449100006](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40449100006) on head `d8029c8464960d1ee4f1a2431b672584277a2f3c`: **482 passed, no skips**, **97.2% combined / 95.4% branches**, new module 91% with CPython 3.11.17 / SQLite 3.53.1; Backend quality, Dependency audit, Mobile quality/E2E, Secret scan, GitGuardian and Quality gate all passed |
 | Lint / format | `ruff check backend scripts`; `ruff format --check backend scripts` -> exit 0 |
 | Security | `bandit -r backend/app -q -f json -o reports/t06/bandit.json` -> exit 0, 0 findings, 2,760 LOC, no scanner errors |
 | Whitespace | `git diff --check` -> clean |
 | Schema CHECK probe | Direct SQLite inserts confirmed migration 2 rejects uppercase/short `source_ref`/`blob_sha` values and `truncated = 2`, and accepts a valid 40-hex pair with `truncated = 1` |
 
 The focused tests cover path traversal and absolute paths, symlinked directories/targets/roots (POSIX), shared POSIX permissions, duplicate replay with file repair, conflicting provenance, interrupted replace and fsync disk-full failures, wrong-size/wrong-digest existing files, database-trigger failure rollback, absent optional content, mismatched repository IDs, strict SHA validation, oversize content/metadata, open-transaction requirement, unmigrated schema refusal, tamper detection and portable v1 -> v2 migration. `test_archive_store.py` adds a POSIX v1 -> v2 upgrade through `ArchiveStore` and updates the existing version assertions to 2.
+
+The first Linux run exposed two test-fixture defects, not production failures: fixture files were created with default POSIX modes, so the privacy check fired before the intended size/digest assertion, and the `sqlite3.Row` column probe iterated values instead of column names. Commit `d8029c8` sets the fixtures to 0600 and reads the name column; the rerun above passes. No production behavior or gate changed.
 
 ## Migration compatibility and rollback
 
@@ -61,7 +64,7 @@ The focused tests cover path traversal and absolute paths, symlinked directories
 
 ## Limits
 
-- Local verification is Windows only. WSL remains unavailable (`Wsl/Service/CreateInstance/CreateVm/HCS/ERROR_NO_SYSTEM_RESOURCES`), so the POSIX permission/symlink tests and the `ArchiveStore` v1 -> v2 upgrade test are skipped locally and run in the pinned Linux CI runtime (Python 3.11.17 / SQLite 3.53.1).
+- Local verification is Windows only. WSL remains unavailable (`Wsl/Service/CreateInstance/CreateVm/HCS/ERROR_NO_SYSTEM_RESOURCES`), so the POSIX permission/symlink tests and the `ArchiveStore` v1 -> v2 upgrade test are skipped locally; they pass in the pinned Linux CI runtime above (Python 3.11.17 / SQLite 3.53.1).
 - Windows SQLite 3.45.1 is below the catalogue WAL gate; no local WAL/catalogue run is claimed. The WAL gate is unchanged.
 - Tests use synthetic README/metadata fixtures. No live GitHub fetch, real repository archive, embedding inference, Milvus write, worker integration, scheduler or API change is claimed.
 - The normalized JSON retains prepared chunk text; T06 does not create `archive_chunks` rows, publish revisions, delete superseded content or cache user queries. Those remain T08/T09/T13/T20 work.
