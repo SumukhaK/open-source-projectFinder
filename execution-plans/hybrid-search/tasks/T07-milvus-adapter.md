@@ -1,6 +1,6 @@
 # T07: Implement the minimal Milvus collection adapter
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review. Implementation and real GPU evidence are in [T07_EVIDENCE](../T07_EVIDENCE.md); review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

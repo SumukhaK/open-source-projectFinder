@@ -1,7 +1,8 @@
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Content-format bounds; changes require a new archive chunker version.
@@ -15,6 +16,18 @@ ARCHIVE_TOKEN_PROBE_CHARS = 8192
 ARCHIVE_MARKDOWN_MAX_NESTING = 20
 # Defensive storage bound; acquisition and preparation already enforce smaller limits.
 ARCHIVE_CONTENT_MAX_BYTES = 1024 * 1024
+
+MILVUS_MAX_TOP_K = 1000
+MILVUS_TEXT_BYTES = {
+    "chunk_id": 64,
+    "revision": 64,
+    "model_revision": 40,
+    "generation": 64,
+    "language": 128,
+    "license": 128,
+    "section": 512,
+    "snippet": 2048,
+}
 
 
 class Settings(BaseSettings):
@@ -35,6 +48,16 @@ class Settings(BaseSettings):
     archive_github_metadata_bytes: int = Field(default=524288, ge=1024, le=2097152)
     archive_github_readme_bytes: int = Field(default=262144, ge=1024, le=1048576)
     archive_github_retry_max_wait: float = Field(default=5, gt=0, le=60)
+    milvus_uri: str = "http://127.0.0.1:19530"
+    milvus_token: SecretStr = Field(default=SecretStr(""), repr=False)
+    milvus_profile: Literal["cpu", "gpu"] = "gpu"
+    milvus_collection: str = Field(
+        default="repo_chunks_e5small_v1",
+        pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,254}$",
+    )
+    milvus_timeout: float = Field(default=10, gt=0, le=30)
+    milvus_build_timeout: float = Field(default=120, gt=0, le=120)
+    milvus_batch_size: int = Field(default=64, ge=1, le=64)
     allowed_redirects: list[str] = ["reporadar://auth/callback"]
     cors_origins: list[str] = []
     rate_limit: int = Field(default=20, ge=1)
@@ -54,6 +77,23 @@ class Settings(BaseSettings):
     max_github_search_response: int = Field(default=1048576, ge=1024, le=2097152)
     max_readme_chars: int = Field(default=60000, ge=1000)
     max_favourites: int = Field(default=500, ge=1)
+
+    @field_validator("milvus_uri")
+    @classmethod
+    def local_milvus_endpoint(cls, value):
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "http"
+            or parsed.hostname != "127.0.0.1"
+            or not parsed.port
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in ("", "/")
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("Milvus requires an explicit loopback HTTP endpoint")
+        return value
 
     @field_validator("archive_github_api_url")
     @classmethod

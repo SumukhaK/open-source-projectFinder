@@ -637,3 +637,22 @@ Not yet tested against real GitHub search: that needs the dedicated worker token
 ```
 
 Scope: documentation only. The open follow-up is recorded under "Blockers and decisions" in the [task tracker](execution-plans/hybrid-search/TRACKER.md) and as an acceptance requirement in [T18](execution-plans/hybrid-search/tasks/T18-backfill.md): the first approved real run must log per-partition query, reported count, incomplete flag, pages, IDs and split/unresolved decision, and confirm qualifier behaviour. The reviewer will remind the owner when T17 nears merge and before T18 starts; P1 (worker credential) must be provided first.
+
+## T07: minimal Milvus collection adapter (2026-10-27, awaiting review)
+
+Request, verbatim:
+
+> PR merged. well done. now Read execution-plans/hybrid-search/OPENCODE_PROMPT.md, replace TASK_ID with T07, and execute only that task. Read all referenced documents, follow its instructions, raise a PR, then stop and wait for review.
+
+Base: `c821ce1e93c144482c6aaf934e7db6d88306464c`, latest fetched main. Branch: `codex/hybrid-t07-milvus-adapter`. T01/PR #15 (`7f94e2f`), T02/PR #16 (`e400076`) and T03/PR #18 (`776bf65`) are merged prerequisites. T06 is not a prerequisite and is not included. Pending corpus/retention/visibility decisions do not block synthetic adapter verification.
+
+Plan and acceptance:
+
+1. Read current manifest, catalogue/chunk identities, pinned SDK/server contracts and baseline tests. Baseline Windows suite: 390 passed, 40 platform skips; Docker/WSL stopped and 2.79 GiB RAM available, so real-server checks await headroom.
+2. TDD: central settings and bounded vector/filter records; collection schema/generation/profile checks; idempotent bounded upsert, readiness, search and ID-only deletion. Reject mismatched model/dimension/metric, malformed filters, partial writes and stale aliases. Keep raw content in the catalogue, disable dynamic fields, use normalized IP and explicit CPU/GPU selection.
+3. Verify against a real selected GPU server using synthetic data only, including filter/update/delete and maximum supported top-K. Record unavailable evidence honestly; preserve host settings and existing data. No ingestion, SQL publication, alias switching, API wiring or scheduler.
+4. Full tests/coverage, Ruff/format, Bandit, whitespace and secret inspection; update evidence/docs; inspect diff, push one PR, wait for required CI and independent review. Do not accept or merge.
+
+Progress: implementation, TDD and real GPU 1k verification complete; [evidence](execution-plans/hybrid-search/T07_EVIDENCE.md). Windows 464 passed (41 platform/integration skips), WSL 504 passed (only opt-in integration skipped), with 98.4% combined / 97.3% branch coverage on the unchanged Linux gate. Ruff/format/Bandit passed. Two implementation-review findings were fixed through RED/GREEN. Required PR CI and independent trusted acceptance remain pending; no merge. The code index covers an older checkout and misses the archive modules; current source reads were used instead.
+
+Main advanced through T06 and T16 while T07 was running. Merged main `e9b95ded3455dec7ee61df74c1fae2cb5300c0e2` into the same branch, preserving both tasks' code/settings/docs and all tracker history. The full WSL suite after conflict resolution passed: **598 tests**, one opt-in server skip, **97.5% combined / 96.2% branch coverage**, Ruff/format/Bandit pass. [PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28) remains T07 only relative to main.

@@ -91,3 +91,10 @@ T01 feasibility uses pinned Milvus2.6.26 / PyMilvus2.6.17 and 1k synthetic384-di
 - Write files through a temporary file plus atomic replace before the catalogue insert; on database failure remove newly created files so no active row references missing content. Identical replay is idempotent and repairs missing files; differing provenance is refused.
 - Reject mismatched repository IDs and SHAs, absent required provenance, oversized content and a missing write transaction. Absent README content stores normalized metadata with explicit status and no raw/blob reference.
 - No chunks, embeddings, vector publication, user-query storage, object store, clone or live ingestion. Files must be rebuildable without Milvus. [Evidence](execution-plans/hybrid-search/T06_EVIDENCE.md).
+
+## Minimal Milvus adapter (T07, awaiting review)
+
+- Select an explicit local GPU_CAGRA or CPU HNSW profile using the existing pinned server/SDK; use normalized 384-dimensional IP vectors and the pinned E5 manifest. Do not silently fall back.
+- Use one generation-bound collection, stable SHA256 chunk/revision keys, numeric repository IDs and bounded UTF-8 scalar fields; disable dynamic fields. Refuse incompatible schema, dimensions, generation, metric or a collection alias.
+- Bound every batch to at most 64 chunks/IDs and each search to 1-1000 hits. Use typed parameterized language/license/activity/repository filters. Reject incomplete upserts and verify complete rows with Strong read-back before a later publisher may activate them.
+- Keep raw text outside Milvus and transient query vectors out of logs/storage. Sanitize SDK diagnostics. This adapter does not implement publication, visibility validation, ingestion, scheduling or the hybrid API. [Evidence](execution-plans/hybrid-search/T07_EVIDENCE.md).
