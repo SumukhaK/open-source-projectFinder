@@ -76,6 +76,7 @@ Review of PR #22 found that `persist_revision` compared fetch observation (`sour
 | Review lint / format | `ruff check backend scripts`; `ruff format --check backend scripts` -> exit 0 |
 | Review security | `bandit -r backend/app -f json -o reports/t06/bandit.json` -> exit 0, 0 findings, 2,769 LOC |
 | Review whitespace | `git diff --check` -> clean |
+| Review Linux CI | [run 40455334062](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40455334062) on head `ea27523590b020d18b610dea514d28497c6b8d23`: **489 passed, no skips**, **97.2% combined / 95.6% branches**, new module 91%; Backend quality, Dependency audit, Mobile quality/E2E, Secret scan, GitGuardian and Quality gate all passed |
 
 The new tests cover README ETag/Last-Modified refresh, metadata ETag refresh when no README exists, `source_ref` refresh, endpoint refresh after a rename, rejection of a different `blob_sha` under the same revision, rejection of different normalized content under the same revision, and raw bytes without a README.
 
