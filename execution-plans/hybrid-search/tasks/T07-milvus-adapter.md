@@ -1,6 +1,6 @@
 # T07: Implement the minimal Milvus collection adapter
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged via [PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28) as `21e6db3` (2026-10-27). Implementation and real GPU evidence are in [T07_EVIDENCE](../T07_EVIDENCE.md); review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

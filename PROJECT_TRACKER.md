@@ -246,7 +246,6 @@ CI blocker: [run 38425124561](https://github.com/SumukhaK/open-source-projectFin
 Delivery decision: automatic approval review rejected committing/pushing proposed short-lived exact-version exceptions because explicit authorization to weaken the dependency gate was absent. The user then chose, verbatim: **"Keep the gate unchanged; leave PR open (Recommended)"**. The uncommitted exception proposal was removed. Scanner execution, policy, thresholds and mobile dependencies remain unchanged. PR #10 stays open without merging; resolving the advisories compatibly, passing required CI and reviewing the resulting exact head are prerequisites to any future merge. Unrelated local mobile work is preserved.
 
 
-
 ## Hybrid search execution handbook - 2026-10-24
 
 Original request (verbatim):
@@ -666,3 +665,38 @@ Plan:
 - **On 2026-10-29:** a scheduled session check-in re-verifies the release (still latest, not deprecated), the integrity, the audit and CI, then merges via the reviewed-merge workflow. That leaves a two-day soak and two days of margin before the 2026-11-01 expiry.
 - **Fallback:** if 1.4.1 is pulled, a new exact, short-lived exception.
 - **Why no GitHub Action:** a workflow cannot wake this Claude session, so the check-in is a scheduled task on the session instead.
+
+
+## T07: minimal Milvus collection adapter (2026-10-27, awaiting review)
+
+Request, verbatim:
+
+> PR merged. well done. now Read execution-plans/hybrid-search/OPENCODE_PROMPT.md, replace TASK_ID with T07, and execute only that task. Read all referenced documents, follow its instructions, raise a PR, then stop and wait for review.
+
+Base: `c821ce1e93c144482c6aaf934e7db6d88306464c`, latest fetched main. Branch: `codex/hybrid-t07-milvus-adapter`. T01/PR #15 (`7f94e2f`), T02/PR #16 (`e400076`) and T03/PR #18 (`776bf65`) are merged prerequisites. T06 is not a prerequisite and is not included. Pending corpus/retention/visibility decisions do not block synthetic adapter verification.
+
+Plan and acceptance:
+
+1. Read current manifest, catalogue/chunk identities, pinned SDK/server contracts and baseline tests. Baseline Windows suite: 390 passed, 40 platform skips; Docker/WSL stopped and 2.79 GiB RAM available, so real-server checks await headroom.
+2. TDD: central settings and bounded vector/filter records; collection schema/generation/profile checks; idempotent bounded upsert, readiness, search and ID-only deletion. Reject mismatched model/dimension/metric, malformed filters, partial writes and stale aliases. Keep raw content in the catalogue, disable dynamic fields, use normalized IP and explicit CPU/GPU selection.
+3. Verify against a real selected GPU server using synthetic data only, including filter/update/delete and maximum supported top-K. Record unavailable evidence honestly; preserve host settings and existing data. No ingestion, SQL publication, alias switching, API wiring or scheduler.
+4. Full tests/coverage, Ruff/format, Bandit, whitespace and secret inspection; update evidence/docs; inspect diff, push one PR, wait for required CI and independent review. Do not accept or merge.
+
+Progress: implementation, TDD and real GPU 1k verification complete; [evidence](execution-plans/hybrid-search/T07_EVIDENCE.md). Windows 464 passed (41 platform/integration skips), WSL 504 passed (only opt-in integration skipped), with 98.4% combined / 97.3% branch coverage on the unchanged Linux gate. Ruff/format/Bandit passed. Two implementation-review findings were fixed through RED/GREEN. Required PR CI and independent trusted acceptance remain pending; no merge. The code index covers an older checkout and misses the archive modules; current source reads were used instead.
+
+Main advanced through T06 and T16 while T07 was running. Merged main `e9b95ded3455dec7ee61df74c1fae2cb5300c0e2` into the same branch, preserving both tasks' code/settings/docs and all tracker history. The full WSL suite after conflict resolution passed: **598 tests**, one opt-in server skip, **97.5% combined / 96.2% branch coverage**, Ruff/format/Bandit pass. [PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28) remains T07 only relative to main.
+
+
+## Tracker sync for T07 - 2026-10-27
+
+User request (verbatim):
+
+```text
+merge, update tracker and hsow me what is the overall status so far
+```
+
+Scope: documentation only, on a separate docs branch the owner approved (`claude/docs-t07-sync`), because the reviewer's usual branch holds the node-forge bump PR #27 (planned merge 2026-10-29). PR #28 was merged by the reviewed-merge workflow on its exact reviewed head before this sync.
+
+- **T07** ([PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28)): the first review of `c721b8d` found sound code but a merge conflict with main and no required CI. Main was merged in, and the exact-head acceptance of `265d34201f679d21059450a71d7c031b7f28944d` ([review 5665285392](https://github.com/SumukhaK/open-source-projectFinder/pull/28#pullrequestreview-5665285392)) followed, with [CI 40484923241](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40484923241) passing. Merged as `21e6db3` on 2026-10-27.
+- Open: three optional nits (ordinal bound, manifest dimensions, `close()` guard); capacity, relevance and latency beyond the 1k synthetic proof; the serving alias and activation (T08/T13).
+- Next unblocked: **T08** (publish revisions with crash-safe reconciliation; needs T06 + T07, both merged). T17 then needs T08 and T16.
