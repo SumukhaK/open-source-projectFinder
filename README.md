@@ -109,7 +109,7 @@ See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md),
 
 The free-tool pipeline runs pytest/Jest with coverage gates, Ruff/ESLint/TypeScript, Bandit and TypeScript security rules, dependency auditing, redacted full-history secret scans and platform bundle exports. A reviewed merge must match the exact reviewed commit and have successful CI. No manually configured scanner keys or paid services. See [quality pipeline, local commands and limitations](docs/QUALITY_PIPELINE.md).
 
-Sanitized local crash events and a mobile retry screen are implemented; production crash aggregation and deployment remain planned. One narrowly scoped Expo CLI dependency exception expires on 2026-11-01.
+Sanitized local crash events and a mobile retry screen are implemented; production crash aggregation and deployment remain planned. No dependency audit exceptions remain (node-forge was updated to the patched 1.4.1).
 
 ## Planned hybrid search implementation
 

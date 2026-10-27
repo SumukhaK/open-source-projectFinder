@@ -17,14 +17,5 @@
       "lines": 95
     }
   },
-  "dependency_exceptions": [
-    {
-      "ecosystem": "npm",
-      "package": "node-forge",
-      "id": "GHSA-86w9-cpqp-85rv",
-      "version": "1.4.0",
-      "expires": "2026-11-01",
-      "reason": "No patched upstream release exists. Used by Expo CLI code-signing tooling, not the shipped JS client. Retain SDK 57; do not downgrade Expo. Recheck before release."
-    }
-  ]
+  "dependency_exceptions": []
 }

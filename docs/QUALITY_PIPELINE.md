@@ -22,7 +22,7 @@ Application coverage gates: backend 90% combined statement/branch coverage and 8
 
 Upgraded cryptography to patched 50.0.2 and isolated pip/setuptools to patched locked releases. A UUID 11.1.1 override removes the previous UUID advisory while retaining CommonJS support; verified unit tests, Expo diagnostics, asset generation and platform exports after the override.
 
-One reviewed exception remains: node-forge 1.4.0 / GHSA-86w9-cpqp-85rv, expiring **2026-11-01**. It is used by Expo CLI code-signing tooling; no patched upstream release was available. It is not included in the shipped React Native JS application. An incompatible Expo downgrade was rejected. The exception matches ecosystem, package, installed version and advisory exactly; new findings or expired exceptions fail. Recheck before native release/signing and remove the exception when a compatible patch is available. A passing gate with this exception does not mean a vulnerability-free dependency tree.
+No dependency exceptions remain. The former node-forge 1.4.0 / GHSA-86w9-cpqp-85rv exception (Expo CLI code-signing tooling, never in the shipped JS client) was removed on 2026-10-29 after node-forge 1.4.1 (published 2026-10-27, which fixes that advisory and four further high-severity advisories affecting ≤1.4.0) was adopted inside Expo's existing `^1.3.3` range; no Expo change or override was needed. The gate still fails on any new finding and on any expired exception, so a future exception must be exact (ecosystem, package, version, advisory), justified and expiring. A passing gate means no known advisory in the audited locks, not a vulnerability-free dependency tree.
 
 ## Workflow behavior and cost controls
 

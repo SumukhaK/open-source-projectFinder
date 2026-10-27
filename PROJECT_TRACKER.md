@@ -637,3 +637,32 @@ Not yet tested against real GitHub search: that needs the dedicated worker token
 ```
 
 Scope: documentation only. The open follow-up is recorded under "Blockers and decisions" in the [task tracker](execution-plans/hybrid-search/TRACKER.md) and as an acceptance requirement in [T18](execution-plans/hybrid-search/tasks/T18-backfill.md): the first approved real run must log per-partition query, reported count, incomplete flag, pages, IDs and split/unresolved decision, and confirm qualifier behaviour. The reviewer will remind the owner when T17 nears merge and before T18 starts; P1 (worker credential) must be provided first.
+
+
+## node-forge bump plan - 2026-10-27
+
+User requests (verbatim):
+
+```text
+node-forge exception: expires on 1 Nov, five days from now. how are other developer cooping with this, there has to be a work around, no ?
+```
+
+```text
+Want me to prepare that PR now and merge it on the 29th? plan this bumping strategy and add it in tracker and make sure it gets looked at on 29th
+```
+
+```text
+oe ifu can raise a PR and add a github action to trigger u to look at it on 29th thats good too
+```
+
+Plan:
+- **The release:** node-forge 1.4.1 was published on 2026-10-27 by the existing maintainers. Its changelog fixes CVE-2026-85393, which is the advisory behind GHSA-86w9-cpqp-85rv, plus four further high-severity advisories that affect ≤1.4.0.
+- **No Expo change:** both dependents already accept `^1.3.3`, so no Expo change and no override is needed.
+- **Changes in the PR:**
+  - the lockfile entry only (version, resolved URL and integrity; the tarball's SHA-512 was checked against the registry);
+  - the now-unneeded exception is removed, because `scripts/quality.py` fails on any expired exception entry, even without a matching finding;
+  - the current-state docs are updated.
+- **Local check:** `npm audit --package-lock-only` reports 0 vulnerabilities.
+- **On 2026-10-29:** a scheduled session check-in re-verifies the release (still latest, not deprecated), the integrity, the audit and CI, then merges via the reviewed-merge workflow. That leaves a two-day soak and two days of margin before the 2026-11-01 expiry.
+- **Fallback:** if 1.4.1 is pulled, a new exact, short-lived exception.
+- **Why no GitHub Action:** a workflow cannot wake this Claude session, so the check-in is a scheduled task on the session instead.
