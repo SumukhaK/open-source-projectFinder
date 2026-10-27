@@ -66,7 +66,7 @@ All backend settings live in `app/core/config.py`. `DATABASE_PATH` defaults to i
 
 Authentication can run locally without credentials for health checks; login then returns 503. An invalid configured encryption key fails startup. No production credentials or fake provider are included. The GitHub simulator exists only under tests.
 
-## Archive catalogue (T03, awaiting review)
+## Archive catalogue (T03, merged)
 
 `app/core/archive_store.py` provides an opt-in catalogue, independent of auth. It is not constructed by the app factory and creates no database during ordinary API startup. It uses only standard-library `sqlite3`; no ORM or new dependency is installed. `ARCHIVE_DATABASE_PATH` and `ARCHIVE_CONTENT_PATH` must be separate from auth, including auth/archive journal sidecars and hardlink aliases. `ARCHIVE_BUSY_TIMEOUT_MS` defaults to 5000 (1-30000 allowed).
 
@@ -108,7 +108,7 @@ Responses are typed with status, URL, headers, body, request ID, ETag, Last-Modi
 
 The reader does not crawl links, clone repositories, download arbitrary URLs or fetch submodules. It is not wired into an API route or worker yet; persistence, scheduling and ingestion are later tasks. Evidence: [T04 evidence](../execution-plans/hybrid-search/T04_EVIDENCE.md).
 
-## Content preparation (T05, awaiting review)
+## Content preparation (T05, merged)
 
 `app/services/archive_index.py::prepare_repository` prepares already-fetched metadata and decoded README bytes in memory. Reuse a loaded T02 `EmbeddingAdapter`; preparation only calls its real tokenizer counter, never vector inference. No model download, repository request, file write or database operation occurs here.
 
@@ -136,6 +136,36 @@ Metadata gets a strict 16 KiB budget. README input is capped at 256 KiB; at most
 Inspect `readme_status` and `omissions`; metadata-only, parser-clipped and chunk-capped output must not be represented as a complete README. `semantic_hash` includes normalized semantic metadata/content, model identity and preparation versions, but not stars. Chunk keys also bind numeric repository ID and ordinal. `text_hash` is the UTF-8 SHA-256 of unprefixed chunk text; embedding reuse additionally requires the same model/preparation contract. Future rule changes need a new normalizer/chunker version and regenerated content. T08 owns obsolete-vector cleanup/publication; this function does not perform either.
 
 Rollback is a code revert with no schema/data migration. Render output as plain text, never as trusted HTML. See [T05 evidence](../execution-plans/hybrid-search/T05_EVIDENCE.md) for tests, real-tokenizer verification, explicit clipping tradeoffs and remaining integration limits.
+
+## Raw content and provenance (T06, merged)
+
+`app/services/archive_content.py::persist_revision` writes bounded raw/normalized files and one `pending` catalogue revision in the same caller-owned write transaction. It requires `ArchiveStore.connect(write=True)` and schema v2. It does not call GitHub, embed text, write `archive_chunks`, publish a revision or use Milvus; T08/T09 own those steps.
+
+```python
+from app.core.archive_store import ArchiveStore
+from app.services.archive_content import ArchiveContentStore, persist_revision
+
+content = ArchiveContentStore(settings)
+with ArchiveStore(settings).connect(write=True) as db:
+    stored = persist_revision(
+        db,
+        content,
+        metadata=repository_metadata,  # T04 RepositoryMetadata
+        prepared=prepared,  # T05 PreparedRepository
+        readme=readme_document,  # T04 ReadmeDocument, or None when absent
+        source_ref=resolved_commit_sha,  # optional 40-hex commit SHA
+        source_truncated=False,
+    )
+# stored.revision == prepared.semantic_hash; state is "pending"
+```
+
+Files live under `ARCHIVE_CONTENT_PATH` as `<kind>/<sha256[:2]>/<sha256>` for `raw` and `normalized`. Raw is the exact decoded README UTF-8 bytes. Normalized is canonical JSON (`prepared-v1`) with repository ID, semantic hash, normalizer/chunker/model versions, README status, omission flags and chunk text/hashes. `ARCHIVE_CONTENT_MAX_BYTES` is a defensive 1 MiB per-file bound; acquisition and preparation keep their smaller limits. No user query, idea, transcript, embedding or token is stored.
+
+Schema v2 appends `normalized_path`, `source_endpoint`, `source_ref`, `blob_sha`, `etag`, `last_modified`, `raw_bytes` and `truncated` to `archive_documents`. Existing v1 rows keep NULL provenance and `truncated = 0`. `blob_sha` is the Git file blob SHA; `source_ref` is a separate optional resolved commit SHA. Do not use a branch name in either field.
+
+The store rejects traversal, absolute paths, symlinked components/targets and non-regular targets. On POSIX, new roots/shards are 0700 and files 0600; shared existing permissions are refused without repair. Writes use an exclusive temporary file in the target shard, flush/fsync and atomic replace. Files are written before the document insert; if the insert fails, newly created files are removed. An identical replay is idempotent, creates no duplicate row/file and repairs a missing file; differing content or provenance raises `RevisionConflict` and is not overwritten. Reads verify the expected SHA-256.
+
+Rollback: migration 2 is forward-only. Reverting only the T06 code after upgrade makes the T03 version check refuse the newer schema, so stop consumers and restore a pre-upgrade consistent snapshot, or keep the T06 code. Do not edit migration 1 or delete the catalogue to bypass a migration error. Content files are immutable; remove only unreferenced files after confirming no document points at them. See [T06 evidence](../execution-plans/hybrid-search/T06_EVIDENCE.md) for tests, the local Windows limitation and Linux-CI coverage of POSIX permission/symlink and upgrade cases.
 
 ## Local vector collection adapter (T07, awaiting review)
 

@@ -261,7 +261,7 @@ Scope: publish the existing proposed hybrid/archive architecture plus portable O
 | --- | --- | --- |
 | Handbook authoring | Complete; merged as `2e4a9ff` via PR #11 (reviewed head `5cba2a4`, [CI 40084144348](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40084144348)) | Static checks passed for 37 Markdown files, 30 required task workflows, 289 local links/anchors, dependency ordering and both diagram themes. Independent review found one missing T17 dependency on T08 publication; it was added to the task and tracker. [PR #11](https://github.com/SumukhaK/open-source-projectFinder/pull/11) and its current-head review/checks are authoritative for publication status. |
 | T00 readiness | Complete (accepted and merged as `6dc4233`) | [PR #13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) on base `2e4a9ff353de7a137c49fff0c99bea1765a357a2`; exact-head review of `b535011` and [CI 40086438932](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40086438932) passed. The rest of this cell is the original delivery note: [READINESS](execution-plans/hybrid-search/READINESS.md) records the fresh dependency audits, merged #10/#12/#11 prerequisites, unmerged mobile foundation, eight pending operator decisions and the task readiness/blocker matrix. Exact-head review and CI are pending; the implementer has not accepted or merged. |
-| T01-T29 implementation | T01 and T02 merged; T03-T29 not started | [Task tracker](execution-plans/hybrid-search/TRACKER.md) is authoritative for per-task status, full reviewed SHA/review/CI evidence and merged SHA. Only review acceptance checks a task done; dependents require merge into main. |
+| T01-T29 implementation | T01-T05 merged; T06 awaiting review; T07-T29 not started | [Task tracker](execution-plans/hybrid-search/TRACKER.md) is authoritative for per-task status, full reviewed SHA/review/CI evidence and merged SHA. Only review acceptance checks a task done; dependents require merge into main. |
 
 Main baseline was 2237c7e5241a698258a28952150194b943d616b0. Search PR #10 and the local discovery mobile foundation were not merged during authoring. Fresh dependency policy evaluation on 2026-10-24 blocked main's mobile lock on zod 3.25.76 / GHSA-mrhx-c7xc-m3w5; the earlier braces/sprintf advisories were withdrawn, not patched here. The first handbook CI run additionally blocked the unchanged Python lock on six advisories across certifi, filelock, opentelemetry-api and setuptools; backend/mobile quality and secrets passed at that earlier head. See the dated evidence in REQUEST.md; later-head checks remain required. The handbook preserves current gates and requires rechecking prerequisite/security state. No unrelated workspace changes are included.
 
@@ -585,6 +585,59 @@ Scope: documentation only. PR #20 was merged by the reviewed-merge workflow on i
 - **T05** ([PR #20](https://github.com/SumukhaK/open-source-projectFinder/pull/20)): exact-head acceptance of `99c9c1711e8fa2decb1384871e144b7a3adc5e18` ([review 5652759721](https://github.com/SumukhaK/open-source-projectFinder/pull/20#pullrequestreview-5652759721)), [CI 40330742961](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40330742961) passed, merged as `adfd0f8` on 2026-10-26. Open: inline-HTML paragraphs are dropped whole (revisit in T27 relevance evaluation); `CHUNKER_VERSION` must be bumped for any later boundary change once content is ingested.
 - Unchanged blockers: policy decisions D1-D8 and prerequisites P1-P3 in [READINESS](execution-plans/hybrid-search/READINESS.md); the node-forge 1.4.0 dependency exception expires 2026-11-01, after which every PR's dependency audit fails until it is resolved.
 
+
+## Tracker sync for T06 - 2026-10-27
+
+User request (verbatim):
+
+```text
+merge and update the docs
+```
+
+Scope: documentation only. PR #22 was merged by the reviewed-merge workflow on its exact reviewed head before this sync. This records the T06 merge in the task tracker and task file, corrects stale status lines in the T00, T04 and T05 task files, and changes the README, REQUIREMENTS, SCOPE and backend README status from awaiting review to merged. No code, tests, configuration, dependencies or CI changed.
+
+- **T06** ([PR #22](https://github.com/SumukhaK/open-source-projectFinder/pull/22)): the first review of `b2ae30e` requested separating fetch observation from content identity and refusing raw bytes without a README; both were fixed on the same PR. Exact-head acceptance of `41e5548933a514f800b7964e1a6eb759cac44952` ([review 5662649788](https://github.com/SumukhaK/open-source-projectFinder/pull/22#pullrequestreview-5662649788)), [CI 40455506122](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40455506122) passed, merged as `c73c457` on 2026-10-27. The catalogue is now at schema v2.
+- Open: `archive_repositories.full_name`/`metadata_json` keep first-seen values (T10/T19 own refreshing them); unreferenced content files left after a caller rollback are cleaned up by T08.
+- Next unblocked: T07 (Milvus adapter) and T16 (discovery planning); T08 needs T07. Unchanged blockers: D1-D8 and P1-P3 in [READINESS](execution-plans/hybrid-search/READINESS.md); the node-forge 1.4.0 dependency exception expires 2026-11-01.
+
+
+## T16 partitioned rolling-year discovery - 2026-10-27
+
+User request (verbatim; an OpenCode/DeepSeek handoff for the work it could not finish):
+
+```text
+Objective
+
+* Implement only T16 ("Plan partitioned rolling-year discovery") from `execution-plans/hybrid-search/TRACKER.md`, raise one PR against `main`, then stop and wait for review.
+...
+Focused GREEN: 20 passed. Now the full verification gates.
+
+deepseek ran out of session limit at this stage, can u verify this work and take it further ?
+```
+
+Follow-up request (verbatim):
+
+```text
+if I finish the work, I'm partly an author of it, so my review of it wouldn't be fully independent. thats ok i trust u enough to handover it. finish the work, review it and merge if its acceptable then update the tracker and the docs
+```
+
+Scope: one production module (`backend/app/services/archive_partitions.py`) plus tests and docs. It is a pure planner: no HTTP, persistence, worker, scheduler, dependency, config or CI change. The owner pushed DeepSeek's uncommitted planner as `8eaaa1b`. Claude Code verified it and found that, from the root, only pushed-time splits were reachable within depth 8, and that partition trees and selection caps were not serializable. Claude Code fixed both test-first (RED 6 failed, then GREEN) in `e52d5fe`.
+
+Status: Merged via PR #24 as `539d02e` (2026-10-27) after exact-head review of `e821192` and [CI 40458476274](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40458476274); [T16 evidence](execution-plans/hybrid-search/T16_EVIDENCE.md). Verification: 524 passed on CPython 3.11.17 / SQLite 3.53.1; module 100%; 97.6% / 96.3% coverage; Ruff and Bandit clean. Review is by a partial author, at the owner's explicit direction.
+
+Tracker sync: the T16 tracker row, history, task file, evidence status and README were updated in a separate documentation PR after the merge. Next unblocked tasks are T07 (Milvus adapter); T08 needs T07, and T17 needs T08 and T16. The node-forge 1.4.0 dependency exception expires 2026-11-01.
+
+
+## T16 live-search follow-up recorded - 2026-10-27
+
+User request (verbatim):
+
+```text
+Not yet tested against real GitHub search: that needs the dedicated worker token (P1). The first real run in T18 should log the result counts for each partition. please update this in the tracker adn remind me once we are cloe to finishing these tasks
+```
+
+Scope: documentation only. The open follow-up is recorded under "Blockers and decisions" in the [task tracker](execution-plans/hybrid-search/TRACKER.md) and as an acceptance requirement in [T18](execution-plans/hybrid-search/tasks/T18-backfill.md): the first approved real run must log per-partition query, reported count, incomplete flag, pages, IDs and split/unresolved decision, and confirm qualifier behaviour. The reviewer will remind the owner when T17 nears merge and before T18 starts; P1 (worker credential) must be provided first.
+
 ## T07: minimal Milvus collection adapter (2026-10-27, awaiting review)
 
 Request, verbatim:
@@ -601,3 +654,5 @@ Plan and acceptance:
 4. Full tests/coverage, Ruff/format, Bandit, whitespace and secret inspection; update evidence/docs; inspect diff, push one PR, wait for required CI and independent review. Do not accept or merge.
 
 Progress: implementation, TDD and real GPU 1k verification complete; [evidence](execution-plans/hybrid-search/T07_EVIDENCE.md). Windows 464 passed (41 platform/integration skips), WSL 504 passed (only opt-in integration skipped), with 98.4% combined / 97.3% branch coverage on the unchanged Linux gate. Ruff/format/Bandit passed. Two implementation-review findings were fixed through RED/GREEN. Required PR CI and independent trusted acceptance remain pending; no merge. The code index covers an older checkout and misses the archive modules; current source reads were used instead.
+
+Main advanced through T06 and T16 while T07 was running. Merged main `e9b95ded3455dec7ee61df74c1fae2cb5300c0e2` into the same branch, preserving both tasks' code/settings/docs and all tracker history. The full WSL suite after conflict resolution passed: **598 tests**, one opt-in server skip, **97.5% combined / 96.2% branch coverage**, Ruff/format/Bandit pass. [PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28) remains T07 only relative to main.

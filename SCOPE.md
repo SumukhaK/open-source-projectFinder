@@ -21,5 +21,8 @@ A small local database feasibility experiment now proves CPU and GPU operations 
 
 The T03 change adds a private local filing catalogue for repository records and content revisions, separate from account data. It has been tested with synthetic records on this laptop and merged via PR #18. It does not download GitHub projects, refresh them weekly or change the app's search results. Those remain later tasks.
 
-T05 prepares small, repeatable text sections from supplied repository descriptions and README content, with clear limits and notices when content is left out. It is awaiting review. This preparation runs locally without downloading repository content and does not yet add projects to the search index or change search results.
+T05 prepares small, repeatable text sections from supplied repository descriptions and README content, with clear limits and notices when content is left out. It has been reviewed and merged via PR #20. This preparation runs locally without downloading repository content and does not yet add projects to the search index or change search results.
+
+T06 stores the bounded README bytes and prepared sections in a private local archive, together with provenance such as source hashes and versions. It is merged. It does not download repositories, publish them to the search index or change the app's search results.
+
 T07 adds a small component for storing and retrieving the archive's searchable vectors in local Milvus. A real GPU test used 1,000 synthetic records and verified filtering, updates and deletion. It is awaiting review; projects are not being downloaded or added to the app's search yet.

@@ -42,6 +42,8 @@ Keep the production change approximately 1-5 files plus necessary tests/docs. If
 
 RED: crash/restart at each checkpoint, cap/quota/disk stop, 429/secondary limits, incomplete discovery, duplicate IDs and invalid credential. GREEN: a bounded approved real sample resumes without duplication or lost work; unit runs use fake HTTP/model.
 
+Carried over from T16: the partition planner has never run against real GitHub search (no P1 credential at T16 time). The first approved real run must log, per partition, the query, reported `total_count`, `incomplete_results`, pages read, IDs returned and the split/unresolved decision, and record whether the `…Z` time-range and `stars:` qualifiers behaved as documented. Missing this log blocks T18 acceptance.
+
 Use real focused commands from [the guide](../EXECUTION_GUIDE.md#verification-commands) and existing suite paths found during discovery. Record baseline and RED/GREEN command, date/platform, exit code and assertions in the PR. Run affected existing tests, lint/type/format and required CI; document unavailable integration evidence as blocked. `git diff --check` and secret inspection are required before staging/push.
 
 ## What counts as acceptable

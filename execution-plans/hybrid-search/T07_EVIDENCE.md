@@ -5,6 +5,7 @@ Status: **Awaiting review** in [PR #28](https://github.com/SumukhaK/open-source-
 ## Base and scope
 
 - Branch `codex/hybrid-t07-milvus-adapter`, created from fetched `origin/main` at `c821ce1e93c144482c6aaf934e7db6d88306464c`.
+- While T07 ran, T06 and T16 merged independently. Main `e9b95ded3455dec7ee61df74c1fae2cb5300c0e2` was merged into this same branch with a merge commit to unblock PR CI. Documentation conflicts retain both tasks and T07; central configuration retains every T06 and T07 bound. No T06/T16 implementation was changed. Relative to current main, the PR remains T07 only.
 - Merged prerequisites: T01/#15 `7f94e2f`, T02/#16 `e400076`, T03/#18 `776bf65`. The existing checkout was clean; unrelated worktrees were not edited.
 - Production files: `backend/app/integrations/milvus.py`, central `backend/app/core/config.py` and placeholder `.env.example`; unit and opt-in real-server tests plus documentation. No dependencies, locks, workflows, SQL migrations or security exceptions change.
 - Current source was read directly because the available code index describes an older checkout and misses the archive modules. Existing T02 manifest, T03 catalogue keys and T05 chunk identities were reused.
@@ -36,6 +37,7 @@ Commands use the existing Windows Python 3.11.9 environment with PyMilvus 2.6.17
 | Read-only implementation review | Found late SDK success accepted after deadline and legacy `compatible_code=RateLimit` treated as permanent. Two regressions failed first (exit 1); post-call budget check and compatibility-code mapping fixed both (74 focused passed). No other important findings reported; this is not trusted PR acceptance. |
 | Final Windows full suite + coverage | Exit 0: 464 passed, 41 skipped (40 existing POSIX catalogue tests + 1 opt-in real-server test). 95.3% combined / 93.4% branch coverage; unchanged policy passes. |
 | Final WSL full suite + coverage | Exit 0: 504 passed, 1 opt-in real-server skip; Python 3.11.17 / SQLite 3.53.1 / PyMilvus 2.6.17. All 40 catalogue tests execute on Linux. 98.4% combined / 97.3% branches; unchanged policy passes. |
+| WSL after merging main T06/T16 | Exit 0: **598 passed, 1 opt-in real-server skip**; unchanged coverage gate **97.5% combined / 96.2% branches**. Ruff check/format (37 files) and Bandit passed. Every T06/T16 test is included. |
 | Ruff check / Ruff format --check / Bandit | Exit 0; 33 Python files formatted; no Bandit findings |
 
 Full commands: `python -m pytest backend/tests scripts/tests -q --cov=backend/app --cov-branch --cov-report=json:reports/t07/coverage.json`; `python scripts/quality.py coverage reports/t07/coverage.json`; `python -m ruff check backend scripts`; `python -m ruff format --check backend scripts`; `python -m bandit -r backend/app -q`. The real-server opt-in is run separately as below, not inferred from a skipped test.
