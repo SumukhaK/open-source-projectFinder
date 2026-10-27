@@ -1,6 +1,6 @@
 # T07 Milvus adapter evidence — 2026-10-27
 
-Status: **Awaiting review.** T07 only; no acceptance, merge, ingestion, alias activation, API wiring or T06/T08 work. PR and exact head/CI links are recorded in the PR description and [TRACKER](TRACKER.md).
+Status: **Awaiting review** in [PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28). T07 only; no acceptance, merge, ingestion, alias activation, API wiring or T06/T08 work. Exact head/CI links are recorded in the PR description and [TRACKER](TRACKER.md).
 
 ## Base and scope
 
