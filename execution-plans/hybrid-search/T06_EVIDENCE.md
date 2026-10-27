@@ -1,6 +1,6 @@
 # T06 raw content and provenance evidence - 2026-10-27
 
-Status: **Awaiting review**, not accepted or merged. This implements only [T06](tasks/T06-raw-content.md). The PR's current head and required CI are authoritative in GitHub.
+Status: **Awaiting review** in [PR #22](https://github.com/SumukhaK/open-source-projectFinder/pull/22), not accepted or merged. This implements only [T06](tasks/T06-raw-content.md). The PR's current head and required CI are authoritative in GitHub.
 
 ## Scope and prerequisites
 
