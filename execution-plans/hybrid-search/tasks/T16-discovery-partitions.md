@@ -1,6 +1,6 @@
 # T16: Plan partitioned rolling-year discovery
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review in [PR #24](https://github.com/SumukhaK/open-source-projectFinder/pull/24). Implementation and verification: [T16 evidence](../T16_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
