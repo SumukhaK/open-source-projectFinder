@@ -6,12 +6,15 @@ from app.services.archive_partitions import (
     DISCOVERY_POLICY_VERSION,
     GITHUB_CREATED_FLOOR,
     MAX_SPLIT_DEPTH,
+    MIN_CREATED_SPAN,
+    MIN_PUSHED_SPAN,
     REASON_INDIVISIBLE,
     REASON_MAX_DEPTH,
     SEARCH_RESULT_CAP,
     SPLIT_THRESHOLD,
     STAR_BANDS,
     DiscoveryPartition,
+    DiscoverySelection,
     PartitionSplit,
     dedupe_repository_ids,
     needs_split,
@@ -129,7 +132,8 @@ def test_split_pushed_interval_keeps_inclusive_boundaries():
 def test_below_threshold_is_a_leaf_without_unresolved_reason():
     split = split_partition(root_partition(), reported_count=750, incomplete=False)
 
-    assert split == PartitionSplit(())
+    assert split.children == ()
+    assert split.reason is None
     assert split.unresolved is False
 
 
@@ -390,3 +394,124 @@ def test_from_record_rejects_non_mapping_missing_and_malformed_fields():
         DiscoveryPartition.from_record({**record, "pushed_from": 123})
     with pytest.raises(ValueError):
         DiscoveryPartition.from_record({**record, "pushed_from": "not-a-date"})
+
+
+def _dimension(partition):
+    if partition.stars_from is not None:
+        return "stars"
+    if partition.created_from is not None:
+        return "created"
+    return "pushed"
+
+
+def test_persistently_dense_root_reaches_created_and_star_ranges_within_the_bound():
+    partition = plan_root(RUN)
+    used = []
+    while True:
+        split = split_partition(partition, reported_count=100_000, incomplete=False)
+        if split.unresolved:
+            break
+        partition = split.children[0]
+        used.append(_dimension(partition))
+
+    assert used[0] == "pushed"
+    assert "created" in used
+    assert "stars" in used
+    assert used.index("created") < used.index("stars")
+    assert partition.depth <= MAX_SPLIT_DEPTH
+    assert partition.pushed_to - partition.pushed_from <= MIN_PUSHED_SPAN
+    assert partition.created_to - partition.created_from <= MIN_CREATED_SPAN
+    assert split.reason in (REASON_INDIVISIBLE, REASON_MAX_DEPTH)
+
+
+def test_pushed_bucket_at_the_minimum_span_splits_by_created_time():
+    narrow = DiscoveryPartition(RUN - MIN_PUSHED_SPAN, RUN)
+
+    split = split_partition(narrow, reported_count=800, incomplete=False)
+
+    assert split.reason is None
+    assert all(child.pushed_from == narrow.pushed_from for child in split.children)
+    assert all(child.pushed_to == narrow.pushed_to for child in split.children)
+    assert all(child.created_from is not None for child in split.children)
+
+
+def test_pushed_bucket_just_above_the_minimum_span_still_splits_by_pushed_time():
+    wide = DiscoveryPartition(RUN - MIN_PUSHED_SPAN - timedelta(seconds=2), RUN)
+
+    split = split_partition(wide, reported_count=800, incomplete=False)
+
+    assert all(child.created_from is None for child in split.children)
+
+
+def test_partition_keys_are_stable_and_split_records_link_parent_and_children():
+    root = plan_root(RUN)
+    split = split_partition(root, reported_count=800, incomplete=False)
+    record = split.as_record()
+
+    assert root.key == plan_root(RUN).key
+    assert len(root.key) == 64
+    assert root.key != split.children[0].key
+    assert record["parent"] == root.as_record()
+    assert record["parent"]["key"] == root.key
+    assert [child["key"] for child in record["children"]] == [
+        child.key for child in split.children
+    ]
+    assert all(child["parent_key"] == root.key for child in record["children"])
+    assert DiscoveryPartition.from_record(record["children"][0]) == split.children[0]
+
+
+def test_from_record_rejects_a_tampered_key():
+    record = plan_root(RUN).as_record()
+    record["key"] = "0" * 64
+
+    with pytest.raises(ValueError):
+        DiscoveryPartition.from_record(record)
+
+
+def test_selection_cap_reports_curated_partial_or_partitioned_never_exhaustive():
+    root = plan_root(RUN)
+    unresolved = replace(root, depth=MAX_SPLIT_DEPTH)
+
+    capped = DiscoverySelection(cap=1000, selected=1000, deferred=(root,))
+    partial = DiscoverySelection(
+        cap=1000, selected=10, unresolved=((unresolved, REASON_MAX_DEPTH),)
+    )
+    finished = DiscoverySelection(cap=1000, selected=10)
+
+    assert capped.coverage == "curated"
+    assert partial.coverage == "partial"
+    assert finished.coverage == "partitioned"
+    for selection in (capped, partial, finished):
+        record = selection.as_record()
+        assert record["coverage"] != "complete"
+        assert record["policy_version"] == DISCOVERY_POLICY_VERSION
+        assert DiscoverySelection.from_record(record) == selection
+
+
+def test_selection_rejects_invalid_caps_counts_and_reasons():
+    root = plan_root(RUN)
+    with pytest.raises(ValueError):
+        DiscoverySelection(cap=0, selected=0)
+    with pytest.raises(ValueError):
+        DiscoverySelection(cap=10, selected=11)
+    with pytest.raises(ValueError):
+        DiscoverySelection(cap=10, selected=1, unresolved=((root, "unknown"),))
+    with pytest.raises(TypeError):
+        DiscoverySelection(cap=10, selected=1, deferred=("root",))
+    with pytest.raises(ValueError):
+        DiscoverySelection.from_record({"policy_version": "other"})
+
+
+def test_split_records_without_a_parent_and_selection_record_validation():
+    assert PartitionSplit(()).as_record()["parent"] is None
+    root = plan_root(RUN)
+    with pytest.raises(TypeError):
+        DiscoverySelection(cap=10, selected=1, unresolved=(("root", REASON_MAX_DEPTH),))
+    with pytest.raises(TypeError):
+        DiscoverySelection.from_record(["not", "a", "mapping"])
+    with pytest.raises(ValueError):
+        DiscoverySelection.from_record({"policy_version": DISCOVERY_POLICY_VERSION})
+    record = DiscoverySelection(cap=10, selected=1, deferred=(root,)).as_record()
+    record["coverage"] = "partitioned"
+    with pytest.raises(ValueError):
+        DiscoverySelection.from_record(record)

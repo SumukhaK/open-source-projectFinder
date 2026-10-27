@@ -14,17 +14,26 @@ https://docs.github.com/en/search-github/getting-started-with-searching-on-githu
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+import hashlib
+import json
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 
 DISCOVERY_POLICY_VERSION = "rolling-year-v1"
 SEARCH_RESULT_CAP = 1000
 # Split well below the documented cap so moving pages do not silently truncate.
 SPLIT_THRESHOLD = SEARCH_RESULT_CAP * 3 // 4
-MAX_SPLIT_DEPTH = 8
+# Halving 365 days reaches MIN_PUSHED_SPAN in 14 levels and 2008..now reaches
+# MIN_CREATED_SPAN in 13; the rest leaves room for star-band splits.
+MAX_SPLIT_DEPTH = 32
+# Below these spans a further split of that dimension is not useful, so a still
+# dense bucket moves on to the next dimension (pushed -> created -> stars).
+MIN_PUSHED_SPAN = timedelta(hours=1)
+MIN_CREATED_SPAN = timedelta(days=1)
 MAX_QUERY_CHARS = 256
 REASON_MAX_DEPTH = "max_depth"
 REASON_INDIVISIBLE = "indivisible"
+UNRESOLVED_REASONS = frozenset({REASON_MAX_DEPTH, REASON_INDIVISIBLE})
 GITHUB_CREATED_FLOOR = datetime(2008, 1, 1, tzinfo=timezone.utc)
 # Disjoint, deterministic bands used when a dense pushed bucket has no
 # useful created-time split left. The final band is open-ended.
@@ -130,10 +139,15 @@ class DiscoveryPartition:
                 parts.append(f"stars:{self.stars_from}..{self.stars_to}")
         return " ".join(parts)
 
-    def as_record(self):
+    @property
+    def key(self):
+        """Stable identity for durable parent/child links (T17)."""
+        encoded = json.dumps(self._bounds(), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+    def _bounds(self):
         return {
             "policy_version": DISCOVERY_POLICY_VERSION,
-            "query": self.query,
             "pushed_from": _format_time(self.pushed_from),
             "pushed_to": _format_time(self.pushed_to),
             "created_from": (
@@ -147,6 +161,14 @@ class DiscoveryPartition:
             "stars_from": self.stars_from,
             "stars_to": self.stars_to,
             "depth": self.depth,
+        }
+
+    def as_record(self, parent_key=None):
+        return {
+            **self._bounds(),
+            "key": self.key,
+            "parent_key": parent_key,
+            "query": self.query,
         }
 
     @classmethod
@@ -177,6 +199,8 @@ class DiscoveryPartition:
             raise ValueError("partition record is missing a required field") from error
         if "query" in record and record["query"] != partition.query:
             raise ValueError("partition record query does not match its bounds")
+        if "key" in record and record["key"] != partition.key:
+            raise ValueError("partition record key does not match its bounds")
         return partition
 
 
@@ -185,6 +209,7 @@ class PartitionSplit:
     children: tuple[DiscoveryPartition, ...] = ()
     reason: str | None = None
     max_depth: int = MAX_SPLIT_DEPTH
+    parent: DiscoveryPartition | None = None
 
     @property
     def unresolved(self):
@@ -197,7 +222,11 @@ class PartitionSplit:
             "split_threshold": SPLIT_THRESHOLD,
             "max_depth": self.max_depth,
             "reason": self.reason,
-            "children": [child.as_record() for child in self.children],
+            "parent": self.parent.as_record() if self.parent is not None else None,
+            "children": [
+                child.as_record(self.parent.key if self.parent is not None else None)
+                for child in self.children
+            ],
         }
 
 
@@ -228,21 +257,21 @@ def split_partition(
     if type(max_depth) is not int or max_depth < 0:
         raise ValueError("max_depth must be a non-negative integer")
     if not needs_split(reported_count, incomplete):
-        return PartitionSplit((), max_depth=max_depth)
+        return PartitionSplit((), max_depth=max_depth, parent=partition)
     if partition.depth >= max_depth:
-        return PartitionSplit((), REASON_MAX_DEPTH, max_depth)
+        return PartitionSplit((), REASON_MAX_DEPTH, max_depth, partition)
 
     for splitter in (_split_pushed, _split_created, _split_stars):
         children = splitter(partition)
         if children:
-            return PartitionSplit(children, max_depth=max_depth)
-    return PartitionSplit((), REASON_INDIVISIBLE, max_depth)
+            return PartitionSplit(children, max_depth=max_depth, parent=partition)
+    return PartitionSplit((), REASON_INDIVISIBLE, max_depth, partition)
 
 
 def _split_pushed(partition):
-    midpoint = _midpoint(partition.pushed_from, partition.pushed_to)
-    if midpoint is None:
+    if partition.pushed_to - partition.pushed_from <= MIN_PUSHED_SPAN:
         return ()
+    midpoint = _midpoint(partition.pushed_from, partition.pushed_to)
     depth = partition.depth + 1
     return (
         replace(partition, pushed_to=midpoint, depth=depth),
@@ -258,11 +287,9 @@ def _split_created(partition):
         # upper bound for the missing created range.
         start = GITHUB_CREATED_FLOOR
         end = partition.pushed_to
-    if start >= end:
+    if end - start <= MIN_CREATED_SPAN:
         return ()
     midpoint = _midpoint(start, end)
-    if midpoint is None:
-        return ()
     depth = partition.depth + 1
     return (
         replace(partition, created_from=start, created_to=midpoint, depth=depth),
@@ -297,10 +324,8 @@ def _split_stars(partition):
 
 
 def _midpoint(start, end):
-    seconds = int((end - start).total_seconds())
-    if seconds < 2:
-        return None
-    return start + timedelta(seconds=seconds // 2)
+    # Callers only split spans wider than MIN_PUSHED_SPAN/MIN_CREATED_SPAN.
+    return start + timedelta(seconds=int((end - start).total_seconds()) // 2)
 
 
 def dedupe_repository_ids(pages):
@@ -315,3 +340,82 @@ def dedupe_repository_ids(pages):
                 seen.add(repo_id)
                 result.append(repo_id)
     return tuple(result)
+
+
+@dataclass(frozen=True)
+class DiscoverySelection:
+    """Serializable selection cap and coverage for one discovery run (T17).
+
+    Coverage is never "complete": GitHub's index moves while pages are read.
+    "curated" means the cap was reached or partitions were deferred, "partial"
+    means some partitions stayed unresolved, "partitioned" means every planned
+    partition was resolved within the search cap.
+    """
+
+    cap: int
+    selected: int
+    unresolved: tuple[tuple[DiscoveryPartition, str], ...] = field(default=())
+    deferred: tuple[DiscoveryPartition, ...] = field(default=())
+
+    def __post_init__(self):
+        if type(self.cap) is not int or self.cap <= 0:
+            raise ValueError("cap must be a positive integer")
+        if type(self.selected) is not int or not 0 <= self.selected <= self.cap:
+            raise ValueError("selected must be an integer between 0 and cap")
+        unresolved = tuple(self.unresolved)
+        deferred = tuple(self.deferred)
+        for partition, reason in unresolved:
+            if not isinstance(partition, DiscoveryPartition):
+                raise TypeError("unresolved entries must hold DiscoveryPartition")
+            if reason not in UNRESOLVED_REASONS:
+                raise ValueError("unresolved reason is not recognised")
+        if not all(isinstance(partition, DiscoveryPartition) for partition in deferred):
+            raise TypeError("deferred entries must be DiscoveryPartition")
+        object.__setattr__(self, "unresolved", unresolved)
+        object.__setattr__(self, "deferred", deferred)
+
+    @property
+    def coverage(self):
+        if self.selected >= self.cap or self.deferred:
+            return "curated"
+        if self.unresolved:
+            return "partial"
+        return "partitioned"
+
+    def as_record(self):
+        return {
+            "policy_version": DISCOVERY_POLICY_VERSION,
+            "coverage": self.coverage,
+            "cap": self.cap,
+            "selected": self.selected,
+            "unresolved": [
+                {"partition": partition.as_record(), "reason": reason}
+                for partition, reason in self.unresolved
+            ],
+            "deferred": [partition.as_record() for partition in self.deferred],
+        }
+
+    @classmethod
+    def from_record(cls, record):
+        if not isinstance(record, dict):
+            raise TypeError("selection record must be a mapping")
+        if record.get("policy_version") != DISCOVERY_POLICY_VERSION:
+            raise ValueError("selection record has a different policy version")
+        try:
+            selection = cls(
+                cap=record["cap"],
+                selected=record["selected"],
+                unresolved=tuple(
+                    (DiscoveryPartition.from_record(item["partition"]), item["reason"])
+                    for item in record.get("unresolved", ())
+                ),
+                deferred=tuple(
+                    DiscoveryPartition.from_record(item)
+                    for item in record.get("deferred", ())
+                ),
+            )
+        except KeyError as error:
+            raise ValueError("selection record is missing a required field") from error
+        if "coverage" in record and record["coverage"] != selection.coverage:
+            raise ValueError("selection record coverage does not match its state")
+        return selection
