@@ -599,3 +599,28 @@ Scope: documentation only. PR #22 was merged by the reviewed-merge workflow on i
 - **T06** ([PR #22](https://github.com/SumukhaK/open-source-projectFinder/pull/22)): the first review of `b2ae30e` requested separating fetch observation from content identity and refusing raw bytes without a README; both were fixed on the same PR. Exact-head acceptance of `41e5548933a514f800b7964e1a6eb759cac44952` ([review 5662649788](https://github.com/SumukhaK/open-source-projectFinder/pull/22#pullrequestreview-5662649788)), [CI 40455506122](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40455506122) passed, merged as `c73c457` on 2026-10-27. The catalogue is now at schema v2.
 - Open: `archive_repositories.full_name`/`metadata_json` keep first-seen values (T10/T19 own refreshing them); unreferenced content files left after a caller rollback are cleaned up by T08.
 - Next unblocked: T07 (Milvus adapter) and T16 (discovery planning); T08 needs T07. Unchanged blockers: D1-D8 and P1-P3 in [READINESS](execution-plans/hybrid-search/READINESS.md); the node-forge 1.4.0 dependency exception expires 2026-11-01.
+
+
+## T16 partitioned rolling-year discovery - 2026-10-27
+
+User request (verbatim; an OpenCode/DeepSeek handoff for the work it could not finish):
+
+```text
+Objective
+
+* Implement only T16 ("Plan partitioned rolling-year discovery") from `execution-plans/hybrid-search/TRACKER.md`, raise one PR against `main`, then stop and wait for review.
+...
+Focused GREEN: 20 passed. Now the full verification gates.
+
+deepseek ran out of session limit at this stage, can u verify this work and take it further ?
+```
+
+Follow-up request (verbatim):
+
+```text
+if I finish the work, I'm partly an author of it, so my review of it wouldn't be fully independent. thats ok i trust u enough to handover it. finish the work, review it and merge if its acceptable then update the tracker and the docs
+```
+
+Scope: one production module (`backend/app/services/archive_partitions.py`) plus tests and docs. It is a pure planner: no HTTP, persistence, worker, scheduler, dependency, config or CI change. The owner pushed DeepSeek's uncommitted planner as `8eaaa1b`. Claude Code verified it and found that, from the root, only pushed-time splits were reachable within depth 8, and that partition trees and selection caps were not serializable. Claude Code fixed both test-first (RED 6 failed, then GREEN) in `e52d5fe`.
+
+Status: Awaiting review in PR #24; [T16 evidence](execution-plans/hybrid-search/T16_EVIDENCE.md). Verification: 524 passed on CPython 3.11.17 / SQLite 3.53.1; module 100%; 97.6% / 96.3% coverage; Ruff and Bandit clean. Review is by a partial author, at the owner's explicit direction.
