@@ -626,3 +626,14 @@ Scope: one production module (`backend/app/services/archive_partitions.py`) plus
 Status: Merged via PR #24 as `539d02e` (2026-10-27) after exact-head review of `e821192` and [CI 40458476274](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40458476274); [T16 evidence](execution-plans/hybrid-search/T16_EVIDENCE.md). Verification: 524 passed on CPython 3.11.17 / SQLite 3.53.1; module 100%; 97.6% / 96.3% coverage; Ruff and Bandit clean. Review is by a partial author, at the owner's explicit direction.
 
 Tracker sync: the T16 tracker row, history, task file, evidence status and README were updated in a separate documentation PR after the merge. Next unblocked tasks are T07 (Milvus adapter); T08 needs T07, and T17 needs T08 and T16. The node-forge 1.4.0 dependency exception expires 2026-11-01.
+
+
+## T16 live-search follow-up recorded - 2026-10-27
+
+User request (verbatim):
+
+```text
+Not yet tested against real GitHub search: that needs the dedicated worker token (P1). The first real run in T18 should log the result counts for each partition. please update this in the tracker adn remind me once we are cloe to finishing these tasks
+```
+
+Scope: documentation only. The open follow-up is recorded under "Blockers and decisions" in the [task tracker](execution-plans/hybrid-search/TRACKER.md) and as an acceptance requirement in [T18](execution-plans/hybrid-search/tasks/T18-backfill.md): the first approved real run must log per-partition query, reported count, incomplete flag, pages, IDs and split/unresolved decision, and confirm qualifier behaviour. The reviewer will remind the owner when T17 nears merge and before T18 starts; P1 (worker credential) must be provided first.

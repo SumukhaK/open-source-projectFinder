@@ -45,6 +45,7 @@ Do not amend a PR after review simply to tick its own tracker row. The GitHub re
 
 - T00 recheck (2026-10-24): [READINESS](READINESS.md) confirms #10/#12/#11 merged into base `2e4a9ff`; the mobile foundation is still unmerged with no origin branch or PR (blocks T24-T26); all eight policy decisions remain pending operator approval; the `node-forge` exception expires 2026-11-01; the worker credential (P1) and hardware/runtime (P3) prerequisites remain open.
 - Unapproved policy choices: [REQUEST](REQUEST.md#request-and-decision-boundaries). Recommendations do not authorize live ingestion/rollout; see [decision gates](READINESS.md#3-decision-gates) and the [readiness matrix](READINESS.md#4-readiness-matrix).
+- Open follow-up from T16 (2026-10-27): the partition planner's query syntax was checked against GitHub's documentation only; it has not run against real GitHub search because the dedicated worker credential (P1) does not exist yet. Before T18 is accepted, its first real (approved-sample) run must log, per partition: query, reported `total_count`, `incomplete_results`, pages read, IDs returned and the split/unresolved decision, and confirm the `…Z` time-range and `stars:` qualifiers behave as documented. Owner reminder: raise this when T17 is near merge and before T18 starts.
 - Each implementing session handles one task; no task is auto-assigned to another chat/agent or automatically continued after PR creation.
 
 ## Review/change log
