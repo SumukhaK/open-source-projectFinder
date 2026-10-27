@@ -584,3 +584,18 @@ Scope: documentation only. PR #20 was merged by the reviewed-merge workflow on i
 - **T04** ([PR #19](https://github.com/SumukhaK/open-source-projectFinder/pull/19)): exact-head acceptance of `1ada43a36382baa7c790f0c829a810b5f4a0c590` ([review 5649001232](https://github.com/SumukhaK/open-source-projectFinder/pull/19#pullrequestreview-5649001232)), [CI 40289498384](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40289498384) passed, merged as `d2354e9` on 2026-10-26. Open: worker wiring (T09/T18) and live GitHub calls.
 - **T05** ([PR #20](https://github.com/SumukhaK/open-source-projectFinder/pull/20)): exact-head acceptance of `99c9c1711e8fa2decb1384871e144b7a3adc5e18` ([review 5652759721](https://github.com/SumukhaK/open-source-projectFinder/pull/20#pullrequestreview-5652759721)), [CI 40330742961](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40330742961) passed, merged as `adfd0f8` on 2026-10-26. Open: inline-HTML paragraphs are dropped whole (revisit in T27 relevance evaluation); `CHUNKER_VERSION` must be bumped for any later boundary change once content is ingested.
 - Unchanged blockers: policy decisions D1-D8 and prerequisites P1-P3 in [READINESS](execution-plans/hybrid-search/READINESS.md); the node-forge 1.4.0 dependency exception expires 2026-11-01, after which every PR's dependency audit fails until it is resolved.
+
+
+## Tracker sync for T06 - 2026-10-27
+
+User request (verbatim):
+
+```text
+merge and update the docs
+```
+
+Scope: documentation only. PR #22 was merged by the reviewed-merge workflow on its exact reviewed head before this sync. This records the T06 merge in the task tracker and task file, corrects stale status lines in the T00, T04 and T05 task files, and changes the README, REQUIREMENTS, SCOPE and backend README status from awaiting review to merged. No code, tests, configuration, dependencies or CI changed.
+
+- **T06** ([PR #22](https://github.com/SumukhaK/open-source-projectFinder/pull/22)): the first review of `b2ae30e` requested separating fetch observation from content identity and refusing raw bytes without a README; both were fixed on the same PR. Exact-head acceptance of `41e5548933a514f800b7964e1a6eb759cac44952` ([review 5662649788](https://github.com/SumukhaK/open-source-projectFinder/pull/22#pullrequestreview-5662649788)), [CI 40455506122](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40455506122) passed, merged as `c73c457` on 2026-10-27. The catalogue is now at schema v2.
+- Open: `archive_repositories.full_name`/`metadata_json` keep first-seen values (T10/T19 own refreshing them); unreferenced content files left after a caller rollback are cleaned up by T08.
+- Next unblocked: T07 (Milvus adapter) and T16 (discovery planning); T08 needs T07. Unchanged blockers: D1-D8 and P1-P3 in [READINESS](execution-plans/hybrid-search/READINESS.md); the node-forge 1.4.0 dependency exception expires 2026-11-01.

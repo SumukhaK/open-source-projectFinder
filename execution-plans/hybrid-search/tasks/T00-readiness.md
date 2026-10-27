@@ -1,6 +1,6 @@
 # T00: Readiness and policy decisions
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged via PR #13 (`6dc4233`, 2026-10-24). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
