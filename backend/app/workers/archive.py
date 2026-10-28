@@ -18,11 +18,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from app.core.archive_store import ArchiveStore
-from app.core.config import Settings
+from app.core.config import MILVUS_TEXT_BYTES, Settings
 from app.integrations.archive_github import (
     ArchiveGitHubError,
     ArchiveGitHubReader,
-    ArchiveSnapshot,
     RepositoryMetadata,
 )
 from app.integrations.milvus import (
@@ -40,17 +39,15 @@ from app.services.archive_content import (
 from app.services.archive_index import PreparedRepository, prepare_repository
 from app.services.archive_publication import (
     PublicationError,
+    load_active_chunks,
     publish_revision,
     reconcile,
 )
 from app.services.embeddings import EmbeddingAdapter, EmbeddingError
 from pydantic import ValidationError
+from pydantic_settings import SettingsError
 
 ELIGIBILITY_DAYS = 365
-LANGUAGE_BYTES = 128
-LICENSE_BYTES = 128
-SECTION_BYTES = 512
-SNIPPET_BYTES = 2048
 
 
 class IngestError(Exception):
@@ -75,18 +72,41 @@ class IngestRuntime:
     connect: Callable
 
 
+def _safe_error(error):
+    if isinstance(error, EmbeddingError):
+        return (
+            "preflight: pinned embedding model unavailable; verify the offline E5 cache"
+        )
+    if isinstance(error, MilvusContractError):
+        return "preflight: verify the pinned 2.6 family, collection and index contract"
+    if isinstance(error, (MilvusUnavailable, MilvusOperationError)):
+        return "preflight: Could not connect or operate Milvus; check the local service"
+    if isinstance(error, ArchiveGitHubError):
+        return (
+            "GitHub acquisition failed; verify worker credentials, identity and quota"
+        )
+    if isinstance(error, PublicationError):
+        return "Publication incomplete; retry the same numeric repository ID"
+    return "Archive storage failed; check private paths, free disk and WAL-fixed SQLite"
+
+
 def build_runtime(settings):
     """Run every preflight check, then return the wired runtime."""
     try:
         return _build_runtime(settings)
     except IngestError:
         raise
-    except (ArchiveGitHubError, ContentError, EmbeddingError) as error:
-        raise IngestError(f"preflight: {error}") from error
-    except (MilvusUnavailable, MilvusOperationError, MilvusContractError) as error:
-        raise IngestError(f"preflight: {error}") from error
-    except (RuntimeError, PermissionError, OSError) as error:
-        raise IngestError(f"preflight: {error}") from error
+    except (
+        ArchiveGitHubError,
+        ContentError,
+        EmbeddingError,
+        MilvusUnavailable,
+        MilvusOperationError,
+        MilvusContractError,
+        RuntimeError,
+        OSError,
+    ) as error:
+        raise IngestError(_safe_error(error)) from None
 
 
 def _build_runtime(settings):
@@ -101,6 +121,7 @@ def _build_runtime(settings):
     content = ArchiveContentStore(settings)
     _check_disk(content.root, settings.archive_min_free_bytes)
     store = ArchiveStore(settings)
+    _check_disk(settings.archive_database_path.parent, settings.archive_min_free_bytes)
     adapter = EmbeddingAdapter.load(batch_size=settings.milvus_batch_size, warm=False)
     vectors = MilvusAdapter.connect(settings, adapter.manifest)
     try:
@@ -123,37 +144,36 @@ def _check_disk(path, minimum):
 
 def ingest_one(runtime, repo_id, *, now=None):
     """Acquire, prepare, persist and publish one repository; return a summary."""
-    if type(repo_id) is not int or repo_id <= 0:
+    if type(repo_id) is not int or not 0 < repo_id < 2**63:
         raise IngestError("repository id must be a positive integer")
     cutoff = _utc(now) - timedelta(days=ELIGIBILITY_DAYS)
     timings = {}
     started = time.perf_counter()
 
     step = time.perf_counter()
-    snapshot = runtime.reader.acquire_by_id(repo_id)
+    metadata = runtime.reader.fetch_metadata_by_id(repo_id).metadata
+    if metadata is None or metadata.repo_id != repo_id:
+        raise IngestError("numeric repository identity did not match")
     timings["acquire"] = _elapsed(step)
 
     pushed_at = check_eligibility(
-        snapshot.metadata, runtime.settings.archive_license_allowlist, cutoff
+        metadata, runtime.settings.archive_license_allowlist, cutoff
     )
-    payload = _metadata_payload(snapshot.metadata)
+    payload = _metadata_payload(metadata)
 
     step = time.perf_counter()
-    raw, readme = _readme_bytes(runtime.reader, snapshot)
+    readme = runtime.reader.fetch_readme(metadata).readme
+    raw, readme = _readme_bytes(runtime.reader, metadata, readme)
+    confirmed = runtime.reader.fetch_metadata_by_id(repo_id).metadata
+    if (
+        confirmed is None
+        or confirmed.repo_id != repo_id
+        or confirmed.full_name != metadata.full_name
+    ):
+        raise IngestError("repository moved during acquisition; retry by numeric ID")
+    check_eligibility(confirmed, runtime.settings.archive_license_allowlist, cutoff)
     prepared = prepare_repository(payload, raw, adapter=runtime.adapter)
     timings["prepare"] = _elapsed(step)
-
-    step = time.perf_counter()
-    with runtime.connect(write=True) as db:
-        persist_revision(
-            db,
-            runtime.content,
-            metadata=snapshot.metadata,
-            prepared=prepared,
-            readme=readme,
-            raw=raw,
-        )
-    timings["persist"] = _elapsed(step)
 
     summary = {
         "repo_id": repo_id,
@@ -173,11 +193,23 @@ def ingest_one(runtime, repo_id, *, now=None):
         }
 
     step = time.perf_counter()
+    with runtime.connect(write=True) as db:
+        persist_revision(
+            db,
+            runtime.content,
+            metadata=metadata,
+            prepared=prepared,
+            readme=readme,
+            raw=raw,
+        )
+    timings["persist"] = _elapsed(step)
+
+    step = time.perf_counter()
     embedded = runtime.adapter.embed(
         [chunk.text for chunk in prepared.chunks], kind="passage"
     )
     timings["embed"] = _elapsed(step)
-    chunks = _vector_chunks(prepared, embedded, snapshot.metadata, pushed_at, payload)
+    chunks = _vector_chunks(prepared, embedded, metadata, pushed_at, payload)
 
     step = time.perf_counter()
     published = publish_revision(
@@ -262,13 +294,12 @@ def _utc(now):
     return moment.astimezone(timezone.utc)
 
 
-def _readme_bytes(reader, snapshot: ArchiveSnapshot):
-    readme = snapshot.readme
+def _readme_bytes(reader, metadata, readme):
     if readme is None:
         return None, None
     if readme.text is not None:
         return readme.text.encode("utf-8"), readme
-    result = reader.fetch_blob(snapshot.metadata, readme.blob_sha)
+    result = reader.fetch_blob(metadata, readme.blob_sha)
     if result.blob is None:
         raise IngestError("README content is unavailable")
     return result.blob.data, readme
@@ -291,8 +322,8 @@ def _vector_chunks(
 ):
     if len(embedded) != len(prepared.chunks):
         raise IngestError("embedding model returned the wrong number of vectors")
-    language = _bounded(payload.get("language") or "", LANGUAGE_BYTES)
-    license_spdx = _bounded(metadata.license_spdx or "", LICENSE_BYTES)
+    language = _bounded(payload.get("language") or "", MILVUS_TEXT_BYTES["language"])
+    license_spdx = _bounded(metadata.license_spdx or "", MILVUS_TEXT_BYTES["license"])
     moment = int(pushed_at.timestamp())
     return tuple(
         VectorChunk(
@@ -304,8 +335,8 @@ def _vector_chunks(
             license=license_spdx,
             pushed_at=moment,
             ordinal=chunk.ordinal,
-            section=_bounded(chunk.section, SECTION_BYTES),
-            snippet=_bounded(chunk.text, SNIPPET_BYTES),
+            section=chunk.section,
+            snippet=_bounded(chunk.text, MILVUS_TEXT_BYTES["snippet"]),
             vector=vector,
         )
         for chunk, vector in zip(prepared.chunks, embedded, strict=True)
@@ -323,14 +354,8 @@ def _bounded(value, limit):
 
 def _active_revision(connect, repo_id):
     with connect() as db:
-        row = db.execute(
-            "SELECT d.revision FROM archive_repositories AS r "
-            "JOIN archive_documents AS d "
-            "ON d.repo_id = r.repo_id AND d.revision = r.active_revision "
-            "WHERE r.repo_id = ? AND d.state = 'published'",
-            (repo_id,),
-        ).fetchone()
-    return row[0] if row is not None else None
+        chunks = load_active_chunks(db, repo_id)
+    return chunks[0].revision if chunks else None
 
 
 def _elapsed(start):
@@ -338,7 +363,7 @@ def _elapsed(start):
 
 
 def _positive_id(value):
-    if not value.isascii() or not value.isdigit() or int(value) <= 0:
+    if not value.isascii() or not value.isdigit() or not 0 < int(value) < 2**63:
         raise argparse.ArgumentTypeError("--repo-id must be a positive integer")
     return int(value)
 
@@ -379,6 +404,12 @@ def main(argv=None):
         summary = _failure(
             args.repo_id, "invalid settings: " + _invalid_fields(error), started
         )
+    except SettingsError:
+        summary = _failure(
+            args.repo_id,
+            "invalid settings: check JSON arrays in environment configuration",
+            started,
+        )
     except IneligibleRepository as error:
         summary = _failure(args.repo_id, str(error), started, result="refused")
         summary["reason"] = error.reason
@@ -396,12 +427,19 @@ def main(argv=None):
         RuntimeError,
         OSError,
     ) as error:
-        summary = _failure(args.repo_id, str(error), started)
+        summary = _failure(args.repo_id, _safe_error(error), started)
     except Exception as error:  # never print a traceback or provider payload
         summary = _failure(args.repo_id, f"unexpected {type(error).__name__}", started)
     finally:
         if runtime is not None:
-            runtime.vectors.close()
+            try:
+                runtime.vectors.close()
+            except Exception:
+                summary = _failure(
+                    args.repo_id,
+                    "Milvus cleanup failed; check the local service",
+                    started,
+                )
 
     summary["timings_ms"]["total"] = _elapsed(started)
     print(json.dumps(summary, sort_keys=True))

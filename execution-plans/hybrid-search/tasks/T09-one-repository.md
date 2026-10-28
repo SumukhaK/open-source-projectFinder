@@ -1,6 +1,6 @@
 # T09: Ingest one repository end to end
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review. Implementation and fake-based verification are complete; real owner-approved ingestion evidence remains BLOCKED. See [T09 evidence](../T09_EVIDENCE.md) and [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

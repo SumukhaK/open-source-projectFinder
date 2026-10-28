@@ -91,6 +91,13 @@ class FakeReader:
             raise AssertionError("worker requested the wrong repository id")
         return self.snapshot
 
+    def fetch_metadata_by_id(self, repo_id):
+        self.requested.append(repo_id)
+        return SimpleNamespace(metadata=self.snapshot.metadata)
+
+    def fetch_readme(self, metadata):
+        return SimpleNamespace(readme=self.snapshot.readme)
+
     def fetch_blob(self, metadata, blob_sha):
         raise AssertionError("no blob fetch expected in these fixtures")
 
@@ -431,7 +438,7 @@ def test_invalid_model_is_a_sanitized_preflight_failure(monkeypatch, tmp_path):
         ),
     )
     with pytest.raises(
-        worker.IngestError, match="preflight: pinned embedding model is not cached"
+        worker.IngestError, match="preflight: pinned embedding model unavailable"
     ):
         worker.build_runtime(settings)
 
@@ -454,7 +461,7 @@ def test_catalogue_wal_gate_failure_is_a_sanitized_preflight_failure(
         )
 
     monkeypatch.setattr(worker, "ArchiveStore", broken_store)
-    with pytest.raises(worker.IngestError, match="preflight: Archive WAL requires"):
+    with pytest.raises(worker.IngestError, match="WAL-fixed SQLite"):
         worker.build_runtime(settings)
 
 
@@ -537,3 +544,261 @@ def test_cli_rejects_a_non_positive_repository_id(capsys):
         worker.main(["ingest", "--repo-id", "0"])
     assert caught.value.code == 2
     assert "positive integer" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "error",
+    [EmbeddingError(TOKEN), RuntimeError(README), OSError("private/path " + TOKEN)],
+)
+def test_cli_never_prints_dependency_exception_text(monkeypatch, capsys, error):
+    def broken(_):
+        raise error
+
+    monkeypatch.setattr(worker, "build_runtime", broken)
+    assert worker.main(["ingest", "--repo-id", str(REPO_ID)]) == 1
+    output = capsys.readouterr()
+    assert TOKEN not in output.out + output.err
+    assert README not in output.out + output.err
+    assert "private/path" not in output.out + output.err
+    assert json.loads(output.out)["result"] == "failed"
+
+
+def test_cli_cleanup_error_still_prints_sanitized_json(monkeypatch, capsys, tmp_path):
+    state = harness(tmp_path)
+    monkeypatch.setattr(worker, "build_runtime", lambda _: state.runtime)
+    monkeypatch.setattr(
+        worker, "ingest_one", lambda *_: {"result": "unchanged", "timings_ms": {}}
+    )
+
+    def fail_close():
+        raise RuntimeError(TOKEN)
+
+    state.vectors.close = fail_close
+    assert worker.main(["ingest", "--repo-id", str(REPO_ID)]) == 1
+    output = capsys.readouterr()
+    assert TOKEN not in output.out + output.err
+    assert json.loads(output.out)["result"] == "failed"
+
+
+def test_semantically_unchanged_raw_readme_does_not_conflict_or_embed(tmp_path):
+    state = harness(tmp_path)
+    first = worker.ingest_one(state.runtime, REPO_ID, now=NOW)
+    state.reader.snapshot = make_snapshot(readme_text=README + "\n\n")
+    second = worker.ingest_one(state.runtime, REPO_ID, now=NOW)
+    assert second["result"] == "unchanged"
+    assert second["revision"] == first["revision"]
+    assert state.adapter.calls == 1
+
+
+def test_id_exceeding_catalogue_range_is_refused_before_fetch(tmp_path):
+    state = harness(tmp_path)
+    with pytest.raises(worker.IngestError):
+        worker.ingest_one(state.runtime, 2**63, now=NOW)
+    assert state.reader.requested == []
+
+
+def test_licence_refusal_precedes_readme_download(tmp_path):
+    state = harness(tmp_path, make_snapshot(license_spdx="GPL-3.0"))
+
+    def forbid_acquire(_):
+        pytest.fail("README acquisition happened before licence approval")
+
+    state.reader.fetch_readme = forbid_acquire
+    state.reader.fetch_metadata_by_id = lambda _: SimpleNamespace(
+        metadata=state.reader.snapshot.metadata
+    )
+    with pytest.raises(worker.IneligibleRepository):
+        worker.ingest_one(state.runtime, REPO_ID, now=NOW)
+
+
+def test_incomplete_active_revision_is_repaired_not_reported_unchanged(tmp_path):
+    state = harness(tmp_path)
+    worker.ingest_one(state.runtime, REPO_ID, now=NOW)
+    with state.connect(write=True) as db:
+        db.execute("UPDATE archive_chunks SET vector_state='pending'")
+    result = worker.ingest_one(state.runtime, REPO_ID, now=NOW)
+    assert result["result"] == "published"
+    with state.connect() as db:
+        assert load_active_chunks(db, REPO_ID)
+
+
+def test_disk_minimum_checks_catalogue_and_content_filesystems(monkeypatch, tmp_path):
+    settings = make_settings(tmp_path, archive_min_free_bytes=100)
+    paths = []
+
+    def usage(path):
+        paths.append(path)
+        return SimpleNamespace(free=1000 if len(paths) == 1 else 99)
+
+    monkeypatch.setattr(worker.shutil, "disk_usage", usage)
+    monkeypatch.setattr(
+        worker,
+        "ArchiveStore",
+        lambda _: SimpleNamespace(path=settings.archive_database_path),
+    )
+    monkeypatch.setattr(
+        worker.EmbeddingAdapter,
+        "load",
+        lambda **_: pytest.fail("model loaded before disk checks"),
+    )
+    with pytest.raises(worker.IngestError, match="free disk"):
+        worker.build_runtime(settings)
+
+
+def test_offline_preflight_does_not_embed_and_enforces_manifest(monkeypatch, tmp_path):
+    from dataclasses import replace
+
+    settings = make_settings(tmp_path)
+    monkeypatch.setattr(
+        worker,
+        "ArchiveStore",
+        lambda _: SimpleNamespace(path=settings.archive_database_path, connect=None),
+    )
+
+    def wrong_model(**kwargs):
+        assert kwargs["warm"] is False
+        return SimpleNamespace(
+            manifest=replace(ModelManifest.load(), revision="0" * 40)
+        )
+
+    monkeypatch.setattr(worker.EmbeddingAdapter, "load", wrong_model)
+    with pytest.raises(worker.IngestError, match="pinned"):
+        worker.build_runtime(settings)
+
+
+def test_worker_pipeline_uses_real_reader_with_fake_http_and_zero_embed_replay(
+    tmp_path,
+):
+    import base64
+    from dataclasses import replace
+
+    import httpx
+    from app.integrations.archive_github import ArchiveGitHubReader
+
+    state = harness(tmp_path)
+    calls = []
+    payload = json.loads(state.reader.snapshot.metadata.response.body)
+
+    def handler(request):
+        calls.append(request.url.path)
+        if request.url.path == f"/repositories/{REPO_ID}":
+            return httpx.Response(200, json=payload)
+        assert request.url.path == "/repos/acme/compass/readme"
+        raw = README.encode()
+        return httpx.Response(
+            200,
+            json={
+                "type": "file",
+                "path": "README.md",
+                "sha": git_blob_sha(raw),
+                "size": len(raw),
+                "encoding": "base64",
+                "content": base64.b64encode(raw).decode(),
+            },
+        )
+
+    reader = ArchiveGitHubReader(
+        settings=state.settings, transport=httpx.MockTransport(handler)
+    )
+    runtime = replace(state.runtime, reader=reader)
+    assert worker.ingest_one(runtime, REPO_ID, now=NOW)["result"] == "published"
+    assert worker.ingest_one(runtime, REPO_ID, now=NOW)["embedding_calls"] == 0
+    assert state.adapter.calls == 1
+    assert (
+        calls
+        == [
+            f"/repositories/{REPO_ID}",
+            "/repos/acme/compass/readme",
+            f"/repositories/{REPO_ID}",
+        ]
+        * 2
+    )
+    with state.connect() as db:
+        from app.services.archive_publication import filter_active_hits
+
+        hits = [
+            {
+                "repo_id": chunk.repo_id,
+                "revision": chunk.revision,
+                "chunk_id": chunk.chunk_id,
+            }
+            for chunk in state.vectors.rows.values()
+        ]
+        assert filter_active_hits(db, hits) == hits
+
+
+def test_rename_during_readme_acquisition_refuses_publication(tmp_path):
+    from dataclasses import replace
+
+    state = harness(tmp_path)
+    original = state.reader.snapshot.metadata
+    observations = [original, replace(original, full_name="new/name")]
+    state.reader.fetch_metadata_by_id = lambda _: SimpleNamespace(
+        metadata=observations.pop(0)
+    )
+    with pytest.raises(worker.IngestError, match="moved"):
+        worker.ingest_one(state.runtime, REPO_ID, now=NOW)
+    assert state.adapter.calls == 0
+    assert state.vectors.upserts == []
+
+
+def test_private_transition_during_readme_acquisition_refuses_publication(tmp_path):
+    from dataclasses import replace
+
+    state = harness(tmp_path)
+    original = state.reader.snapshot.metadata
+    observations = [original, replace(original, visibility="private")]
+    state.reader.fetch_metadata_by_id = lambda _: SimpleNamespace(
+        metadata=observations.pop(0)
+    )
+    with pytest.raises(worker.IneligibleRepository, match="public"):
+        worker.ingest_one(state.runtime, REPO_ID, now=NOW)
+    assert state.adapter.calls == 0
+
+
+def test_worker_settings_refuse_bad_limits_and_have_no_implicit_licences():
+    from pydantic import ValidationError
+
+    assert Settings(_env_file=None).archive_license_allowlist == []
+    for override in (
+        {"archive_min_free_bytes": -1},
+        {"archive_license_allowlist": [""]},
+        {"archive_license_allowlist": ["x" * 129]},
+    ):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, **override)
+
+
+def test_invalid_json_setting_has_actionable_sanitized_exit(monkeypatch, capsys):
+    monkeypatch.setenv("ARCHIVE_LICENSE_ALLOWLIST", "not-json-" + TOKEN)
+    assert worker.main(["ingest", "--repo-id", str(REPO_ID)]) == 1
+    output = capsys.readouterr().out
+    assert TOKEN not in output
+    assert "settings" in json.loads(output)["error"]
+    assert "JSON" in json.loads(output)["error"]
+
+
+def test_long_heading_preserves_section_identity_through_publication(
+    tmp_path, monkeypatch
+):
+    state = harness(
+        tmp_path,
+        make_snapshot(
+            readme_text="# " + "understanding " * 60 + "\n\nA useful project."
+        ),
+    )
+    monkeypatch.setattr(
+        state.adapter.encoder,
+        "count_tokens",
+        lambda texts: [len(text.split()) + 2 for text in texts],
+    )
+    result = worker.ingest_one(state.runtime, REPO_ID, now=NOW)
+    assert result["result"] == "published"
+    with state.connect() as db:
+        chunks = load_active_chunks(db, REPO_ID)
+    assert len(chunks) == 2
+    for chunk in chunks:
+        vector = state.vectors.rows[chunk.chunk_id]
+        assert vector.section == chunk.section
+        assert len(chunk.section.encode("utf-8")) <= 512
+    assert worker.ingest_one(state.runtime, REPO_ID, now=NOW)["result"] == "unchanged"

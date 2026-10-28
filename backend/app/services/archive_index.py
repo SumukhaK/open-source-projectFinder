@@ -15,6 +15,7 @@ from app.core.config import (
     ARCHIVE_README_MAX_BYTES,
     ARCHIVE_TITLE_TOKENS,
     ARCHIVE_TOKEN_PROBE_CHARS,
+    MILVUS_TEXT_BYTES,
 )
 from app.services.embeddings import PREFIXES, EmbeddingAdapter, EmbeddingError
 from markdown_it import MarkdownIt
@@ -83,6 +84,7 @@ def prepare_repository(
             ARCHIVE_TITLE_TOKENS,
             ARCHIVE_TOKEN_PROBE_CHARS,
             ARCHIVE_MARKDOWN_MAX_NESTING,
+            MILVUS_TEXT_BYTES["section"],
         ]
     )
 
@@ -96,7 +98,13 @@ def prepare_repository(
     for section_index, (section, body) in enumerate(
         [("Overview", overview), *sections]
     ):
-        short_section = _fit(section, lambda text: count(text) <= ARCHIVE_TITLE_TOKENS)
+        short_section = _fit(
+            section,
+            lambda text: (
+                count(text) <= ARCHIVE_TITLE_TOKENS
+                and len(text.encode("utf-8")) <= MILVUS_TEXT_BYTES["section"]
+            ),
+        )
         if short_section != section:
             omissions.append("title_tokens")
         title = f"Repository: {short_name}\nSection: {short_section}"
