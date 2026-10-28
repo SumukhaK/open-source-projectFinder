@@ -1,6 +1,6 @@
 # T10 eligibility and public identity evidence
 
-Date: 2026-10-28. Status: Awaiting review. Branch:
+Date: 2026-10-28. Status: Merged via [PR #32](https://github.com/SumukhaK/open-source-projectFinder/pull/32) as `22295fa` (2026-10-28) after exact-head review of `ab2582d` and passing [CI 40705489977](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40705489977). Branch:
 `codex/hybrid-t10-visibility`. Base: `d1ae76139ba80dd3eac5d3b5dc1656a41387eb35`.
 T04 `d2354e9` and T08 `952f7e2` are verified ancestors of the base.
 The PR carries the final head and required CI link. D4 is still pending:
