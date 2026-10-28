@@ -83,3 +83,5 @@ T04 API version and dependency pins are unchanged.
 Fresh branch review found one timing defect: cache freshness was checked only at request start. A fake-clock regression failed (expected only ID 43, got 42 and 43). The fix records separate validation times and rechecks TTL at return; expired evidence is dropped with validation_expired. The rolling cutoff remains fixed. No other important review findings.
 
 Final local verification: 655 passed, 49 platform/server skips; coverage gate passed at 95.0% combined / 93.2% branches. Ruff check and format (42 files), Bandit and whitespace checks passed. One inherited Starlette/httpx deprecation warning.
+
+PR: [#32](https://github.com/SumukhaK/open-source-projectFinder/pull/32). Before PR creation, origin/main was refreshed and git merge --no-ff origin/main reported already up to date (d1ae761). No upstream lines were removed by a merge; Git creates no merge commit when main is already an ancestor.
