@@ -116,7 +116,7 @@ Limitations:
 - No real GitHub corpus read or worker credential was used.
 - Mobile code is unchanged and its local suite was not run in this worktree; PR CI runs the existing mobile checks.
 - CI for this PR head is not claimed here; reviewers must use the exact-head run.
-- The `node-forge` exception expires 2026-11-01 and remains an inherited release blocker.
+- The `node-forge` exception was retired: node-forge is locked at patched 1.4.2 (merged 2026-10-28, before the 2026-11-01 expiry).
 
 ## 6. Operator actions
 
@@ -125,7 +125,7 @@ Limitations:
 3. Deliver the P2 mobile discovery foundation through a separate reviewed PR; do not copy the local uncommitted WIP into a task branch.
 4. Provide or approve the host/runtime access needed for T01 to prove Docker/WSL2/CUDA/Milvus, or explicitly approve a CPU-only fallback.
 5. Review this PR at its exact head and merge only after required checks pass. T01 must not start until T00 is merged.
-6. Recheck or replace the `node-forge` exception before 2026-11-01.
+6. ~~Recheck or replace the `node-forge` exception before 2026-11-01.~~ Done: bumped to node-forge 1.4.2 and the exception removed.
 
 ## 7. Rollback
 
