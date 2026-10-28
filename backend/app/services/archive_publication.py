@@ -3,9 +3,10 @@
 SQLite and Milvus share no transaction. A revision is staged as pending chunk
 rows, every vector is upserted with stable IDs and strongly read back, and only
 then does one short SQL transaction publish the revision and move the
-repository's active pointer. Superseded rows are retired by ``reconcile`` only
-after their vectors are deleted, so a crash can leave extra rows but never an
-untracked vector.
+repository's active pointer. Activation also supersedes older pending attempts,
+so an abandoned publication cannot later overwrite a newer revision. Superseded
+rows are retired by ``reconcile`` only after their vectors are deleted, so a
+crash can leave extra rows but never an untracked vector.
 """
 
 from __future__ import annotations
@@ -245,6 +246,11 @@ def _activate(connect, prepared):
             raise PublicationContractError(
                 "published revision is not the active revision"
             )
+        db.execute(
+            "UPDATE archive_documents SET state='superseded' "
+            "WHERE repo_id=? AND revision<>? AND state='pending'",
+            (prepared.repo_id, prepared.semantic_hash),
+        )
         if previous not in (None, prepared.semantic_hash):
             db.execute(
                 "UPDATE archive_documents SET state='superseded' "
@@ -268,7 +274,9 @@ def publish_revision(connect, vectors, *, prepared, chunks):
 
     ``connect`` is the archive catalogue's ``connect(write=...)`` factory and
     ``vectors`` is the T07 adapter. Retryable adapter failures propagate with
-    the revision still pending; callers replay the same prepared revision.
+    the revision still pending; callers replay the same prepared revision. A
+    newer activation supersedes an older pending attempt, so a stale replay
+    fails as superseded instead of rolling the repository back.
     """
     _validate_prepared(prepared)
     vector_chunks = _vector_chunks(prepared, chunks)
@@ -291,7 +299,9 @@ def reconcile(connect, vectors, *, limit=ARCHIVE_RECONCILE_DOCUMENTS):
     """Retire bounded superseded work and report pending publications.
 
     Vectors are deleted before their catalogue rows. Pending revisions are
-    reported but never activated or removed; their publisher replays them.
+    reported but never activated; a newer activation marks older pending work
+    superseded so this retires it, while an unclaimed pending revision is left
+    for its publisher to replay.
     """
     if type(limit) is not int or not 1 <= limit <= ARCHIVE_RECONCILE_DOCUMENTS:
         raise PublicationContractError("reconcile limit must be within its bound")
@@ -343,6 +353,38 @@ def reconcile(connect, vectors, *, limit=ARCHIVE_RECONCILE_DOCUMENTS):
             )
             retired_documents += 1
     return ReconcileResult(retired_documents, retired_vectors, pending)
+
+
+def filter_active_hits(db, hits):
+    """Keep only search hits from each repository's active, complete revision.
+
+    ``hits`` are T07 search rows. Unknown, malformed or non-active revisions are
+    dropped. The caller owns the read transaction; at most one query runs per
+    distinct repository.
+    """
+    allowed = {}
+    filtered = []
+    for hit in hits:
+        if not isinstance(hit, dict):
+            continue
+        repo_id = hit.get("repo_id")
+        revision = hit.get("revision")
+        chunk_id = hit.get("chunk_id")
+        if (
+            type(repo_id) is not int
+            or repo_id <= 0
+            or not isinstance(revision, str)
+            or not isinstance(chunk_id, str)
+        ):
+            continue
+        if repo_id not in allowed:
+            allowed[repo_id] = {
+                (chunk.revision, chunk.chunk_id)
+                for chunk in load_active_chunks(db, repo_id)
+            }
+        if (revision, chunk_id) in allowed[repo_id]:
+            filtered.append(hit)
+    return filtered
 
 
 def load_active_chunks(db, repo_id):

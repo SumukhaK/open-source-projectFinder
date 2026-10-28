@@ -13,6 +13,7 @@ from app.services.archive_publication import (
     PublicationIncomplete,
     PublicationResult,
     ReconcileResult,
+    filter_active_hits,
     load_active_chunks,
     publish_revision,
     reconcile,
@@ -123,6 +124,40 @@ def seed_document(db_path, prepared, *, state="pending"):
     )
     db.commit()
     db.close()
+
+
+def stage_pending_chunks(db_path, prepared, *, written=False):
+    db = sqlite3.connect(db_path)
+    db.execute("PRAGMA foreign_keys=ON")
+    for chunk in prepared.chunks:
+        db.execute(
+            "INSERT INTO archive_chunks (chunk_id, repo_id, revision, ordinal, "
+            "section, text, text_sha256, token_count, vector_state) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                chunk.chunk_id,
+                prepared.repo_id,
+                prepared.semantic_hash,
+                chunk.ordinal,
+                chunk.section,
+                chunk.text,
+                chunk.text_hash,
+                chunk.token_count,
+                "written" if written else "pending",
+            ),
+        )
+    db.commit()
+    db.close()
+
+
+class CountingDB:
+    def __init__(self, db):
+        self.db = db
+        self.queries = 0
+
+    def execute(self, *args, **kwargs):
+        self.queries += 1
+        return self.db.execute(*args, **kwargs)
 
 
 class FakeVectors:
@@ -1022,3 +1057,164 @@ def test_reconcile_skips_a_document_that_became_active(connect, db_path):
             db.execute("SELECT active_revision FROM archive_repositories").fetchone()[0]
             == first.semantic_hash
         )
+
+
+def test_activation_supersedes_other_pending_revisions(connect, db_path):
+    first = make_prepared(count=2, revision="a" * 64)
+    seed_document(db_path, first)
+    publish_revision(connect, FakeVectors(), prepared=first, chunks=make_vectors(first))
+
+    abandoned = make_prepared(count=2, revision="b" * 64)
+    seed_document(db_path, abandoned)
+    writes = 0
+
+    @contextmanager
+    def failing_connect(write=False):
+        nonlocal writes
+        if write:
+            writes += 1
+            if writes == 2:
+                raise sqlite3.OperationalError("synthetic activation failure")
+        with connect(write=write) as db:
+            yield db
+
+    with pytest.raises(sqlite3.OperationalError):
+        publish_revision(
+            failing_connect,
+            FakeVectors(),
+            prepared=abandoned,
+            chunks=make_vectors(abandoned),
+        )
+
+    current = make_prepared(count=2, revision="c" * 64)
+    seed_document(db_path, current)
+    publish_revision(
+        connect, FakeVectors(), prepared=current, chunks=make_vectors(current)
+    )
+
+    other = make_prepared(count=1, revision="d" * 64, repo_id=REPO_ID + 1)
+    seed_document(db_path, other)
+
+    with connect() as db:
+        states = dict(
+            db.execute("SELECT revision, state FROM archive_documents").fetchall()
+        )
+        assert states[abandoned.semantic_hash] == "superseded"
+        assert states[other.semantic_hash] == "pending"
+        assert states[current.semantic_hash] == "published"
+        assert (
+            db.execute("SELECT active_revision FROM archive_repositories").fetchone()[0]
+            == current.semantic_hash
+        )
+
+    replay = FakeVectors()
+    with pytest.raises(PublicationContractError):
+        publish_revision(
+            connect, replay, prepared=abandoned, chunks=make_vectors(abandoned)
+        )
+    assert replay.upserts == []
+
+    observed = []
+    abandoned_ids = tuple(chunk.chunk_id for chunk in abandoned.chunks)
+    placeholders = ",".join("?" * len(abandoned_ids))
+
+    def inspect_delete():
+        with connect() as db:
+            observed.append(
+                db.execute(
+                    f"SELECT count(*) FROM archive_chunks WHERE chunk_id IN ({placeholders})",
+                    abandoned_ids,
+                ).fetchone()[0]
+            )
+
+    vectors = FakeVectors(inspect_delete=inspect_delete)
+    cleaned = reconcile(connect, vectors)
+
+    assert cleaned == ReconcileResult(2, 4, 1)
+    assert observed == [2, 2]
+    assert vectors.deletes == [
+        (first.chunks[0].chunk_id, first.chunks[1].chunk_id),
+        (abandoned.chunks[0].chunk_id, abandoned.chunks[1].chunk_id),
+    ]
+    with connect() as db:
+        assert (
+            db.execute(
+                "SELECT count(*) FROM archive_documents WHERE revision=?",
+                (abandoned.semantic_hash,),
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            db.execute(
+                "SELECT count(*) FROM archive_chunks WHERE revision=?",
+                (abandoned.semantic_hash,),
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            db.execute("SELECT active_revision FROM archive_repositories").fetchone()[0]
+            == current.semantic_hash
+        )
+        assert (
+            db.execute(
+                "SELECT state FROM archive_documents WHERE revision=?",
+                (other.semantic_hash,),
+            ).fetchone()[0]
+            == "pending"
+        )
+
+    with pytest.raises(PublicationContractError):
+        publish_revision(
+            connect, FakeVectors(), prepared=abandoned, chunks=make_vectors(abandoned)
+        )
+
+
+def test_filter_active_hits_keeps_only_active_published_written_chunks(
+    connect, db_path
+):
+    old = make_prepared(count=2, revision="a" * 64)
+    seed_document(db_path, old)
+    publish_revision(connect, FakeVectors(), prepared=old, chunks=make_vectors(old))
+
+    active = make_prepared(count=2, revision="b" * 64)
+    seed_document(db_path, active)
+    publish_revision(
+        connect, FakeVectors(), prepared=active, chunks=make_vectors(active)
+    )
+
+    pending = make_prepared(count=1, revision="c" * 64)
+    seed_document(db_path, pending)
+    stage_pending_chunks(db_path, pending, written=True)
+
+    def hit(prepared, ordinal, **changes):
+        return {
+            "repo_id": prepared.repo_id,
+            "revision": prepared.semantic_hash,
+            "chunk_id": prepared.chunks[ordinal].chunk_id,
+            "score": 0.5,
+            **changes,
+        }
+
+    unknown_repo = make_prepared(count=1, revision="d" * 64, repo_id=REPO_ID + 1)
+    candidates = [
+        hit(old, 0),
+        hit(pending, 0),
+        hit(active, 0),
+        {"repo_id": REPO_ID, "revision": active.semantic_hash},
+        {**hit(active, 1), "repo_id": str(REPO_ID)},
+        {**hit(active, 1), "repo_id": True},
+        hit(active, 1, score=0.9),
+        {**hit(active, 0), "chunk_id": "f" * 64},
+        hit(unknown_repo, 0),
+        "not-a-hit",
+    ]
+
+    with connect() as db:
+        counter = CountingDB(db)
+        assert filter_active_hits(counter, candidates) == [
+            candidates[2],
+            candidates[6],
+        ]
+        assert counter.queries == 2
+        assert filter_active_hits(counter, []) == []
+        assert counter.queries == 2
