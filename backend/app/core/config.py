@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     archive_github_metadata_bytes: int = Field(default=524288, ge=1024, le=2097152)
     archive_github_readme_bytes: int = Field(default=262144, ge=1024, le=1048576)
     archive_github_retry_max_wait: float = Field(default=5, gt=0, le=60)
+    # No built-in licence list: policy approval is outstanding, so an empty
+    # allowlist refuses every repository instead of guessing.
+    archive_license_allowlist: list[str] = Field(default_factory=list)
+    archive_min_free_bytes: int = Field(default=2 * 1024**3, ge=0)
     milvus_uri: str = "http://127.0.0.1:19530"
     milvus_token: SecretStr = Field(default=SecretStr(""), repr=False)
     milvus_profile: Literal["cpu", "gpu"] = "gpu"
@@ -135,6 +139,19 @@ class Settings(BaseSettings):
         ):
             raise ValueError("Archive paths must be ordinary filesystem paths")
         return value
+
+    @field_validator("archive_license_allowlist")
+    @classmethod
+    def bounded_license_ids(cls, value):
+        cleaned = []
+        for item in value:
+            if not isinstance(item, str):
+                raise ValueError("Archive license allowlist must contain SPDX ids")
+            item = item.strip()
+            if not item or len(item) > 128:
+                raise ValueError("Archive license allowlist entries must be bounded")
+            cleaned.append(item)
+        return cleaned
 
     @model_validator(mode="after")
     def separate_archive_paths(self):

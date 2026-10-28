@@ -302,8 +302,35 @@ class ArchiveGitHubReader:
     ):
         repo_id = _positive_repo_id(expected_repo_id)
         owner, repo = _repo_parts(full_name)
-        response = self._get(
+        return self._metadata_result(
             f"/repos/{quote(owner, safe='')}/{quote(repo, safe='')}",
+            repo_id,
+            etag=etag,
+            last_modified=last_modified,
+            cached=cached,
+        )
+
+    def fetch_metadata_by_id(
+        self,
+        expected_repo_id,
+        *,
+        etag=None,
+        last_modified=None,
+        cached=None,
+    ):
+        """Resolve verified metadata from a numeric ID, never an owner/name."""
+        repo_id = _positive_repo_id(expected_repo_id)
+        return self._metadata_result(
+            f"/repositories/{repo_id}",
+            repo_id,
+            etag=etag,
+            last_modified=last_modified,
+            cached=cached,
+        )
+
+    def _metadata_result(self, path, repo_id, *, etag, last_modified, cached):
+        response = self._get(
+            path,
             accept=_JSON_MEDIA,
             max_bytes=self.settings.archive_github_metadata_bytes,
             etag=etag,
@@ -430,6 +457,41 @@ class ArchiveGitHubReader:
             last_modified=metadata_last_modified,
             cached=cached_metadata,
         )
+        return self._snapshot(
+            metadata_result,
+            readme_etag=readme_etag,
+            readme_last_modified=readme_last_modified,
+            cached_readme=cached_readme,
+        )
+
+    def acquire_by_id(
+        self,
+        expected_repo_id,
+        *,
+        metadata_etag=None,
+        metadata_last_modified=None,
+        cached_metadata=None,
+        readme_etag=None,
+        readme_last_modified=None,
+        cached_readme=None,
+    ):
+        """Acquire one repository whose only identity is its numeric GitHub ID."""
+        metadata_result = self.fetch_metadata_by_id(
+            expected_repo_id,
+            etag=metadata_etag,
+            last_modified=metadata_last_modified,
+            cached=cached_metadata,
+        )
+        return self._snapshot(
+            metadata_result,
+            readme_etag=readme_etag,
+            readme_last_modified=readme_last_modified,
+            cached_readme=cached_readme,
+        )
+
+    def _snapshot(
+        self, metadata_result, *, readme_etag, readme_last_modified, cached_readme
+    ):
         if metadata_result.metadata is None:
             raise ArchiveProtocolError(
                 "metadata result has no body", response=metadata_result.response

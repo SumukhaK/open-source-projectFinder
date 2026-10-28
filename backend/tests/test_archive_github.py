@@ -1349,3 +1349,44 @@ def test_git_blob_content_identity_rejects_one_changed_byte(via_blob):
             reader.fetch_blob(fake_metadata(), sha)
         else:
             reader.fetch_readme(fake_metadata())
+
+
+def test_metadata_by_id_uses_the_numeric_endpoint():
+    reader, recorder = make_reader(json_response(repo_payload()))
+
+    result = reader.fetch_metadata_by_id(101)
+
+    assert result.metadata.repo_id == 101
+    assert recorder.requests[0].url.path == "/repositories/101"
+    assert recorder.requests[0].headers["Authorization"] == "Bearer " + TOKEN
+
+
+def test_metadata_by_id_rejects_a_mismatched_numeric_id():
+    reader, _ = make_reader(json_response(repo_payload(repo_id=999)))
+
+    with pytest.raises(RepositoryIdentityMismatch):
+        reader.fetch_metadata_by_id(101)
+
+
+def test_metadata_by_id_requires_a_positive_integer():
+    reader, recorder = make_reader()
+
+    with pytest.raises(ArchiveRequestError):
+        reader.fetch_metadata_by_id(0)
+
+    assert recorder.requests == []
+
+
+def test_acquire_by_id_resolves_metadata_then_readme():
+    reader, recorder = make_reader(
+        json_response(repo_payload()), json_response(readme_payload())
+    )
+
+    snapshot = reader.acquire_by_id(101)
+
+    assert snapshot.metadata.full_name == "owner/project"
+    assert snapshot.readme.text == "# Project\n"
+    assert [request.url.path for request in recorder.requests] == [
+        "/repositories/101",
+        "/repos/owner/project/readme",
+    ]
