@@ -718,3 +718,5 @@ Scope: dependency policy and documentation only, added to the node-forge PR #27.
 - **Why an exception:** `npm audit`'s only fix is an Expo/Jest major downgrade, which policy forbids. The owner approved an exact exception in `.ci/quality-policy.json`: npm / deepmerge / 4.3.1 / GHSA-gcqx-w48m-w2h4, expiring 2026-12-31, with a written reason.
 - **Docs updated:** `docs/QUALITY_PIPELINE.md`, README, `mobile/README.md` and the hybrid-search tracker blockers.
 - **Next:** PR #27 merges on 2026-10-29 at the scheduled check-in. T08 (PR #30) and other open PRs then merge main to get a green audit. Recheck for a deepmerge patch or replacement before 2026-12-31.
+
+Update (2026-10-28): node-forge 1.4.2 was published the same day as 1.4.1 and fixes a 1.4.1 regression: `pem.decode()` threw a `TypeError` on Buffer input. The lock was moved to 1.4.2, with its integrity checked against the registry tarball, before merging. The merge was brought forward from 2026-10-29 because T08 (PR #30) was blocked only by the red audit; the owner forwarded the T08 implementer's request to merge PR #27.

@@ -50,7 +50,7 @@ Build release binaries for both platforms and check launcher masks, native splas
 
 ## Dependency audit
 
-Initial npm audit: Initial scan had 13 inherited Expo tooling advisories. UUID is now overridden to patched 11.1.1; node-forge is locked at the patched 1.4.1 (within Expo's `^1.3.3` range), so it needs no exception. deepmerge 4.3.1 (GHSA-gcqx-w48m-w2h4, low, no patched release) has an exact exception expiring 2026-12-31 in `.ci/quality-policy.json`; it is used only by `@expo/config` and `jest-config` and is not in the exported app bundles. Do not apply npm audit fix --force blindly: its suggested Expo downgrade is incompatible with this SDK. Reassess upstream fixes before signing or shipping a release.
+Initial npm audit: Initial scan had 13 inherited Expo tooling advisories. UUID is now overridden to patched 11.1.1; node-forge is locked at the patched 1.4.2 (within Expo's `^1.3.3` range), so it needs no exception. deepmerge 4.3.1 (GHSA-gcqx-w48m-w2h4, low, no patched release) has an exact exception expiring 2026-12-31 in `.ci/quality-policy.json`; it is used only by `@expo/config` and `jest-config` and is not in the exported app bundles. Do not apply npm audit fix --force blindly: its suggested Expo downgrade is incompatible with this SDK. Reassess upstream fixes before signing or shipping a release.
 
 ## Authentication setup and end-to-end checks
 
