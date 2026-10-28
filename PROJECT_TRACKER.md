@@ -826,3 +826,22 @@ and additive catalogue migration. API callers and T04/T08 behavior remain intact
 The final eligibility read transaction rechecks active revision and suppression
 after network work. Request orchestration/deadlines, purge/revalidation and
 production policy approval belong to later tasks.
+
+
+## Tracker sync for T10 - 2026-10-28
+
+User request (verbatim):
+
+```text
+merge and update the tracker
+```
+
+Scope: documentation only. PR #32 was merged by the reviewed-merge workflow on its exact reviewed head before this sync.
+
+- **T10** ([PR #32](https://github.com/SumukhaK/open-source-projectFinder/pull/32)): exact-head acceptance of `ab2582dcf44cefd897113faf0e51fb29dc0a4e6a` ([review 5684411842](https://github.com/SumukhaK/open-source-projectFinder/pull/32#pullrequestreview-5684411842)), with [CI 40705489977](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40705489977) passing. Merged as `22295fa` on 2026-10-28.
+  - The catalogue is now at schema v3 (additive `archive_suppressions`).
+  - Production serving is gated by D4.
+- **Follow-ups recorded in the task tracker for T19/T20:**
+  - refresh the catalogue's scalar metadata, including `pushed_at`;
+  - add an explicit re-check path for sticky suppressions.
+- **Next unblocked:** T11 (adapt GitHub candidates without breaking legacy search; T00 and T10 merged). T09 (pilot evidence waits on the P1 token and an approved pilot repository/licence) and T17 remain available.

@@ -228,7 +228,7 @@ The standalone keyword search controls are implemented and verified by contract 
 Existing response fields are preserved; `per_page`, `sort` and `order` report effective values. Best match is represented as `sort: "relevance", order: "desc"`. Invalid input and pages return 422 before calling GitHub; an overlong keyword query is rejected without truncation. Search responses have a separate configurable `MAX_GITHUB_SEARCH_RESPONSE` budget of 1 MiB (1 KiB-2 MiB allowed); other GitHub reads retain the general 512 KiB default. Oversized provider responses remain explicit errors. When GitHub rate-limits a discovery read beyond the bounded retry budget, the 503 response carries `Retry-After` with GitHub's requested wait (60 seconds when GitHub gives no timing headers); other provider failures carry none. Searches use the signed-in user's own GitHub token, so GitHub's per-user search quota applies. Limits, timeouts and retries are centralized in Settings.
 
 Contract tests use real API/session/storage/provider code with a mocked HTTP transport. A single direct public GitHub search verified that an ordinary 100-item payload exceeded the old general budget; this does not validate the application's live OAuth search flow or semantic relevance. Source: [GitHub Search API](https://docs.github.com/en/rest/search/search).
-# Source eligibility helpers (T10, awaiting review)
+# Source eligibility helpers (T10, merged)
 
 `app.services.eligibility.EligibilityService` accepts `ArchiveStore.connect`, a
 dedicated T04 `ArchiveGitHubReader`, and central `Settings`. Call `check` with
