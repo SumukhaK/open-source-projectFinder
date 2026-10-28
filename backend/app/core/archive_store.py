@@ -67,6 +67,15 @@ MIGRATIONS = (
         """ALTER TABLE archive_documents ADD COLUMN truncated INTEGER NOT NULL
             DEFAULT 0 CHECK (truncated IN (0, 1))""",
     ),
+    (
+        # No foreign key: suppression must survive deletion/recreation of content.
+        """CREATE TABLE archive_suppressions (
+            repo_id INTEGER PRIMARY KEY CHECK (repo_id > 0),
+            reason TEXT NOT NULL CHECK (reason IN (
+                'not_public', 'archived', 'not_found', 'identity_mismatch')),
+            observed_at REAL NOT NULL CHECK (observed_at >= 0)
+        ) STRICT""",
+    ),
 )
 
 

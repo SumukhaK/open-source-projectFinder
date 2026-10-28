@@ -91,7 +91,12 @@ def test_migration_is_idempotent_and_preserves_stable_ids(tmp_path):
         assert {
             row[0]
             for row in db.execute("SELECT name FROM sqlite_schema WHERE type='table'")
-        } == {"archive_repositories", "archive_documents", "archive_chunks"}
+        } == {
+            "archive_repositories",
+            "archive_documents",
+            "archive_chunks",
+            "archive_suppressions",
+        }
     with store.connect(write=True) as db:
         add_repository(db)
         add_document(db)
@@ -101,7 +106,7 @@ def test_migration_is_idempotent_and_preserves_stable_ids(tmp_path):
     store.migrate()
     reopened = archive_store.ArchiveStore(settings)
     with reopened.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 3
         assert db.execute(
             "SELECT repo_id, full_name FROM archive_repositories"
         ).fetchall()[0][:] == (101, "owner/project")
@@ -111,7 +116,12 @@ def test_migration_is_idempotent_and_preserves_stable_ids(tmp_path):
         assert {
             row[0]
             for row in db.execute("SELECT name FROM sqlite_schema WHERE type='table'")
-        } == {"archive_repositories", "archive_documents", "archive_chunks"}
+        } == {
+            "archive_repositories",
+            "archive_documents",
+            "archive_chunks",
+            "archive_suppressions",
+        }
 
 
 def test_existing_v1_catalogue_upgrades_to_v2_without_data_loss(tmp_path):
@@ -135,7 +145,7 @@ def test_existing_v1_catalogue_upgrades_to_v2_without_data_loss(tmp_path):
     store = archive_store.ArchiveStore(settings_for(tmp_path))
 
     with store.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 3
         row = db.execute(
             "SELECT state, normalized_path, blob_sha, raw_bytes, truncated "
             "FROM archive_documents"
@@ -357,7 +367,7 @@ def test_migration_failure_rolls_back_ddl_and_version(tmp_path, monkeypatch):
     monkeypatch.undo()
     store = archive_store.ArchiveStore(settings_for(tmp_path))
     with store.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 3
 
 
 def test_private_file_and_wal_sidecars_and_bounded_lock_wait(catalogue):
