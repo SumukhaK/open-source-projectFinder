@@ -16,6 +16,8 @@ ARCHIVE_TOKEN_PROBE_CHARS = 8192
 ARCHIVE_MARKDOWN_MAX_NESTING = 20
 # Defensive storage bound; acquisition and preparation already enforce smaller limits.
 ARCHIVE_CONTENT_MAX_BYTES = 1024 * 1024
+# Restart reconciliation is bounded; each document retires at most ARCHIVE_MAX_CHUNKS.
+ARCHIVE_RECONCILE_DOCUMENTS = 100
 
 MILVUS_MAX_TOP_K = 1000
 MILVUS_TEXT_BYTES = {
