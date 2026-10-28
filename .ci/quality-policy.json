@@ -17,5 +17,14 @@
       "lines": 95
     }
   },
-  "dependency_exceptions": []
+  "dependency_exceptions": [
+    {
+      "ecosystem": "npm",
+      "package": "deepmerge",
+      "id": "GHSA-gcqx-w48m-w2h4",
+      "version": "4.3.1",
+      "expires": "2026-12-31",
+      "reason": "Low-severity prototype poisoning; no patched release exists (4.3.1 is latest). Reached only via @expo/config (build-time config) and jest-config (tests) merging trusted local config; absent from the exported iOS/Android/web bundles (checked 2026-10-28). npm audit's only fix is an Expo/Jest major downgrade, which policy forbids. Owner-approved 2026-10-28; recheck for a patch or upstream replacement before expiry."
+    }
+  ]
 }

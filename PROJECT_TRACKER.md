@@ -700,3 +700,21 @@ Scope: documentation only, on a separate docs branch the owner approved (`claude
 - **T07** ([PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28)): the first review of `c721b8d` found sound code but a merge conflict with main and no required CI. Main was merged in, and the exact-head acceptance of `265d34201f679d21059450a71d7c031b7f28944d` ([review 5665285392](https://github.com/SumukhaK/open-source-projectFinder/pull/28#pullrequestreview-5665285392)) followed, with [CI 40484923241](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40484923241) passing. Merged as `21e6db3` on 2026-10-27.
 - Open: three optional nits (ordinal bound, manifest dimensions, `close()` guard); capacity, relevance and latency beyond the 1k synthetic proof; the serving alias and activation (T08/T13).
 - Next unblocked: **T08** (publish revisions with crash-safe reconciliation; needs T06 + T07, both merged). T17 then needs T08 and T16.
+
+
+## deepmerge audit exception - 2026-10-28
+
+User request (verbatim):
+
+```text
+go ahead with the deepmerge exception in PR #27 then update the tracker
+```
+
+Scope: dependency policy and documentation only, added to the node-forge PR #27.
+
+- **What failed:** GHSA-gcqx-w48m-w2h4 / CVE-2026-93753 is a low-severity prototype-poisoning advisory, published 2026-09-18, affecting deepmerge 4.2.0-4.3.1. It began failing the required dependency audit on main and on every PR; it was first seen on T08's PR #30.
+- **No patch exists:** 4.3.1, from 2023, is the latest release.
+- **Exposure:** deepmerge is reached only via `@expo/config` (build-time configuration) and `jest-config` (tests), both merging trusted local configuration. A full `npx expo export --platform all` (2026-10-28) produced iOS, Android and web bundles with no deepmerge code.
+- **Why an exception:** `npm audit`'s only fix is an Expo/Jest major downgrade, which policy forbids. The owner approved an exact exception in `.ci/quality-policy.json`: npm / deepmerge / 4.3.1 / GHSA-gcqx-w48m-w2h4, expiring 2026-12-31, with a written reason.
+- **Docs updated:** `docs/QUALITY_PIPELINE.md`, README, `mobile/README.md` and the hybrid-search tracker blockers.
+- **Next:** PR #27 merges on 2026-10-29 at the scheduled check-in. T08 (PR #30) and other open PRs then merge main to get a green audit. Recheck for a deepmerge patch or replacement before 2026-12-31.
