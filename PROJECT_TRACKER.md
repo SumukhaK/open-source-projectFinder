@@ -720,3 +720,24 @@ Scope: dependency policy and documentation only, added to the node-forge PR #27.
 - **Next:** PR #27 merges on 2026-10-29 at the scheduled check-in. T08 (PR #30) and other open PRs then merge main to get a green audit. Recheck for a deepmerge patch or replacement before 2026-12-31.
 
 Update (2026-10-28): node-forge 1.4.2 was published the same day as 1.4.1 and fixes a 1.4.1 regression: `pem.decode()` threw a `TypeError` on Buffer input. The lock was moved to 1.4.2, with its integrity checked against the registry tarball, before merging. The merge was brought forward from 2026-10-29 because T08 (PR #30) was blocked only by the red audit; the owner forwarded the T08 implementer's request to merge PR #27.
+
+
+## Tracker sync for T08 - 2026-10-28
+
+User request (verbatim):
+
+```text
+merge and update the tracker
+```
+
+Scope: documentation only. PR #30 was merged by the reviewed-merge workflow on its exact reviewed head before this sync.
+
+- **T08** ([PR #30](https://github.com/SumukhaK/open-source-projectFinder/pull/30)):
+  - The first review of `8c34ca0` found that a stale pending revision could be replayed over a newer active one; this was reproduced. It also asked for a read-side filter for vector hits.
+  - Both were fixed in `4b0ff12`.
+  - The required audit was red only on deepmerge until PR #27 merged (`0e6dcaa`); main was then merged in.
+  - Exact-head acceptance of `679bdd3e8646ebc0501d64a539e3beaebdc9ecc4` ([review 5679689301](https://github.com/SumukhaK/open-source-projectFinder/pull/30#pullrequestreview-5679689301)), with [CI 40655620747](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40655620747) passing. Merged as `952f7e2` on 2026-10-28.
+- **Next unblocked, in parallel:** T09 (one repository end to end), T10 (eligibility and public identity) and T17 (runs, checkpoints and fenced leases; T08 and T16 are both merged).
+  - T09's real content acquisition still needs D2 (licence policy).
+  - Remind the owner about the T16 live-search follow-up (P1 worker token, per-partition logging in T18) when T17 nears merge.
+- **Expiring:** the deepmerge exception expires 2026-12-31.
