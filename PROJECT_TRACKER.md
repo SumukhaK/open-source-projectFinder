@@ -246,7 +246,6 @@ CI blocker: [run 38425124561](https://github.com/SumukhaK/open-source-projectFin
 Delivery decision: automatic approval review rejected committing/pushing proposed short-lived exact-version exceptions because explicit authorization to weaken the dependency gate was absent. The user then chose, verbatim: **"Keep the gate unchanged; leave PR open (Recommended)"**. The uncommitted exception proposal was removed. Scanner execution, policy, thresholds and mobile dependencies remain unchanged. PR #10 stays open without merging; resolving the advisories compatibly, passing required CI and reviewing the resulting exact head are prerequisites to any future merge. Unrelated local mobile work is preserved.
 
 
-
 ## Hybrid search execution handbook - 2026-10-24
 
 Original request (verbatim):
@@ -638,6 +637,36 @@ Not yet tested against real GitHub search: that needs the dedicated worker token
 
 Scope: documentation only. The open follow-up is recorded under "Blockers and decisions" in the [task tracker](execution-plans/hybrid-search/TRACKER.md) and as an acceptance requirement in [T18](execution-plans/hybrid-search/tasks/T18-backfill.md): the first approved real run must log per-partition query, reported count, incomplete flag, pages, IDs and split/unresolved decision, and confirm qualifier behaviour. The reviewer will remind the owner when T17 nears merge and before T18 starts; P1 (worker credential) must be provided first.
 
+
+## node-forge bump plan - 2026-10-27
+
+User requests (verbatim):
+
+```text
+node-forge exception: expires on 1 Nov, five days from now. how are other developer cooping with this, there has to be a work around, no ?
+```
+
+```text
+Want me to prepare that PR now and merge it on the 29th? plan this bumping strategy and add it in tracker and make sure it gets looked at on 29th
+```
+
+```text
+oe ifu can raise a PR and add a github action to trigger u to look at it on 29th thats good too
+```
+
+Plan:
+- **The release:** node-forge 1.4.1 was published on 2026-10-27 by the existing maintainers. Its changelog fixes CVE-2026-85393, which is the advisory behind GHSA-86w9-cpqp-85rv, plus four further high-severity advisories that affect ≤1.4.0.
+- **No Expo change:** both dependents already accept `^1.3.3`, so no Expo change and no override is needed.
+- **Changes in the PR:**
+  - the lockfile entry only (version, resolved URL and integrity; the tarball's SHA-512 was checked against the registry);
+  - the now-unneeded exception is removed, because `scripts/quality.py` fails on any expired exception entry, even without a matching finding;
+  - the current-state docs are updated.
+- **Local check:** `npm audit --package-lock-only` reports 0 vulnerabilities.
+- **On 2026-10-29:** a scheduled session check-in re-verifies the release (still latest, not deprecated), the integrity, the audit and CI, then merges via the reviewed-merge workflow. That leaves a two-day soak and two days of margin before the 2026-11-01 expiry.
+- **Fallback:** if 1.4.1 is pulled, a new exact, short-lived exception.
+- **Why no GitHub Action:** a workflow cannot wake this Claude session, so the check-in is a scheduled task on the session instead.
+
+
 ## T07: minimal Milvus collection adapter (2026-10-27, awaiting review)
 
 Request, verbatim:
@@ -671,3 +700,23 @@ Scope: documentation only, on a separate docs branch the owner approved (`claude
 - **T07** ([PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28)): the first review of `c721b8d` found sound code but a merge conflict with main and no required CI. Main was merged in, and the exact-head acceptance of `265d34201f679d21059450a71d7c031b7f28944d` ([review 5665285392](https://github.com/SumukhaK/open-source-projectFinder/pull/28#pullrequestreview-5665285392)) followed, with [CI 40484923241](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40484923241) passing. Merged as `21e6db3` on 2026-10-27.
 - Open: three optional nits (ordinal bound, manifest dimensions, `close()` guard); capacity, relevance and latency beyond the 1k synthetic proof; the serving alias and activation (T08/T13).
 - Next unblocked: **T08** (publish revisions with crash-safe reconciliation; needs T06 + T07, both merged). T17 then needs T08 and T16.
+
+
+## deepmerge audit exception - 2026-10-28
+
+User request (verbatim):
+
+```text
+go ahead with the deepmerge exception in PR #27 then update the tracker
+```
+
+Scope: dependency policy and documentation only, added to the node-forge PR #27.
+
+- **What failed:** GHSA-gcqx-w48m-w2h4 / CVE-2026-93753 is a low-severity prototype-poisoning advisory, published 2026-09-18, affecting deepmerge 4.2.0-4.3.1. It began failing the required dependency audit on main and on every PR; it was first seen on T08's PR #30.
+- **No patch exists:** 4.3.1, from 2023, is the latest release.
+- **Exposure:** deepmerge is reached only via `@expo/config` (build-time configuration) and `jest-config` (tests), both merging trusted local configuration. A full `npx expo export --platform all` (2026-10-28) produced iOS, Android and web bundles with no deepmerge code.
+- **Why an exception:** `npm audit`'s only fix is an Expo/Jest major downgrade, which policy forbids. The owner approved an exact exception in `.ci/quality-policy.json`: npm / deepmerge / 4.3.1 / GHSA-gcqx-w48m-w2h4, expiring 2026-12-31, with a written reason.
+- **Docs updated:** `docs/QUALITY_PIPELINE.md`, README, `mobile/README.md` and the hybrid-search tracker blockers.
+- **Next:** PR #27 merges on 2026-10-29 at the scheduled check-in. T08 (PR #30) and other open PRs then merge main to get a green audit. Recheck for a deepmerge patch or replacement before 2026-12-31.
+
+Update (2026-10-28): node-forge 1.4.2 was published the same day as 1.4.1 and fixes a 1.4.1 regression: `pem.decode()` threw a `TypeError` on Buffer input. The lock was moved to 1.4.2, with its integrity checked against the registry tarball, before merging. The merge was brought forward from 2026-10-29 because T08 (PR #30) was blocked only by the red audit; the owner forwarded the T08 implementer's request to merge PR #27.
