@@ -1,6 +1,6 @@
 # T09: Single-repository ingestion evidence
 
-Date: 2026-10-29. Status: Awaiting review; real integration evidence **BLOCKED**.
+Date: 2026-10-29. [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34). Status: Awaiting review; real integration evidence **BLOCKED**.
 Branch: `codex/hybrid-t09-one-repository`.
 Original base: `d1ae76139ba80dd3eac5d3b5dc1656a41387eb35`.
 OpenCode's existing work was preserved as `9bfed5a`; main
