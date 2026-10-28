@@ -1,6 +1,6 @@
 # T08 publication and reconciliation evidence — 2026-10-28
 
-Status: **Awaiting review** in [PR #30](https://github.com/SumukhaK/open-source-projectFinder/pull/30), not accepted or merged. This implements only [T08](tasks/T08-publication.md); no T09 work, ingestion, API wiring or live data is included. The PR's current head and required CI are authoritative in GitHub.
+Status: **Merged** via [PR #30](https://github.com/SumukhaK/open-source-projectFinder/pull/30) as `952f7e2` (2026-10-28) after exact-head review of `679bdd3` and passing [CI 40655620747](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40655620747). This implements only [T08](tasks/T08-publication.md); no T09 work, ingestion, API wiring or live data is included. The PR's current head and required CI are authoritative in GitHub.
 
 ## Scope and prerequisites
 

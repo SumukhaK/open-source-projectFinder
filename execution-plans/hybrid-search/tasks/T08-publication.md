@@ -1,6 +1,6 @@
 # T08: Publish revisions with crash-safe reconciliation
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged via [PR #30](https://github.com/SumukhaK/open-source-projectFinder/pull/30) as `952f7e2` (2026-10-28). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
