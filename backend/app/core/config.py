@@ -18,6 +18,7 @@ ARCHIVE_MARKDOWN_MAX_NESTING = 20
 ARCHIVE_CONTENT_MAX_BYTES = 1024 * 1024
 # Restart reconciliation is bounded; each document retires at most ARCHIVE_MAX_CHUNKS.
 ARCHIVE_RECONCILE_DOCUMENTS = 100
+ARCHIVE_VISIBILITY_CACHE_SIZE = 1000
 
 MILVUS_MAX_TOP_K = 1000
 MILVUS_TEXT_BYTES = {
@@ -42,6 +43,7 @@ class Settings(BaseSettings):
     archive_database_path: Path = Path("./data/archive/catalogue.sqlite3")
     archive_content_path: Path = Path("./data/archive/content")
     archive_busy_timeout_ms: int = Field(default=5000, ge=1, le=30000)
+    archive_visibility_ttl_seconds: int = Field(default=900, ge=1, le=900)
     archive_github_token: str = ""
     archive_github_api_url: str = "https://api.github.com"
     archive_github_timeout: float = Field(default=10, gt=0, le=30)

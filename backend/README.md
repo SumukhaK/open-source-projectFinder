@@ -247,3 +247,24 @@ The standalone keyword search controls are implemented and verified by contract 
 Existing response fields are preserved; `per_page`, `sort` and `order` report effective values. Best match is represented as `sort: "relevance", order: "desc"`. Invalid input and pages return 422 before calling GitHub; an overlong keyword query is rejected without truncation. Search responses have a separate configurable `MAX_GITHUB_SEARCH_RESPONSE` budget of 1 MiB (1 KiB-2 MiB allowed); other GitHub reads retain the general 512 KiB default. Oversized provider responses remain explicit errors. When GitHub rate-limits a discovery read beyond the bounded retry budget, the 503 response carries `Retry-After` with GitHub's requested wait (60 seconds when GitHub gives no timing headers); other provider failures carry none. Searches use the signed-in user's own GitHub token, so GitHub's per-user search quota applies. Limits, timeouts and retries are centralized in Settings.
 
 Contract tests use real API/session/storage/provider code with a mocked HTTP transport. A single direct public GitHub search verified that an ordinary 100-item payload exceeded the old general budget; this does not validate the application's live OAuth search flow or semantic relevance. Source: [GitHub Search API](https://docs.github.com/en/rest/search/search).
+# Source eligibility helpers (T10, merged)
+
+`app.services.eligibility.EligibilityService` accepts `ArchiveStore.connect`, a
+dedicated T04 `ArchiveGitHubReader`, and central `Settings`. Call `check` with
+bounded T07 archive hits and same-request raw live metadata keyed by expected
+numeric repository ID. The result keeps live and archive evidence separate and
+reports sanitized incomplete reasons. The legacy API is unchanged.
+
+Archive evidence requires T08's active published complete revision, no persistent
+suppression, and both catalogue/current push times inside the fixed request's UTC
+365-day window. Live hits require public/unarchived matching numeric identity;
+they do not require archive membership, age or licence eligibility. Matching live
+metadata avoids another HTTP request. Archive-only validation uses the dedicated
+public-read credential, never an end-user token.
+
+`ARCHIVE_VISIBILITY_TTL_SECONDS` defaults to 900, bounded 1–900; cached checks are
+ID-bound and capped at 1,000 entries. Migration 3 adds sticky content-free
+suppression independent of content rows. A 404 is ambiguous and never proves
+deletion; outages/401 do not purge data. No automatic unsuppression is provided.
+Production serving stays gated by **D4** and T13/T15 integration. See
+[T10 evidence](../execution-plans/hybrid-search/T10_EVIDENCE.md) for tests and rollback.

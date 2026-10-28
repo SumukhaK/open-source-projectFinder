@@ -741,3 +741,107 @@ Scope: documentation only. PR #30 was merged by the reviewed-merge workflow on i
   - T09's real content acquisition still needs D2 (licence policy).
   - Remind the owner about the T16 live-search follow-up (P1 worker token, per-partition logging in T18) when T17 nears merge.
 - **Expiring:** the deepmerge exception expires 2026-12-31.
+# T10 — source eligibility and public identity (2026-10-28)
+
+Status: Awaiting review. Branch `codex/hybrid-t10-visibility`, base main
+`d1ae76139ba80dd3eac5d3b5dc1656a41387eb35`. T04 (`d2354e9`) and T08
+(`952f7e2`) are ancestors of this base. D4 remains pending; production serving
+is not enabled by this task.
+
+Original task request, verbatim:
+
+```text
+Implement exactly T10 ("Validate source-specific eligibility and public identity") from
+execution-plans/hybrid-search/TRACKER.md.
+
+Read AGENTS.md, execution-plans/hybrid-search/README.md, REQUEST.md, ARCHITECTURE.md (per-source eligibility,
+visibility/validation cache, ambiguous-404 rules), EXECUTION_GUIDE.md, REVIEW_CHECKLIST.md, READINESS.md (D4
+is pending) and tasks/T10-visibility.md. Read the current backend/app/discovery.py (live GitHub search and
+details), integrations/github.py, integrations/archive_github.py (T04), services/archive_publication.py (T08:
+load_active_chunks, filter_active_hits), core/archive_store.py and core/config.py.
+
+Branch: fetch origin/main, create codex/hybrid-t10-visibility FROM origin/main, record the base SHA.
+Prerequisites T04 and T08 are merged.
+
+Scope (about 1-5 production files): a small module such as backend/app/services/eligibility.py, plus settings,
+tests and docs. Do not wire it into the API (that is T13/T15).
+1. Archive eligibility: the hit belongs to the active, published, complete revision (reuse T08 helpers); the
+   repository is not suppressed; pushed_at is within the rolling UTC 365-day cutoff, with the inclusive boundary
+   and fixed per request.
+2. Live eligibility: public, not archived, and the returned numeric ID matches. There is NO archive cutoff,
+   licence or membership gate on live results, so a valid older live-only hit must survive.
+3. ID-bound validation cache keyed by numeric repo ID, with a bounded TTL from a setting
+   (ARCHIVE_VISIBILITY_TTL_SECONDS, default 900, capped; final value pending D4). A matching live hit in the
+   same request supplies fresh metadata, so do not make a redundant validation call.
+4. Archive-only candidates need a fresh (within-TTL) ID-bound check.
+   - Private, archived or 404: suppress. Record a content-free suppression the archive cannot override.
+   - Outage, 429 or 5xx: drop the candidate and return a structured incomplete status (fail closed).
+   - Invalid credential (401): fail the archive branch with incomplete status. Never purge or suppress the
+     catalogue because of it.
+   - A rename or reuse of an old owner/name must not authorise another repository's content.
+   If suppression needs persistence, use an additive migration 3 in archive_store.py, following the existing
+   rule: never edit migration 1/2.
+5. A suppressed or stale candidate must not be resurrected by stale vectors or stale cache entries.
+
+TDD: write each failing test first, record RED, then GREEN. Cover: exactly-at and just-over the cutoff;
+older-created but recently-pushed; rename and old-name reuse; archived, private and 404; stale and expired
+validation; GitHub outage (incomplete, nothing suppressed); 401 (nothing purged); a valid older live-only hit
+kept while invalid archive evidence cannot attach to it; no redundant check for a matching live hit.
+Use fake HTTP only. No live GitHub calls are needed.
+
+Verify on Linux with the CI runtime if possible (WSL venv /home/sumukha/reporadar-worker-venv), else Windows
+plus Linux CI: pytest backend/tests scripts/tests with the unchanged coverage gate, ruff check/format, bandit,
+git diff --check. Before requesting review, merge the latest origin/main (merge commit, keep both sides of any
+conflict, remove no line from main) so required CI runs.
+
+Update T10_EVIDENCE.md, the task file, backend README and the tracker row to Awaiting review. State that
+production serving stays gated by D4. Raise ONE PR against main and report the PR URL, exact head SHA and
+evidence. Then STOP AND WAIT FOR REVIEW.
+NEVER: merge, approve, write a review marker, change dependencies, lockfiles, CI gates or
+.ci/quality-policy.json, add a global archive post-filter on the combined list, use owner/name identity, fail
+open on stale content, or start another task.
+```
+
+Implementation plan and acceptance criteria:
+
+1. Add regression tests and a small eligibility service: keep live and archive
+   outputs separate; require strict numeric identity/public/unarchived flags;
+   reuse `filter_active_hits` and authoritative catalogue timestamps. Pin UTC
+   cutoff once per call. Verify exact boundary, old creation, invalid revisions.
+2. Add ID-keyed, bounded in-process validation caching (TTL 1–900 seconds,
+   default 900, provisional pending D4). Prefer same-request live metadata;
+   otherwise use T04's existing bounded reader without conditional responses.
+   Names route the HTTP request only; numeric equality authorizes content.
+3. Add migration 3 with a content-free, persistent suppression ledger independent
+   of content rows. Suppression overrides cache/publication; no automatic unsuppress
+   or purge. Map validation failures to sanitized structured incomplete reasons;
+   a 401 invalidates the archive branch, preserving valid live hits.
+4. Prove migration compatibility, cache expiry, rename/reuse and concurrent
+   suppression/revision changes with real SQLite and fake HTTP. Run the full
+   suite, coverage/lint/security, fresh branch review, merge latest main, then
+   open one PR and wait for CI/review. Preserve all existing gates and decisions.
+
+Only three production files are planned: eligibility service, central settings
+and additive catalogue migration. API callers and T04/T08 behavior remain intact.
+The final eligibility read transaction rechecks active revision and suppression
+after network work. Request orchestration/deadlines, purge/revalidation and
+production policy approval belong to later tasks.
+
+
+## Tracker sync for T10 - 2026-10-28
+
+User request (verbatim):
+
+```text
+merge and update the tracker
+```
+
+Scope: documentation only. PR #32 was merged by the reviewed-merge workflow on its exact reviewed head before this sync.
+
+- **T10** ([PR #32](https://github.com/SumukhaK/open-source-projectFinder/pull/32)): exact-head acceptance of `ab2582dcf44cefd897113faf0e51fb29dc0a4e6a` ([review 5684411842](https://github.com/SumukhaK/open-source-projectFinder/pull/32#pullrequestreview-5684411842)), with [CI 40705489977](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40705489977) passing. Merged as `22295fa` on 2026-10-28.
+  - The catalogue is now at schema v3 (additive `archive_suppressions`).
+  - Production serving is gated by D4.
+- **Follow-ups recorded in the task tracker for T19/T20:**
+  - refresh the catalogue's scalar metadata, including `pushed_at`;
+  - add an explicit re-check path for sticky suppressions.
+- **Next unblocked:** T11 (adapt GitHub candidates without breaking legacy search; T00 and T10 merged). T09 (pilot evidence waits on the P1 token and an approved pilot repository/licence) and T17 remain available.

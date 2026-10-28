@@ -1,6 +1,6 @@
 # T10: Validate source-specific eligibility and public identity
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged via [PR #32](https://github.com/SumukhaK/open-source-projectFinder/pull/32) as `22295fa` (2026-10-28). Implementation and verification: [T10 evidence](../T10_EVIDENCE.md). Production serving remains gated by pending D4. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
