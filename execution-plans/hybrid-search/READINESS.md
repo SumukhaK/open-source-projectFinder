@@ -49,14 +49,14 @@ Audits are point-in-time checks; they do not prove the absence of all risk.
 
 ## 3. Decision gates
 
-Owner for every decision: **Operator**. Date recorded: **2026-10-24**. Recommendations and proposed values are in [REQUEST](REQUEST.md#request-and-decision-boundaries); they are proposals, not approvals. No operator approval evidence was provided in this session, so **no decision is resolved** and no dependent real-data or production-serving work is authorized.
+Owner for every decision: **Operator**. Date recorded: **2026-10-24**. Recommendations and proposed values are in [REQUEST](REQUEST.md#request-and-decision-boundaries); they are proposals, not approvals. At T00 no decision was resolved. Update 2026-10-29: the owner approved **D2** and **D4** (below); D1 and D3/D5-D8 remain pending, so real-data work beyond what those two allow is still not authorized.
 
 | ID | Decision | Status | Evidence | Blocking tasks |
 | --- | --- | --- | --- | --- |
 | D1 | Corpus selection/cap | Pending operator approval | None recorded | T18 beyond an explicitly approved sample; T28 expansion gates |
-| D2 | Archived content/license policy | Pending operator approval | None recorded | T09 real content acquisition; T18 |
+| D2 | Archived content/license policy | **Approved 2026-10-29** | Owner: store only permissive-licence content (`MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `0BSD`, `Unlicense`, `CC0-1.0`); no-licence, unknown/`NOASSERTION`/`other` and copyleft repositories are never stored, but may still appear as live GitHub results. See [TRACKER](TRACKER.md#blockers-and-decisions) | — (T18 still needs D1 and P1) |
 | D3 | Retention | Pending operator approval | None recorded | T20 policy activation |
-| D4 | Visibility | Pending operator approval | None recorded | T10/T15 production serving |
+| D4 | Visibility | **Approved 2026-10-29** | Owner: ID-bound public check before serving (cache ≤15 min, fail closed); periodic sweep removes private/deleted repositories first, then licence changes, then refreshes/adds, and retires 365-day age-outs last; manual removal on request. See [TRACKER](TRACKER.md#blockers-and-decisions) | — (sweep built in T19/T20) |
 | D5 | Offline backup exception | Pending operator approval | None recorded | T21/T22 live-content backups |
 | D6 | Backup tool/destination | Pending operator approval | None recorded | T21 |
 | D7 | Schedule/availability | Pending operator approval | None recorded | T23 host activation |
@@ -78,9 +78,9 @@ T00 is the only task this PR advances. After T00 merges, T01 is the only task wh
 | --- | --- | --- |
 | Ready after T00 merges | T01 | Its only listed prerequisite is T00. It is the feasibility probe; GPU may be recorded as blocked pending an approved CPU-only change. |
 | Synthetic/offline work can proceed once predecessor tasks merge | T02, T03, T04 (test transport), T05, T06, T07, T08, T11, T12, T13, T14, T16, T17 | Their merged dependency chain does not require live corpus acquisition or production policy approval. Real licensed samples, real reads and production serving still require D2/P1/P3 as applicable. |
-| Implementation possible; production serving gated by D4 | T10, T15 | Visibility and public-identity checks can be built with test transport, but production serving must not rely on unapproved freshness/fail-closed policy. |
+| D4 approved (2026-10-29) | T10, T15, T19/T20 | Serving follows the approved check-before-serve and removal-priority policy; production rollout still needs the remaining gates (D8 thresholds). |
 | Blocked by D1 | T18 beyond the approved sample; T28 expansion gates | The 1k-then-10k cap and 25k/50k expansion require approval. |
-| Blocked by D2 | T09 real content acquisition; T18 | No approved SPDX allowlist or unknown-license content rule. |
+| D2 approved (2026-10-29) | T18 content rule | Permissive SPDX allowlist approved; T18 still needs D1 (corpus cap) and P1 rotation ownership. |
 | Blocked by D3 | T20 policy activation | No approved retention periods. |
 | Blocked by D5/D6 | T21, T22 live-content backups | No approved encrypted-backup exception, tool or destination. |
 | Blocked by D7 | T23 host activation | No approved schedule; host tasks must not be activated. |
