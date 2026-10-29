@@ -990,6 +990,10 @@ D4, when the library can be used in real search: the library can contain stale i
 What protects you is the licence. Licences like MIT explicitly say "anyone may copy this, just keep the credit." If the library holds only projects with those licences and always links back to the original, you're doing exactly what the authors permitted. fair point, but we are merging github api search results with our db, so those "risky" projects can come as part of search api result, right ? so keep only completetly safe to keep data in our db
 ```
 
+```text
+D4: keeping the library honest. It needs three layers. sounds good, reflect in docs that we made these decesions and update them on remote repo
+```
+
 Recorded decisions (details in [TRACKER](execution-plans/hybrid-search/TRACKER.md#blockers-and-decisions), [READINESS](execution-plans/hybrid-search/READINESS.md#3-decision-gates)):
 
 - **D2:** store only permissive-licence content (`MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `0BSD`, `Unlicense`, `CC0-1.0`). No-licence, unknown and copyleft repositories are never stored, but can still appear as live GitHub results, which are not persisted. Archived results link back to the original. This is general guidance, not legal advice.
