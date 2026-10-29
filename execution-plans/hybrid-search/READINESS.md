@@ -49,18 +49,18 @@ Audits are point-in-time checks; they do not prove the absence of all risk.
 
 ## 3. Decision gates
 
-Owner for every decision: **Operator**. Date recorded: **2026-10-24**. Recommendations and proposed values are in [REQUEST](REQUEST.md#request-and-decision-boundaries); they are proposals, not approvals. At T00 no decision was resolved. Update 2026-10-29: the owner approved **D2** and **D4** (below); D1 and D3/D5-D8 remain pending, so real-data work beyond what those two allow is still not authorized.
+Owner for every decision: **Operator**. Date recorded: **2026-10-24**. Recommendations and proposed values are in [REQUEST](REQUEST.md#request-and-decision-boundaries); they are proposals, not approvals. At T00 no decision was resolved. Update 2026-10-29: the owner approved **all eight decisions D1-D8** (below). D8 approves the method; its numeric thresholds are set after T27 measures the baseline and need the owner's sign-off then. Prerequisites P1-P3 are tracked separately.
 
 | ID | Decision | Status | Evidence | Blocking tasks |
 | --- | --- | --- | --- | --- |
-| D1 | Corpus selection/cap | Pending operator approval | None recorded | T18 beyond an explicitly approved sample; T28 expansion gates |
-| D2 | Archived content/license policy | **Approved 2026-10-29** | Owner: store only permissive-licence content (`MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `0BSD`, `Unlicense`, `CC0-1.0`); no-licence, unknown/`NOASSERTION`/`other` and copyleft repositories are never stored, but may still appear as live GitHub results. See [TRACKER](TRACKER.md#blockers-and-decisions) | — (T18 still needs D1 and P1) |
-| D3 | Retention | Pending operator approval | None recorded | T20 policy activation |
+| D1 | Corpus selection/cap | **Approved 2026-10-29** | Owner: 1,000-repository feasibility sample first, then 10,000 after measured disk/RAM/latency on the laptop; 25k/50k expansion needs separate approval. See [TRACKER](TRACKER.md#blockers-and-decisions) | — (expansion beyond 10k: T28) |
+| D2 | Archived content/license policy | **Approved 2026-10-29** | Owner: store only permissive-licence content (`MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `0BSD`, `Unlicense`, `CC0-1.0`); no-licence, unknown/`NOASSERTION`/`other` and copyleft repositories are never stored, but may still appear as live GitHub results. See [TRACKER](TRACKER.md#blockers-and-decisions) | — (T18 still needs P1 rotation ownership) |
+| D3 | Retention | **Approved 2026-10-29** | Owner: keep active eligible content while eligible; delete superseded revisions after 30 days; delete content-free run history after 90 days. See [TRACKER](TRACKER.md#blockers-and-decisions) | — |
 | D4 | Visibility | **Approved 2026-10-29** | Owner: ID-bound public check before serving (cache ≤15 min, fail closed); periodic sweep removes private/deleted repositories first, then licence changes, then refreshes/adds, and retires 365-day age-outs last; manual removal on request. See [TRACKER](TRACKER.md#blockers-and-decisions) | — (sweep built in T19/T20) |
-| D5 | Offline backup exception | Pending operator approval | None recorded | T21/T22 live-content backups |
-| D6 | Backup tool/destination | Pending operator approval | None recorded | T21 |
-| D7 | Schedule/availability | Pending operator approval | None recorded | T23 host activation |
-| D8 | Quality thresholds | Pending operator approval | None recorded | T27/T28/T29 rollout recommendation |
+| D5 | Offline backup exception | **Approved 2026-10-29** | Owner: encrypted backups kept at most 7 days; a restore is quarantined and the current suppression ledger reapplied before use. See [TRACKER](TRACKER.md#blockers-and-decisions) | — |
+| D6 | Backup tool/destination | **Approved 2026-10-29** | Owner: restic (free, maintained, encrypted by default) to an owner-owned external drive; restore verified once in T21. See [TRACKER](TRACKER.md#blockers-and-decisions) | — |
+| D7 | Schedule/availability | **Approved 2026-10-29** | Owner: daily privacy/removal sweep about 22:00 Asia/Kolkata; full refresh Sunday 03:30 Asia/Kolkata; missed runs catch up when the laptop is next on. See [TRACKER](TRACKER.md#blockers-and-decisions) | — |
+| D8 | Quality thresholds | **Method approved 2026-10-29** | Owner: hybrid search must be at least as relevant as today's search within an agreed response time; exact numbers set after T27's baseline and approved by the owner then. See [TRACKER](TRACKER.md#blockers-and-decisions) | T28/T29 until the numbers are approved |
 
 Operational prerequisites that are not among the eight decisions:
 
@@ -79,12 +79,12 @@ T00 is the only task this PR advances. After T00 merges, T01 is the only task wh
 | Ready after T00 merges | T01 | Its only listed prerequisite is T00. It is the feasibility probe; GPU may be recorded as blocked pending an approved CPU-only change. |
 | Synthetic/offline work can proceed once predecessor tasks merge | T02, T03, T04 (test transport), T05, T06, T07, T08, T11, T12, T13, T14, T16, T17 | Their merged dependency chain does not require live corpus acquisition or production policy approval. Real licensed samples, real reads and production serving still require D2/P1/P3 as applicable. |
 | D4 approved (2026-10-29) | T10, T15, T19/T20 | Serving follows the approved check-before-serve and removal-priority policy; production rollout still needs the remaining gates (D8 thresholds). |
-| Blocked by D1 | T18 beyond the approved sample; T28 expansion gates | The 1k-then-10k cap and 25k/50k expansion require approval. |
-| D2 approved (2026-10-29) | T18 content rule | Permissive SPDX allowlist approved; T18 still needs D1 (corpus cap) and P1 rotation ownership. |
-| Blocked by D3 | T20 policy activation | No approved retention periods. |
-| Blocked by D5/D6 | T21, T22 live-content backups | No approved encrypted-backup exception, tool or destination. |
-| Blocked by D7 | T23 host activation | No approved schedule; host tasks must not be activated. |
-| Blocked by D8 | T27, T28, T29 rollout recommendation | No approved latency/relevance thresholds or expansion gates. |
+| D1 approved (2026-10-29) | T18, T28 | 1k then 10k approved; 25k/50k expansion still needs approval at T28. |
+| D2 approved (2026-10-29) | T18 content rule | Permissive SPDX allowlist approved; T18 still needs P1 rotation ownership. |
+| D3 approved (2026-10-29) | T20 | Retention periods approved (30 / 90 days). |
+| D5/D6 approved (2026-10-29) | T21, T22 | Encrypted 7-day backups with restic to an owner-owned external drive. |
+| D7 approved (2026-10-29) | T23 | Daily ~22:00 sweep and Sunday 03:30 refresh (Asia/Kolkata) with catch-up. |
+| D8 method approved (2026-10-29) | T27, T28, T29 | T27 measures the baseline; numeric thresholds need owner approval before the T28/T29 rollout recommendation. |
 | Blocked by P1 | T04 real reads; T18; T19 | Credential now exists (used for the T09 pilot); confirm rotation/revocation ownership before T18/T19. Test transport remains available. |
 | Blocked by P2 | T24, T25, T26 | The mobile discovery foundation is not merged and has no delivery PR. |
 | Blocked by P3 | T01 acceptance; T07/T13 real GPU claims | Hardware/runtime is unverified; T01 owns the real evidence. |

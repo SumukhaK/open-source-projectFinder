@@ -999,3 +999,24 @@ Recorded decisions (details in [TRACKER](execution-plans/hybrid-search/TRACKER.m
 - **D2:** store only permissive-licence content (`MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `0BSD`, `Unlicense`, `CC0-1.0`). No-licence, unknown and copyleft repositories are never stored, but can still appear as live GitHub results, which are not persisted. Archived results link back to the original. This is general guidance, not legal advice.
 - **D4:** check every archive hit before serving (T10, ≤15 min cache, fail closed). A periodic sweep removes private/deleted repositories first, then disallowed licence changes, then refreshes and adds, with 365-day age-outs last. The operator can remove a repository on request.
 - **Still pending:** D1 corpus cap, D3 retention, D5/D6 backups, D7 schedule, D8 quality thresholds.
+
+## Policy decisions D1, D3, D5-D8 - 2026-10-29
+
+Owner request (verbatim):
+
+```text
+Still to decide later: the corpus cap (D1), how long data is kept (D3), backups (D5 and D6), the refresh schedule (D7) and quality thresholds (D8). I'll bring each one up when a task needs it. explain me this in simple terms and ask questions, lets decide
+```
+
+The owner chose from explicit options (question → selected answer, verbatim):
+
+```text
+D1, library size → "1k test, then 10k (Recommended)"
+D3, how long old data is kept → "30 days / 90 days (Recommended)"
+D5 and D6, backups → "Encrypted, external drive (Recommended)"
+D7, when the automatic jobs run → "Daily cleanup + Sunday refresh (Rec.)"
+D8, quality bar → "Measure first, then set (Rec.)"
+D7 detail, daily cleanup time (India time) → "Late evening ~22:00"
+```
+
+Recorded in [TRACKER](execution-plans/hybrid-search/TRACKER.md#blockers-and-decisions), [READINESS](execution-plans/hybrid-search/READINESS.md#3-decision-gates) and [REQUEST](execution-plans/hybrid-search/REQUEST.md#request-and-decision-boundaries). All eight decisions are now approved; D8's numeric thresholds still need owner approval after T27. Open prerequisites: P1 rotation/revocation ownership, P2 mobile discovery foundation, P3 hardware evidence as applicable.
