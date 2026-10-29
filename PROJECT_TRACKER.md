@@ -934,3 +934,26 @@ against main and report the PR URL, exact head SHA and evidence. Then STOP AND W
 NEVER: merge, approve, write a review marker, change dependencies, lockfiles, CI gates or
 .ci/quality-policy.json, bulk-crawl, add a scheduler or public ingestion API, or start another task.
 ```
+
+
+### T09 approved pilot follow-up — 2026-10-29
+
+Owner request (verbatim):
+
+```text
+Approved pilot for PR #34: https://github.com/fastapi/typer, repo ID 229937405, licence MIT.
+This approval covers this one repository and licence only (narrow D1/D2); ingest nothing else.
+The token is in E:\OpenSourceProjectFinder-t09\backend\.env as ARCHIVE_GITHUB_TOKEN, and
+ARCHIVE_LICENSE_ALLOWLIST=["MIT"] is set there. Never print the token. If you run the worker inside
+WSL instead, tell me the WSL backend path and I'll put the .env there. Continue with the run and
+evidence steps.
+```
+
+Verification: actual application head `7da7f40` published 8 chunks, unchanged replay
+made zero embedding calls/writes, and real T07 search retained all eight hits through
+T08. WAL fixed SQLite 3.53.1; pinned offline E5; GPU-profile Milvus. Evidence in
+[T09_EVIDENCE](execution-plans/hybrid-search/T09_EVIDENCE.md). Zero indexed rows mean
+this is small functional proof, not measured GPU acceleration/capacity. Approval is
+limited to this one MIT repository; broader policy and D4 remain pending. Services
+stopped with data preserved. This documentation-only follow-up waits for CI and
+review on PR #34; no approval, marker, merge or next-task work.

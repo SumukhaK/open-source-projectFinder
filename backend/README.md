@@ -213,7 +213,7 @@ Eligibility refuses non-public, archived and fork repositories, `pushed_at` olde
 
 The command resolves metadata by numeric ID (never owner/name identity), checks policy before downloading the README through T04, and rechecks the numeric identity and eligibility after content acquisition. It prepares passages and checks the complete active revision before persisting a new T06 pending revision. An identical semantic hash returns `{"result":"unchanged"}` with zero embedding calls and zero Milvus writes. For changed content, section titles obey both token and Milvus byte limits before preparation identities are calculated. It embeds each T05 passage with `passage:`, builds bounded T07 vectors, publishes through T08's staged/read-back/activation path and runs bounded reconciliation. Replays after a partial vector write reuse the same deterministic IDs.
 
-Both content and catalogue disk locations are checked. Real pilot evidence is still blocked on owner-approved repository/licence and P1 credentials; see the evidence below.
+Both content and catalogue disk locations are checked. The owner-approved fastapi/typer (229937405), MIT pilot published eight chunks, replayed with zero embedding calls/writes, and returned eight active search hits on the GPU profile. Its zero indexed rows do not establish CAGRA acceleration or capacity; broader ingestion policy remains unapproved. See the evidence below.
 
 Output is one sanitized JSON line with `repo_id`, revision, chunk/embed/vector counts, timings and `result` (`published`, `unchanged`, `refused` or `failed`). It never prints the worker token, README text or user data. Exit code is 0 only for `published`/`unchanged`.
 
