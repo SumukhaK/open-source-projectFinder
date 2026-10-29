@@ -2,13 +2,13 @@
 
 import json
 import time
-import unicodedata
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Request
 from pydantic import BaseModel, Field, field_validator
 
 from app.integrations.github import ProviderError
+from app.services.keyword_query import GITHUB_SCOPE, compile_keyword_query
 
 Name = Annotated[str, Path(pattern=r"^[A-Za-z0-9_-][A-Za-z0-9_-]{0,99}$")]
 RepoName = Annotated[str, Path(pattern=r"^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,99}$")]
@@ -27,16 +27,6 @@ class Idea(BaseModel):
         if len(value.strip()) < 2:
             raise ValueError("Describe your idea")
         return value.strip()
-
-
-def keyword_text(idea):
-    # Keep letters, digits and combining marks of any script; anything else separates words.
-    return "".join(
-        char
-        if char in "_-" or char.isalnum() or unicodedata.category(char).startswith("M")
-        else " "
-        for char in idea.lower()
-    )
 
 
 def summary(data):
@@ -94,31 +84,10 @@ def discovery_router(store, provider, cipher, current, settings):
     def search(body: Idea, request: Request):
         _, token = identity(request)
         # Conservative keyword adapter, not semantic matching; user qualifiers cannot broaden scope.
-        stop = {
-            "i",
-            "a",
-            "an",
-            "the",
-            "to",
-            "and",
-            "for",
-            "with",
-            "my",
-            "want",
-            "build",
-            "create",
-            "app",
-            "that",
-            "is",
-            "of",
-            "using",
-        }
-        words = keyword_text(body.idea).split()
-        words = [word for word in words if word not in stop][:6]
-        if not words:
+        query, problem = compile_keyword_query(body.idea)
+        if problem == "empty":
             raise HTTPException(422, "Include a few project keywords")
-        query = " ".join(words)
-        if len(query) > 256:
+        if problem == "too_long":
             raise HTTPException(422, "Search keywords must be at most 256 characters")
         per_page = body.per_page or settings.search_page_size
         if (body.page - 1) * per_page >= 1000:
@@ -127,7 +96,7 @@ def discovery_router(store, provider, cipher, current, settings):
             )
         order = body.order if body.sort is not None else "desc"
         params = {
-            "q": query + " in:name,description,readme is:public archived:false",
+            "q": query + " " + GITHUB_SCOPE,
             "per_page": per_page,
             "page": body.page,
         }

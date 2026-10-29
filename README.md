@@ -4,7 +4,7 @@ Turn a project idea into a search for existing open-source implementations.
 
 RepoRadar is a planned AI-driven discovery service with a React-based mobile client and a Python FastAPI backend. Users describe an idea by text or voice; the backend combines semantic retrieval from Milvus with GitHub public repository search to find similar projects.
 
-**Status (2026-10-27):**
+**Status (2026-10-29):**
 
 - **Implemented:** mobile branding and GitHub-only signup/login (Expo / React Native + FastAPI); authenticated public GitHub keyword search with page-size/sort controls, repository details and account-specific favourites.
 - **Hybrid-search foundations merged:** local Milvus runs on the development laptop's CPU and GPU (T01), and a pinned CPU embedding model turns text into vectors (T02). Neither is connected to search yet.
@@ -12,6 +12,7 @@ RepoRadar is a planned AI-driven discovery service with a React-based mobile cli
 - **Planned:** repository ingestion into Milvus, semantic and hybrid matching, the mobile discovery screens and voice input.
 - **Single-repository ingestion merged (T09):** an operator command fetches one approved repository by its numeric ID, checks eligibility and licence, chunks and embeds its README, and publishes it to Milvus crash-safely; re-running on unchanged content does no embedding work. Verified live on one owner-approved repository (fastapi/typer, MIT). No bulk crawling, and nothing else may be ingested until the licence (D2) and serving (D4) policies are decided. See [T09 evidence](execution-plans/hybrid-search/T09_EVIDENCE.md).
 - **Source eligibility merged (T10):** checks that keep stale or unsafe archive evidence away from valid live results; not yet wired into search, and production use waits on the visibility policy (D4). See [T10 evidence](execution-plans/hybrid-search/T10_EVIDENCE.md).
+- **Keyword candidates awaiting review (T11):** a shared bounded keyword compiler and an internal 100-candidate live GitHub source with explicit completed, incomplete, unsupported and failed statuses. The legacy search endpoint keeps its existing contract; no hybrid route is exposed yet. See [T11 evidence](execution-plans/hybrid-search/T11_EVIDENCE.md).
 - **Crash-safe publication merged (T08):** revisions are staged, their vectors written and verified, then activated in one short transaction; failed or abandoned updates never replace the serving revision, and search hits are limited to the active revision. Not yet wired into ingestion or search. See [T08 evidence](execution-plans/hybrid-search/T08_EVIDENCE.md).
 - **Vector store adapter merged (T07):** a bounded Milvus collection adapter, verified on the local GPU with synthetic vectors. It is not connected to ingestion or search. See [T07 evidence](execution-plans/hybrid-search/T07_EVIDENCE.md).
 - **Still to validate:** live GitHub OAuth and native-device checks.
@@ -133,6 +134,7 @@ The [OpenCode execution handbook](execution-plans/hybrid-search/README.md) conta
 | T08 crash-safe publication | Merged (PR #30) | Stage → write and read back vectors → activate in one transaction; activation supersedes older pending attempts; bounded reconcile deletes vectors before rows; `filter_active_hits` limits search to the active revision ([evidence](execution-plans/hybrid-search/T08_EVIDENCE.md)) |
 | T10 source eligibility | Merged (PR #32) | Live results need only an exact numeric ID and public, unarchived status; archive evidence also needs the active T08 revision, a 365-day push window, a fresh ID-bound check (≤15 min) and no sticky suppression; outages return incomplete, 401 purges nothing. Serving gated by D4 ([evidence](execution-plans/hybrid-search/T10_EVIDENCE.md)) |
 | T09 single-repository ingestion | Merged (PR #34) | `python -m app.workers.archive ingest --repo-id N`: numeric-ID fetch, fail-closed preflight, licence allowlist (empty by default), unchanged replay with zero embeds, T06 → E5 → T07 → T08 publish and reconcile. Live pilot: fastapi/typer (MIT) published 8 chunks, replay 0 embeds, 8/8 active hits; no GPU-capacity claim ([evidence](execution-plans/hybrid-search/T09_EVIDENCE.md)) |
-| T11-T15, T17-T29 | Not started | Require their task-specific merged prerequisites and policy approvals |
+| T11 keyword candidates | Awaiting review | Shared bounded keyword compiler; internal 100-candidate live GitHub source with `ok`/`incomplete`/`query_not_supported`/`failed` status; typed language/licence filters; legacy search contract unchanged ([evidence](execution-plans/hybrid-search/T11_EVIDENCE.md)) |
+| T12-T15, T17-T29 | Not started | Require their task-specific merged prerequisites and policy approvals |
 
 Still open: archive and rebuild capacity on the 16 GB development laptop, the six remaining policy decisions (corpus cap, retention, backups and others; licence policy D2 and visibility D4 were approved 2026-10-29) and the unmerged mobile discovery foundation. Search quality is not measured until T27.

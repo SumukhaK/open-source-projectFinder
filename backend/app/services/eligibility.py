@@ -17,6 +17,7 @@ from app.integrations.archive_github import (
     RepositoryNotPublic,
 )
 from app.services.archive_publication import filter_active_hits
+from app.services.live_scope import live_eligible
 
 
 @dataclass(frozen=True)
@@ -40,19 +41,6 @@ class EligibilityResult:
     @property
     def incomplete(self):
         return bool(self.issues)
-
-
-def live_eligible(expected_repo_id, metadata):
-    return (
-        type(expected_repo_id) is int
-        and 0 < expected_repo_id < 2**63
-        and isinstance(metadata, dict)
-        and type(metadata.get("id")) is int
-        and metadata["id"] == expected_repo_id
-        and metadata.get("private") is False
-        and metadata.get("archived") is False
-        and metadata.get("visibility", "public") == "public"
-    )
 
 
 def _within_window(value, now):

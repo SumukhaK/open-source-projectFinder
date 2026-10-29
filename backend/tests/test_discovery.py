@@ -417,6 +417,31 @@ def test_search_with_all_new_parameters(discovery):
     assert body["page"] == 2
 
 
+def test_search_default_response_shape_and_size_are_unchanged(discovery):
+    client, _, calls, _ = discovery
+    response = client.post(
+        "/projects/search", headers=HEADERS, json={"idea": "python web framework"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {
+        "items",
+        "total",
+        "incomplete",
+        "page",
+        "per_page",
+        "sort",
+        "order",
+        "source",
+    }
+    assert body["page"] == 1
+    assert body["per_page"] == 20
+    assert body["sort"] == "relevance"
+    assert body["order"] == "desc"
+    assert body["source"] == "github_keywords"
+    assert calls[0].url.params["per_page"] == "20"
+
+
 def test_search_preserves_incomplete_flag_and_result_metadata(discovery):
     client, _, _, responses = discovery
     responses["/search/repositories"] = httpx.Response(
