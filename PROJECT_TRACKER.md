@@ -973,3 +973,29 @@ Scope: documentation only. PR #34 was merged by the reviewed-merge workflow on i
   - The approval is a narrow D1/D2 exception for that one repository. D2 (corpus licence policy) and D4 (production serving) remain pending.
   - P1 now exists privately on the owner's laptop; confirm its rotation/revocation ownership before T18/T19.
 - **Next unblocked:** T11 (adapt GitHub candidates without breaking legacy search) and T17 remain available. T18 still needs the T16 live-search logging follow-up.
+
+## Policy decisions D2 and D4 - 2026-10-29
+
+Owner statements (verbatim):
+
+```text
+D2, which licences are allowed: a licence is the legal permission that comes with a project. MIT means "anyone can copy and reuse this." Other licences have stricter terms. Before the app collects thousands of projects, you need to decide which licences it may collect. simple, take only whats public. i dont want to get sued
+```
+
+```text
+D4, when the library can be used in real search: the library can contain stale information, for example a project that was public last week and is private today. D4 is your rule for how that's handled before real users see results from it. good question, we shold have a periodic check for this, update new repos to our db, deleting stale and turned into private should be higher priority than deleting what goes out of"last 365 days" concept we have. at least thats my opinion, u tell me what is the right thing to do
+```
+
+```text
+What protects you is the licence. Licences like MIT explicitly say "anyone may copy this, just keep the credit." If the library holds only projects with those licences and always links back to the original, you're doing exactly what the authors permitted. fair point, but we are merging github api search results with our db, so those "risky" projects can come as part of search api result, right ? so keep only completetly safe to keep data in our db
+```
+
+```text
+D4: keeping the library honest. It needs three layers. sounds good, reflect in docs that we made these decesions and update them on remote repo
+```
+
+Recorded decisions (details in [TRACKER](execution-plans/hybrid-search/TRACKER.md#blockers-and-decisions), [READINESS](execution-plans/hybrid-search/READINESS.md#3-decision-gates)):
+
+- **D2:** store only permissive-licence content (`MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `0BSD`, `Unlicense`, `CC0-1.0`). No-licence, unknown and copyleft repositories are never stored, but can still appear as live GitHub results, which are not persisted. Archived results link back to the original. This is general guidance, not legal advice.
+- **D4:** check every archive hit before serving (T10, ≤15 min cache, fail closed). A periodic sweep removes private/deleted repositories first, then disallowed licence changes, then refreshes and adds, with 365-day age-outs last. The operator can remove a repository on request.
+- **Still pending:** D1 corpus cap, D3 retention, D5/D6 backups, D7 schedule, D8 quality thresholds.

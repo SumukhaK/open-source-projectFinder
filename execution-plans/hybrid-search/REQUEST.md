@@ -25,9 +25,9 @@ These recommendations still require an operator/product decision in T00 before r
 | Decision | Recommendation to evaluate | Owner | T00 status (2026-10-24) | Evidence | Blocking use |
 | --- | --- | --- | --- | --- | --- |
 | Corpus selection/cap | 1k feasibility sample, then 10k, diverse language/activity/star bands | Operator | Pending approval | None recorded | T18 acquisition beyond an explicitly approved sample; T28 expansion gates |
-| Archived content/license policy | Approved SPDX allowlist; no unknown-license full README content | Operator | Pending approval | None recorded | T09 real content acquisition; T18 |
+| Archived content/license policy | Approved SPDX allowlist; no unknown-license full README content | Operator | **Approved 2026-10-29** (permissive only: `MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `0BSD`, `Unlicense`, `CC0-1.0`) | [TRACKER](TRACKER.md#blockers-and-decisions) | T09 real content acquisition; T18 |
 | Retention | Active eligible content; superseded 30 days; content-free run history 90 days | Operator | Pending approval | None recorded | T20 policy activation |
-| Visibility | ID-bound public check, cache at most 15 minutes; fail closed when unverified | Operator | Pending approval | None recorded | T10/T15 production serving |
+| Visibility | ID-bound public check, cache at most 15 minutes; fail closed when unverified | Operator | **Approved 2026-10-29** with removal priority (private/deleted first, age-out last) | [TRACKER](TRACKER.md#blockers-and-decisions) | T10/T15 production serving |
 | Offline backup exception | Encrypted backup maximum 7 days; quarantine and reapply current suppression ledger on restore | Operator | Pending approval | None recorded | T21/T22 live-content backups |
 | Backup tool/destination | Select a maintained, free encryption-capable backup tool and private destination; verify restore | Operator | Pending approval | None recorded | T21; do not invent encryption |
 | Schedule/availability | Sunday 03:30 Asia/Kolkata, missed-run catch-up, laptop availability disclosed | Operator | Pending approval | None recorded | T23 host activation |
