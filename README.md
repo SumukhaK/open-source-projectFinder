@@ -137,4 +137,4 @@ The [OpenCode execution handbook](execution-plans/hybrid-search/README.md) conta
 | T11 keyword candidates | Awaiting review | Shared bounded keyword compiler; internal 100-candidate live GitHub source with `ok`/`incomplete`/`query_not_supported`/`failed` status; typed language/licence filters; legacy search contract unchanged ([evidence](execution-plans/hybrid-search/T11_EVIDENCE.md)) |
 | T12-T15, T17-T29 | Not started | Require their task-specific merged prerequisites and policy approvals |
 
-Still open: archive and rebuild capacity on the 16 GB development laptop, the six remaining policy decisions (corpus cap, retention, backups and others; licence policy D2 and visibility D4 were approved 2026-10-29) and the unmerged mobile discovery foundation. Search quality is not measured until T27.
+Still open: archive and rebuild capacity on the 16 GB development laptop, the D8 quality numbers (set after T27; all eight policy decisions D1-D8 were approved 2026-10-29) and the unmerged mobile discovery foundation. Search quality is not measured until T27.

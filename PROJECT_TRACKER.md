@@ -1010,8 +1010,8 @@ PR merged. well done. now Read execution-plans/hybrid-search/OPENCODE_PROMPT.md,
 
 Status: Awaiting review. Branch `codex/hybrid-t11-keyword-candidates`, base
 `2492d60401ea698017bc1a3386da1b02ddf24dd5` (fetched `origin/main`). T00 and T10
-are merged; T10 is `22295fa`. D2/D4 are recorded, and T11 does not depend on the
-remaining policy gates. Implementation and verification evidence:
+are merged; T10 is `22295fa`. D1-D8 are recorded, and T11 does not depend on the
+policy gates. Implementation and verification evidence:
 [T11 evidence](execution-plans/hybrid-search/T11_EVIDENCE.md).
 
 Scope (about 1-5 production files): reuse the merged legacy keyword adapter,
@@ -1066,3 +1066,24 @@ OAuth or Milvus call is claimed. Fusion, totals, concurrency and the versioned
 route remain T12-T15. The filter character set is a safety allowlist, not a
 canonical language/licence catalogue. The PR URL and exact head SHA are recorded
 after creation; no acceptance or merge is claimed here.
+
+## Policy decisions D1, D3, D5-D8 - 2026-10-29
+
+Owner request (verbatim):
+
+```text
+Still to decide later: the corpus cap (D1), how long data is kept (D3), backups (D5 and D6), the refresh schedule (D7) and quality thresholds (D8). I'll bring each one up when a task needs it. explain me this in simple terms and ask questions, lets decide
+```
+
+The owner chose from explicit options (question → selected answer, verbatim):
+
+```text
+D1, library size → "1k test, then 10k (Recommended)"
+D3, how long old data is kept → "30 days / 90 days (Recommended)"
+D5 and D6, backups → "Encrypted, external drive (Recommended)"
+D7, when the automatic jobs run → "Daily cleanup + Sunday refresh (Rec.)"
+D8, quality bar → "Measure first, then set (Rec.)"
+D7 detail, daily cleanup time (India time) → "Late evening ~22:00"
+```
+
+Recorded in [TRACKER](execution-plans/hybrid-search/TRACKER.md#blockers-and-decisions), [READINESS](execution-plans/hybrid-search/READINESS.md#3-decision-gates) and [REQUEST](execution-plans/hybrid-search/REQUEST.md#request-and-decision-boundaries). All eight decisions are now approved; D8's numeric thresholds still need owner approval after T27. Open prerequisites: P1 rotation/revocation ownership, P2 mobile discovery foundation, P3 hardware evidence as applicable.
