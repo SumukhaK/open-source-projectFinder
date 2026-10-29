@@ -1,6 +1,6 @@
 # T09: Single-repository ingestion evidence
 
-Date: 2026-10-29. [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34). Status: Awaiting review; owner-approved single-repository GPU-profile functional pilot **PASSED**. Tiny-sample search does not establish CAGRA acceleration; see the live evidence below.
+Date: 2026-10-29. [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34). Status: **Merged** as `7766744` (2026-10-29) after exact-head acceptance of `722e62a` ([review 5694484582](https://github.com/SumukhaK/open-source-projectFinder/pull/34#pullrequestreview-5694484582)); owner-approved single-repository GPU-profile functional pilot **PASSED**. Tiny-sample search does not establish CAGRA acceleration; see the live evidence below.
 Branch: `codex/hybrid-t09-one-repository`.
 Original base: `d1ae76139ba80dd3eac5d3b5dc1656a41387eb35`.
 OpenCode's existing work was preserved as `9bfed5a`; main
