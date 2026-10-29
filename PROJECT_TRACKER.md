@@ -47,8 +47,8 @@ feel free to create a remote git repo with the name "open-source-projectFinder" 
 | 0 | Repository, folder scaffold, architecture and scope documents | Complete | Diff reviewed; secret exclusions verified; pushed scaffold PR #1; GitGuardian check passed |
 | 1 | Finalize requirements, API contract, providers and evaluation criteria | In progress | Hybrid contract proposed in execution-plans/hybrid-search; T00 merged; eight operator decisions (D1-D8) still pending |
 | 2 | Text idea submission and GitHub search baseline | Backend complete; mobile pending | Backend keyword search, details and favourites merged (#9, #10, plus fixes below); mobile discovery UI unmerged |
-| 3 | Periodic ingestion, embeddings and Milvus index | In progress: T01 Milvus feasibility and T02 CPU embeddings merged; T03 catalogue awaiting review with fixed worker SQLite 3.53.1; T04-T09, T16-T23 planned | Repeatable ingestion, deduplication, updates and retrieval checks |
-| 4 | Hybrid retrieval, ranking and AI similarity explanations | Planned (T10-T15, T27) | Agreed relevance evaluation, provenance and failure handling |
+| 3 | Periodic ingestion, embeddings and Milvus index | In progress: T01-T09 and T16 merged; T17-T23 planned | Repeatable ingestion, deduplication, updates and retrieval checks |
+| 4 | Hybrid retrieval, ranking and AI similarity explanations | In progress: T10 merged, T11 awaiting review; T12-T15, T27 planned | Agreed relevance evaluation, provenance and failure handling |
 | 5 | Mobile text discovery flow | Planned (blocked on unmerged mobile foundation; T24-T26) | Client tests and end-to-end submission/results verification |
 | 6 | Voice submission and transcription | Planned | Voice-to-search flow and privacy/error behavior verification |
 | 7 | Scale validation and deployment readiness | Planned | Agreed performance, reliability and deployment checks |
@@ -260,7 +260,7 @@ Scope: publish the existing proposed hybrid/archive architecture plus portable O
 | --- | --- | --- |
 | Handbook authoring | Complete; merged as `2e4a9ff` via PR #11 (reviewed head `5cba2a4`, [CI 40084144348](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40084144348)) | Static checks passed for 37 Markdown files, 30 required task workflows, 289 local links/anchors, dependency ordering and both diagram themes. Independent review found one missing T17 dependency on T08 publication; it was added to the task and tracker. [PR #11](https://github.com/SumukhaK/open-source-projectFinder/pull/11) and its current-head review/checks are authoritative for publication status. |
 | T00 readiness | Complete (accepted and merged as `6dc4233`) | [PR #13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) on base `2e4a9ff353de7a137c49fff0c99bea1765a357a2`; exact-head review of `b535011` and [CI 40086438932](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40086438932) passed. The rest of this cell is the original delivery note: [READINESS](execution-plans/hybrid-search/READINESS.md) records the fresh dependency audits, merged #10/#12/#11 prerequisites, unmerged mobile foundation, eight pending operator decisions and the task readiness/blocker matrix. Exact-head review and CI are pending; the implementer has not accepted or merged. |
-| T01-T29 implementation | T01-T05 merged; T06 awaiting review; T07-T29 not started | [Task tracker](execution-plans/hybrid-search/TRACKER.md) is authoritative for per-task status, full reviewed SHA/review/CI evidence and merged SHA. Only review acceptance checks a task done; dependents require merge into main. |
+| T01-T29 implementation | T01-T10 and T16 merged; T11 awaiting review; T12-T15 and T17-T29 not started | [Task tracker](execution-plans/hybrid-search/TRACKER.md) is authoritative for per-task status, full reviewed SHA/review/CI evidence and merged SHA. Only review acceptance checks a task done; dependents require merge into main. |
 
 Main baseline was 2237c7e5241a698258a28952150194b943d616b0. Search PR #10 and the local discovery mobile foundation were not merged during authoring. Fresh dependency policy evaluation on 2026-10-24 blocked main's mobile lock on zod 3.25.76 / GHSA-mrhx-c7xc-m3w5; the earlier braces/sprintf advisories were withdrawn, not patched here. The first handbook CI run additionally blocked the unchanged Python lock on six advisories across certifi, filelock, opentelemetry-api and setuptools; backend/mobile quality and secrets passed at that earlier head. See the dated evidence in REQUEST.md; later-head checks remain required. The handbook preserves current gates and requires rechecking prerequisite/security state. No unrelated workspace changes are included.
 
@@ -999,6 +999,74 @@ Recorded decisions (details in [TRACKER](execution-plans/hybrid-search/TRACKER.m
 - **D2:** store only permissive-licence content (`MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `0BSD`, `Unlicense`, `CC0-1.0`). No-licence, unknown and copyleft repositories are never stored, but can still appear as live GitHub results, which are not persisted. Archived results link back to the original. This is general guidance, not legal advice.
 - **D4:** check every archive hit before serving (T10, ≤15 min cache, fail closed). A periodic sweep removes private/deleted repositories first, then disallowed licence changes, then refreshes and adds, with 365-day age-outs last. The operator can remove a repository on request.
 - **Still pending:** D1 corpus cap, D3 retention, D5/D6 backups, D7 schedule, D8 quality thresholds.
+
+## T11 keyword candidates - 2026-10-29
+
+User request (verbatim):
+
+```text
+PR merged. well done. now Read execution-plans/hybrid-search/OPENCODE_PROMPT.md, replace TASK_ID with T11, and execute only that task. Read all referenced documents, follow its instructions, raise a PR, then stop and wait for review.
+```
+
+Status: Awaiting review. Branch `codex/hybrid-t11-keyword-candidates`, base
+`2492d60401ea698017bc1a3386da1b02ddf24dd5` (fetched `origin/main`). T00 and T10
+are merged; T10 is `22295fa`. D1-D8 are recorded, and T11 does not depend on the
+policy gates. Implementation and verification evidence:
+[T11 evidence](execution-plans/hybrid-search/T11_EVIDENCE.md). PR:
+[#38](https://github.com/SumukhaK/open-source-projectFinder/pull/38).
+
+Scope (about 1-5 production files): reuse the merged legacy keyword adapter,
+add a small internal GitHub candidate source that returns ranked live candidates
+with completed/incomplete/unsupported/failed status, translate only typed
+language/licence filters safely, and keep `POST /projects/search` behaviour
+exactly as merged. Do not add the T12 fusion, T13 orchestration or T15 route.
+
+Phases and verification:
+
+1. Baseline: run the existing discovery/provider tests and record the exact
+   command, platform, date and result. Confirm the current legacy response shape,
+   default page size, keyword cap and provider failure mapping.
+2. RED: add focused tests for the candidate source: ranked public/unarchived
+   live candidates (including old and copyleft live hits), 100-candidate bound,
+   completed-empty versus unsupported/incomplete, long/stop-word/Unicode/
+   operator-like ideas, `incomplete_results`, provider limit/error, typed filter
+   quoting/rejection, and unchanged legacy defaults. Run them and record expected
+   assertion failures.
+3. GREEN: extract the existing stop-word/Unicode/six-keyword/256-character
+   compiler into a pure helper used by both the legacy route and the candidate
+   source; implement the candidate source and statuses; make the minimum
+   implementation pass. Re-run focused tests.
+4. Regression and quality: run the full backend/scripts suite with the unchanged
+   coverage gate, Ruff check/format, Bandit, `git diff --check` and a secret
+   inspection. Record actual outcomes and any unavailable integration evidence.
+5. Handoff: update `T11_EVIDENCE.md`, the task file, backend README, the hybrid
+   tracker row and this tracker with actual evidence. Merge latest `origin/main`
+   (merge commit, no rebase/force-push), push, wait for required CI, open ONE PR
+   against `main`, report its URL and exact head SHA, then stop for review.
+
+Acceptance criteria: all existing legacy tests remain green; the candidate source
+returns ranks and per-source status; a valid idea with no safe keyword query is
+`query_not_supported` without a qualifiers-only request; live candidates keep
+public/unarchived scope without the archive 365-day or pilot gates; typed filters
+cannot inject qualifiers; no raw idea, transcript or embedding is persisted.
+
+Verification (2026-10-29, Windows/win32, Python 3.11.9):
+
+- Baseline focused: `test_discovery.py` + `test_provider.py` -> 87 passed.
+- RED: 25 failed, 78 passed (expected assertions for the missing compiler,
+  ranked source, statuses and filter handling).
+- GREEN focused: 163 passed for keyword candidates, discovery, provider and
+  eligibility tests.
+- Full suite: 729 passed, 49 skipped; coverage gate passed at 94.4% combined /
+  92.3% branches (unchanged policy).
+- Ruff check/format, Bandit (0 findings) and `git diff --check` passed; changed
+  files were inspected for secrets and no `.env` was staged.
+
+Limits: unit evidence uses fake providers/`httpx.MockTransport`; no live GitHub,
+OAuth or Milvus call is claimed. Fusion, totals, concurrency and the versioned
+route remain T12-T15. The filter character set is a safety allowlist, not a
+canonical language/licence catalogue. The PR URL is recorded above; the exact
+head SHA and CI are reported in the PR. No acceptance or merge is claimed here.
 
 ## Policy decisions D1, D3, D5-D8 - 2026-10-29
 

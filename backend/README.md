@@ -270,3 +270,28 @@ suppression independent of content rows. A 404 is ambiguous and never proves
 deletion; outages/401 do not purge data. No automatic unsuppression is provided.
 Production serving stays gated by **D4** and T13/T15 integration. See
 [T10 evidence](../execution-plans/hybrid-search/T10_EVIDENCE.md) for tests and rollback.
+
+## Keyword candidate source (T11, awaiting review)
+
+`app.services.keyword_query` now holds the one bounded GitHub keyword compiler
+used by both the compatibility route and the internal candidate source. It keeps
+the merged stop words, Unicode handling, six-keyword limit and 256-character
+bound. `POST /projects/search` still returns its existing response fields,
+default page size, sort/order defaults and 422 messages.
+
+`app.services.keyword_candidates.GitHubKeywordCandidates.search(token, idea,
+filters=None)` requests one 100-item live page with the fixed public/unarchived
+scope. It returns ranked candidates plus a per-source status: `ok` (including a
+completed empty result), `incomplete` (partial hits retained when GitHub reports
+`incomplete_results`), `query_not_supported` (no safe keyword query; no provider
+call) or `failed` (sanitized rate-limit, availability or invalid-response
+status). Live candidates keep their public/unarchived scope and do not inherit
+the archive 365-day or licence-content gates.
+
+Only typed `language` and `license` filters are translated; values are bounded,
+multi-word values are quoted, and unsafe characters are rejected before the
+provider call. The source stores no idea, transcript or embedding and is not yet
+wired into an API route. Fusion, totals, concurrency and the versioned endpoint
+remain T12-T15 work. See
+[T11 evidence](../execution-plans/hybrid-search/T11_EVIDENCE.md) for the
+tests-first record and limits.
