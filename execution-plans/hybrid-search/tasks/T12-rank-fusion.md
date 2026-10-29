@@ -34,7 +34,7 @@ Address review changes on this PR, rerun affected checks and await fresh head re
 
 ## Work and boundaries
 
-Collapse archive chunks to one ranked repository before equal-weight app-level RRF, k=60. Fuse the source union by numeric ID with deterministic source-rank/ID tie breaks. Current live metadata wins card conflicts; archive snippets/provenance remain only if eligible/current. Preserve source health and nullable total; cap each source to 100 repositories.
+Collapse archive chunks to one ranked repository before equal-weight app-level RRF, k=60. Fuse the source union by numeric ID with deterministic source-rank/ID tie breaks. Current live metadata wins card conflicts; archive snippets/provenance remain only if eligible/current. Preserve source health and nullable total; cap each source to 100 repositories. Compare and report licences by SPDX ID (GitHub items carry `license.spdx_id`), never by the GitHub filter keyword.
 
 Keep the production change approximately 1-5 files plus necessary tests/docs. If that cannot cover the task honestly, propose smaller slices for review before expanding. No placeholder implementation of later tasks.
 
@@ -46,7 +46,7 @@ Use real focused commands from [the guide](../EXECUTION_GUIDE.md#verification-co
 
 ## What counts as acceptable
 
-Hand-computed RRF fixtures agree with ranks. No source needs membership in the other; older valid live results survive. Source totals are not added and scores are never presented as match probabilities.
+Hand-computed RRF fixtures agree with ranks. No source needs membership in the other; older valid live results survive. Source totals are not added and scores are never presented as match probabilities. A repository present in both sources gets one licence value, as an SPDX ID; a case or keyword-vs-SPDX mismatch (`mit` vs `MIT`) is not treated as a conflict and has a test.
 
 An independent trusted reviewer must accept the exact current PR head after required checks pass, using [REVIEW_CHECKLIST](../REVIEW_CHECKLIST.md). Only that acceptance checks this task done. Merge into main is separately required before a dependent task starts. Include relevant rollback/operator steps and actual migration compatibility evidence in the handoff.
 

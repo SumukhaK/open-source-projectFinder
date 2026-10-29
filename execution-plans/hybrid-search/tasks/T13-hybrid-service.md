@@ -34,19 +34,19 @@ Address review changes on this PR, rerun affected checks and await fresh head re
 
 ## Work and boundaries
 
-Invoke both healthy sources concurrently: full idea CPU embedding/Milvus and bounded GitHub keywords. Start at 200 Milvus chunks with bounded repository overfetch up to the supported ceiling (at most 1000), then validate/collapse/fuse. Carry remaining deadline through admission/clients/validation, initial overall budget 8s. Keep CPU/blocking clients off the event loop and cap outstanding work including timed-out jobs.
+Invoke both healthy sources concurrently: full idea CPU embedding/Milvus and bounded GitHub keywords. Start at 200 Milvus chunks with bounded repository overfetch up to the supported ceiling (at most 1000), then validate/collapse/fuse. Carry remaining deadline through admission/clients/validation, initial overall budget 8s. Keep CPU/blocking clients off the event loop and cap outstanding work including timed-out jobs. Map one typed licence filter to both sources: the GitHub licence keyword for T11 (`mit`) and the SPDX ID for the Milvus/catalogue filter (`MIT`), from a single explicit mapping table; reject unmappable values before either source runs. Keep T11's reporting of a GitHub 422 (rejected query) as source status `failed`/`unavailable`; it degrades the request rather than failing it.
 
 Keep the production change approximately 1-5 files plus necessary tests/docs. If that cannot cover the task honestly, propose smaller slices for review before expanding. No placeholder implementation of later tasks.
 
 ## Tests and verification before acceptance
 
-RED: prove concurrent start with barriers, one slow/failing/unsupported/incomplete branch with and without verified hits, both empty, missing index vs empty, validation failure, disconnect and overload. GREEN: timed-out/disconnected requests cannot grow an unbounded background thread/queue backlog.
+RED: a licence filter selects the same licence on both sources (`mit` ↔ `MIT`, `apache-2.0` ↔ `Apache-2.0`) and an unmappable value is rejected with no source call; a GitHub 422 yields `failed`/`unavailable` live status with archive results still served. Prove concurrent start with barriers, one slow/failing/unsupported/incomplete branch with and without verified hits, both empty, missing index vs empty, validation failure, disconnect and overload. GREEN: timed-out/disconnected requests cannot grow an unbounded background thread/queue backlog.
 
 Use real focused commands from [the guide](../EXECUTION_GUIDE.md#verification-commands) and existing suite paths found during discovery. Record baseline and RED/GREEN command, date/platform, exit code and assertions in the PR. Run affected existing tests, lint/type/format and required CI; document unavailable integration evidence as blocked. `git diff --check` and secret inspection are required before staging/push.
 
 ## What counts as acceptable
 
-Two healthy sources are actually invoked. Only complete-empty+complete-empty returns definitive empty; partial verified hits are degraded, partial zero is SEARCH_INCOMPLETE. Bounded cancellation/admission and source-health propagation have tests; no raw idea is persisted/logged.
+Two healthy sources are actually invoked. Only complete-empty+complete-empty returns definitive empty; partial verified hits are degraded, partial zero is SEARCH_INCOMPLETE. Bounded cancellation/admission and source-health propagation have tests; no raw idea is persisted/logged. Licence filters are mapped from one table to GitHub keyword and SPDX forms and select the same set on both sources; a GitHub 422 is reported as `failed`/`unavailable` (accepted 2026-10-29), not an endpoint error.
 
 An independent trusted reviewer must accept the exact current PR head after required checks pass, using [REVIEW_CHECKLIST](../REVIEW_CHECKLIST.md). Only that acceptance checks this task done. Merge into main is separately required before a dependent task starts. Include relevant rollback/operator steps and actual migration compatibility evidence in the handoff.
 

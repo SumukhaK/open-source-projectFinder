@@ -1,6 +1,6 @@
 # T11: Adapt GitHub candidates without breaking legacy search
 
-Status: Awaiting review. PR: [#38](https://github.com/SumukhaK/open-source-projectFinder/pull/38). Implementation and local verification evidence are in [T11 evidence](../T11_EVIDENCE.md); review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged (`0655834`, 2026-10-29) after exact-head acceptance of `41545f6`. PR: [#38](https://github.com/SumukhaK/open-source-projectFinder/pull/38). Implementation and local verification evidence are in [T11 evidence](../T11_EVIDENCE.md); review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

@@ -1,6 +1,6 @@
 # T11 keyword candidate evidence
 
-Date: 2026-10-29. Status: Awaiting review. Branch:
+Date: 2026-10-29. Status: **Merged** as `0655834` after exact-head acceptance of `41545f6` ([review 5695094494](https://github.com/SumukhaK/open-source-projectFinder/pull/38#pullrequestreview-5695094494)). Branch:
 `codex/hybrid-t11-keyword-candidates`. Base:
 `2492d60401ea698017bc1a3386da1b02ddf24dd5` (fetched `origin/main`).
 Prerequisites T00 (`6dc4233`) and T10 (`22295fa`) are merged into `main`.
