@@ -198,7 +198,7 @@ Run from the repo root; Linux uses the equivalent exports and the supported work
 
 Rollback: stop consumers and revert T07; auth and existing keyword search are unaffected. No SQL migration or alias activation occurs. Preserve real collection data; never delete a collection to repair a generation mismatch. A future model/schema change requires a newly named collection and T08's validated activation, not modifying the existing collection in place.
 
-## Single-repository ingestion (T09, awaiting review)
+## Single-repository ingestion (T09, merged)
 
 `app/workers/archive.py` is a local operator command, not an API route or scheduler. It resolves one repository by numeric GitHub ID, applies the archive policy, and either publishes a new revision or reports unchanged semantic content.
 

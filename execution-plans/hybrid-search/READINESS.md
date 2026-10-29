@@ -66,7 +66,7 @@ Operational prerequisites that are not among the eight decisions:
 
 | ID | Prerequisite | Status | Blocking tasks |
 | --- | --- | --- | --- |
-| P1 | Dedicated, revocable operator-owned public-read worker GitHub credential | Not provided | T04 real reads; T18; T19 |
+| P1 | Dedicated, revocable operator-owned public-read worker GitHub credential | Created privately on the owner's laptop (2026-10-29) and used only for the T09 one-repository pilot; rotation/revocation ownership still to confirm | T04 real reads; T18; T19 |
 | P2 | Reviewed mobile discovery foundation merged into main | Not delivered; no PR | T24, T25, T26 |
 | P3 | Docker/WSL2/CUDA/Milvus feasibility proven on the operator host | Unverified | T01 acceptance; T07/T13 real GPU claims |
 
@@ -85,7 +85,7 @@ T00 is the only task this PR advances. After T00 merges, T01 is the only task wh
 | Blocked by D5/D6 | T21, T22 live-content backups | No approved encrypted-backup exception, tool or destination. |
 | Blocked by D7 | T23 host activation | No approved schedule; host tasks must not be activated. |
 | Blocked by D8 | T27, T28, T29 rollout recommendation | No approved latency/relevance thresholds or expansion gates. |
-| Blocked by P1 | T04 real reads; T18; T19 | No dedicated worker credential. Test transport remains available. |
+| Blocked by P1 | T04 real reads; T18; T19 | Credential now exists (used for the T09 pilot); confirm rotation/revocation ownership before T18/T19. Test transport remains available. |
 | Blocked by P2 | T24, T25, T26 | The mobile discovery foundation is not merged and has no delivery PR. |
 | Blocked by P3 | T01 acceptance; T07/T13 real GPU claims | Hardware/runtime is unverified; T01 owns the real evidence. |
 

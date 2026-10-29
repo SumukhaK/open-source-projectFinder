@@ -957,3 +957,19 @@ this is small functional proof, not measured GPU acceleration/capacity. Approval
 limited to this one MIT repository; broader policy and D4 remain pending. Services
 stopped with data preserved. This documentation-only follow-up waits for CI and
 review on PR #34; no approval, marker, merge or next-task work.
+
+## Tracker sync for T09 - 2026-10-29
+
+User request (verbatim):
+
+```text
+merge and update the tracker
+```
+
+Scope: documentation only. PR #34 was merged by the reviewed-merge workflow on its exact reviewed head before this sync.
+
+- **T09** ([PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34)): exact-head acceptance of `722e62a8b02bd071e0e79eb42cf19dece54cfe61` ([review 5694484582](https://github.com/SumukhaK/open-source-projectFinder/pull/34#pullrequestreview-5694484582)), with [CI 40837980879](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40837980879) passing. Merged as `7766744` on 2026-10-29.
+  - Live pilot on the owner-approved fastapi/typer (229937405, MIT) only: published 8 chunks; unchanged replay made 0 embedding calls and 0 writes; real search returned 8/8 active hits. Eight rows sit below Milvus's index threshold, so there is no GPU acceleration or capacity claim.
+  - The approval is a narrow D1/D2 exception for that one repository. D2 (corpus licence policy) and D4 (production serving) remain pending.
+  - P1 now exists privately on the owner's laptop; confirm its rotation/revocation ownership before T18/T19.
+- **Next unblocked:** T11 (adapt GitHub candidates without breaking legacy search) and T17 remain available. T18 still needs the T16 live-search logging follow-up.

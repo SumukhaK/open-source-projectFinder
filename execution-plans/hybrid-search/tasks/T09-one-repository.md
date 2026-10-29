@@ -1,6 +1,6 @@
 # T09: Ingest one repository end to end
 
-Status: Awaiting review. Implementation, fake-based verification and the owner-approved one-repository functional pilot passed; exact-head review remains pending. The eight-row GPU-profile sample does not prove CAGRA acceleration. See [T09 evidence](../T09_EVIDENCE.md) and [TRACKER](../TRACKER.md).
+Status: Merged ([PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34), `7766744`, 2026-10-29) after exact-head acceptance of `722e62a` with the owner-approved one-repository functional pilot. The eight-row GPU-profile sample does not prove CAGRA acceleration. See [T09 evidence](../T09_EVIDENCE.md) and [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
