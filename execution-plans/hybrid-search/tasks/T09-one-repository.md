@@ -1,6 +1,6 @@
 # T09: Ingest one repository end to end
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review. Implementation, fake-based verification and the owner-approved one-repository functional pilot passed; exact-head review remains pending. The eight-row GPU-profile sample does not prove CAGRA acceleration. See [T09 evidence](../T09_EVIDENCE.md) and [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

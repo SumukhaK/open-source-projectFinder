@@ -845,3 +845,115 @@ Scope: documentation only. PR #32 was merged by the reviewed-merge workflow on i
   - refresh the catalogue's scalar metadata, including `pushed_at`;
   - add an explicit re-check path for sticky suppressions.
 - **Next unblocked:** T11 (adapt GitHub candidates without breaking legacy search; T00 and T10 merged). T09 (pilot evidence waits on the P1 token and an approved pilot repository/licence) and T17 remain available.
+
+## T09 completion plan — 2026-10-28
+
+Continue the owner's T09 request: verify OpenCode's work, finish exactly the
+single-repository operator command, run tests, open one PR and stop for review.
+Original base: d1ae76139ba80dd3eac5d3b5dc1656a41387eb35. Existing uncommitted
+OpenCode implementation preserved as 9bfed5a; latest main merged without rebase.
+
+Review findings and plan:
+1. Existing 177 worker/HTTP tests pass; historical OpenCode RED evidence is absent.
+2. Add failing regressions for raw exception leakage, cleanup failure, licence
+   refusal before README download, numeric-ID/rename consistency, bounded IDs,
+   unchanged semantic replay after nonsemantic source changes, and incomplete
+   active revision handling. Fix only the relevant worker/acquisition boundaries.
+3. Reuse T02/T04/T05/T06/T07/T08. Keep migration 3 suppression intact; no automatic
+   unsuppression. Keep scalar refresh and suppression recovery in T19/T20.
+4. Verify full suite/coverage, lint/format, Bandit, current main integration and CI.
+   WSL startup failed with ERROR_NO_SYSTEM_RESOURCES; use Windows plus Linux CI.
+5. Real ingestion stays BLOCKED until owner approves a numeric repository ID and
+   licence and configures a dedicated P1 token. No real fetch without approval.
+
+Production scope: worker, central settings, numeric GitHub reader, and the shared preparation section bound (four files).
+No dependency/lock/workflow/security-gate changes, scheduler, bulk crawler, API,
+review marker, approval or merge. Acceptance requires real evidence or an explicit
+BLOCKED record; tests cannot substitute for a real repository/model/Milvus run.
+
+T09 verification update (2026-10-29): 701 passed / 49 skipped on Windows; coverage 94.2% combined / 92.1% branches; Ruff/Bandit/diff checks pass. Fresh review reproduced and fixed a token-versus-byte section limit mismatch (RED 1 failed, GREEN 103 worker/chunker tests). Awaiting review; real pilot remains BLOCKED. [Evidence](execution-plans/hybrid-search/T09_EVIDENCE.md).
+
+### T09 owner execution prompt (verbatim)
+
+```text
+Implement exactly T09 ("Ingest one repository end to end") from execution-plans/hybrid-search/TRACKER.md.
+
+Read AGENTS.md, execution-plans/hybrid-search/README.md, REQUEST.md, ARCHITECTURE.md, EXECUTION_GUIDE.md,
+REVIEW_CHECKLIST.md, READINESS.md and tasks/T09-one-repository.md. Read the current code and tests you will
+reuse: backend/app/integrations/archive_github.py (T04), services/archive_index.py (T05),
+services/embeddings.py (T02), services/archive_content.py (T06), integrations/milvus.py (T07),
+services/archive_publication.py (T08), core/archive_store.py, core/sqlite_runtime.py and core/config.py.
+
+Branch: fetch origin/main, create codex/hybrid-t09-one-repository FROM origin/main, record the base SHA.
+Prerequisites T04, T05 and T08 are merged.
+
+Scope (about 1-5 production files): backend/app/workers/archive.py, an operator command such as
+`python -m app.workers.archive ingest --repo-id <numeric id>`, plus settings, tests and docs.
+1. Preflight, with an actionable sanitized error and a non-zero exit for each failure:
+   - settings are valid;
+   - the dedicated worker token is present (never print it);
+   - the pinned E5 manifest and model load offline;
+   - Milvus is reachable, the 2.6 server and the collection/index contract match, and the collection is loaded;
+   - the archive catalogue opens under the WAL gate;
+   - free disk is above a configured minimum.
+2. Acquire with ArchiveGitHubReader by numeric repository ID only (never owner/name as identity).
+3. Eligibility. Refuse, with a clear exit, when the repository:
+   - is not public, is archived or is a fork;
+   - has pushed_at older than the rolling UTC 365-day cutoff (inclusive boundary);
+   - has a licence not in ARCHIVE_LICENSE_ALLOWLIST. This is a new setting with NO default; empty means refuse
+     everything, because policy D2 is not approved yet.
+   A missing README still publishes the metadata-only document from T05.
+4. prepare_repository (T05), then persist_revision (T06).
+5. If the repository's active published revision already equals this semantic_hash, make ZERO embedding calls
+   and zero Milvus writes; report "unchanged".
+6. Otherwise embed the passages with the T02 adapter, build T07 VectorChunks, then publish_revision (T08), then
+   reconcile (T08).
+7. Print a sanitized JSON summary: repo_id, revision, chunk counts, embed calls, vectors written, timings,
+   result. Never print a token, README text or user data.
+
+TDD: write each failing test first, record RED, then GREEN. Use fake HTTP/model/Milvus for unit tests:
+invalid ID, private/archived/fork, licence not allowed, cutoff exactly-at and over, missing README, unchanged
+replay (assert 0 embed calls), invalid model, unreachable or wrong server, interruption after vectors (the
+prior active revision still serves; a replay completes without duplicate IDs).
+
+Real evidence (required for acceptance; record it as BLOCKED if unavailable, never fake it): one owner-approved
+public repository with an allowed licence, on the local Milvus profile. Show:
+- the first run publishes;
+- the second run reports unchanged with 0 embed calls;
+- a T07 search returns its chunks through filter_active_hits.
+Real ingestion needs the owner's P1 worker token and the owner's approval of that repository and licence. Ask
+before any real fetch.
+
+Verify on Linux with the CI runtime if possible (WSL venv /home/sumukha/reporadar-worker-venv), else Windows
+plus Linux CI: pytest backend/tests scripts/tests with the unchanged coverage gate, ruff check/format, bandit,
+git diff --check. Before requesting review, merge the latest origin/main (merge commit, no rebase or
+force-push, keep both sides of any conflict, remove no line from main) so required CI runs.
+
+Update T09_EVIDENCE.md, the task file, backend README and the tracker row to Awaiting review. Raise ONE PR
+against main and report the PR URL, exact head SHA and evidence. Then STOP AND WAIT FOR REVIEW.
+NEVER: merge, approve, write a review marker, change dependencies, lockfiles, CI gates or
+.ci/quality-policy.json, bulk-crawl, add a scheduler or public ingestion API, or start another task.
+```
+
+
+### T09 approved pilot follow-up — 2026-10-29
+
+Owner request (verbatim):
+
+```text
+Approved pilot for PR #34: https://github.com/fastapi/typer, repo ID 229937405, licence MIT.
+This approval covers this one repository and licence only (narrow D1/D2); ingest nothing else.
+The token is in E:\OpenSourceProjectFinder-t09\backend\.env as ARCHIVE_GITHUB_TOKEN, and
+ARCHIVE_LICENSE_ALLOWLIST=["MIT"] is set there. Never print the token. If you run the worker inside
+WSL instead, tell me the WSL backend path and I'll put the .env there. Continue with the run and
+evidence steps.
+```
+
+Verification: actual application head `7da7f40` published 8 chunks, unchanged replay
+made zero embedding calls/writes, and real T07 search retained all eight hits through
+T08. WAL fixed SQLite 3.53.1; pinned offline E5; GPU-profile Milvus. Evidence in
+[T09_EVIDENCE](execution-plans/hybrid-search/T09_EVIDENCE.md). Zero indexed rows mean
+this is small functional proof, not measured GPU acceleration/capacity. Approval is
+limited to this one MIT repository; broader policy and D4 remain pending. Services
+stopped with data preserved. This documentation-only follow-up waits for CI and
+review on PR #34; no approval, marker, merge or next-task work.

@@ -198,6 +198,27 @@ Run from the repo root; Linux uses the equivalent exports and the supported work
 
 Rollback: stop consumers and revert T07; auth and existing keyword search are unaffected. No SQL migration or alias activation occurs. Preserve real collection data; never delete a collection to repair a generation mismatch. A future model/schema change requires a newly named collection and T08's validated activation, not modifying the existing collection in place.
 
+## Single-repository ingestion (T09, awaiting review)
+
+`app/workers/archive.py` is a local operator command, not an API route or scheduler. It resolves one repository by numeric GitHub ID, applies the archive policy, and either publishes a new revision or reports unchanged semantic content.
+
+```sh
+# Run from backend/ with the Linux/WSL worker interpreter and private env.
+python -m app.workers.archive ingest --repo-id 123456
+```
+
+Preflight fails closed with a sanitized JSON error and non-zero exit when settings are invalid, `ARCHIVE_GITHUB_TOKEN` is missing, the pinned E5 model is not cached offline, Milvus is unreachable/not 2.6/mismatched/unloaded, the archive catalogue cannot open under the WAL gate, or free disk is below `ARCHIVE_MIN_FREE_BYTES` (default 2 GiB).
+
+Eligibility refuses non-public, archived and fork repositories, `pushed_at` older than the rolling UTC 365-day cutoff (the exact boundary is eligible), missing SPDX licences and licences outside `ARCHIVE_LICENSE_ALLOWLIST`. There is no built-in allowlist because the licence policy is not approved yet; an empty list refuses everything. A missing README still publishes the T05 metadata-only overview.
+
+The command resolves metadata by numeric ID (never owner/name identity), checks policy before downloading the README through T04, and rechecks the numeric identity and eligibility after content acquisition. It prepares passages and checks the complete active revision before persisting a new T06 pending revision. An identical semantic hash returns `{"result":"unchanged"}` with zero embedding calls and zero Milvus writes. For changed content, section titles obey both token and Milvus byte limits before preparation identities are calculated. It embeds each T05 passage with `passage:`, builds bounded T07 vectors, publishes through T08's staged/read-back/activation path and runs bounded reconciliation. Replays after a partial vector write reuse the same deterministic IDs.
+
+Both content and catalogue disk locations are checked. The owner-approved fastapi/typer (229937405), MIT pilot published eight chunks, replayed with zero embedding calls/writes, and returned eight active search hits on the GPU profile. Its zero indexed rows do not establish CAGRA acceleration or capacity; broader ingestion policy remains unapproved. See the evidence below.
+
+Output is one sanitized JSON line with `repo_id`, revision, chunk/embed/vector counts, timings and `result` (`published`, `unchanged`, `refused` or `failed`). It never prints the worker token, README text or user data. Exit code is 0 only for `published`/`unchanged`.
+
+Operator limits: no bulk crawl, scheduler, public ingestion API or corpus acquisition before policy approval. Run it only against an explicitly approved public repository and licence, with `HF_HUB_OFFLINE=1` and private `ARCHIVE_GITHUB_TOKEN`/`MILVUS_TOKEN`. Before activation, stopping the command leaves the previous published revision serving; after activation, stopping it does not undo the new revision. Retry failures by the same numeric ID without deleting catalogue/content/vector data. Evidence: [T09 evidence](../execution-plans/hybrid-search/T09_EVIDENCE.md).
+
 ## API
 
 - `POST /auth/github/start`: app PKCE challenge and exact allowlisted return URI; returns GitHub authorization URL and state.
