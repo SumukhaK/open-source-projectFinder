@@ -1012,7 +1012,8 @@ Status: Awaiting review. Branch `codex/hybrid-t11-keyword-candidates`, base
 `2492d60401ea698017bc1a3386da1b02ddf24dd5` (fetched `origin/main`). T00 and T10
 are merged; T10 is `22295fa`. D1-D8 are recorded, and T11 does not depend on the
 policy gates. Implementation and verification evidence:
-[T11 evidence](execution-plans/hybrid-search/T11_EVIDENCE.md).
+[T11 evidence](execution-plans/hybrid-search/T11_EVIDENCE.md). PR:
+[#38](https://github.com/SumukhaK/open-source-projectFinder/pull/38).
 
 Scope (about 1-5 production files): reuse the merged legacy keyword adapter,
 add a small internal GitHub candidate source that returns ranked live candidates
@@ -1064,8 +1065,8 @@ Verification (2026-10-29, Windows/win32, Python 3.11.9):
 Limits: unit evidence uses fake providers/`httpx.MockTransport`; no live GitHub,
 OAuth or Milvus call is claimed. Fusion, totals, concurrency and the versioned
 route remain T12-T15. The filter character set is a safety allowlist, not a
-canonical language/licence catalogue. The PR URL and exact head SHA are recorded
-after creation; no acceptance or merge is claimed here.
+canonical language/licence catalogue. The PR URL is recorded above; the exact
+head SHA and CI are reported in the PR. No acceptance or merge is claimed here.
 
 ## Policy decisions D1, D3, D5-D8 - 2026-10-29
 

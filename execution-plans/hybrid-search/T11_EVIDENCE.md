@@ -4,7 +4,8 @@ Date: 2026-10-29. Status: Awaiting review. Branch:
 `codex/hybrid-t11-keyword-candidates`. Base:
 `2492d60401ea698017bc1a3386da1b02ddf24dd5` (fetched `origin/main`).
 Prerequisites T00 (`6dc4233`) and T10 (`22295fa`) are merged into `main`.
-No acceptance or merge is claimed; the PR link is recorded after creation.
+No acceptance or merge is claimed. PR:
+[#38](https://github.com/SumukhaK/open-source-projectFinder/pull/38).
 
 ## Contract
 
