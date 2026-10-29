@@ -48,7 +48,7 @@ feel free to create a remote git repo with the name "open-source-projectFinder" 
 | 1 | Finalize requirements, API contract, providers and evaluation criteria | In progress | Hybrid contract proposed in execution-plans/hybrid-search; T00 merged; eight operator decisions (D1-D8) still pending |
 | 2 | Text idea submission and GitHub search baseline | Backend complete; mobile pending | Backend keyword search, details and favourites merged (#9, #10, plus fixes below); mobile discovery UI unmerged |
 | 3 | Periodic ingestion, embeddings and Milvus index | In progress: T01-T09 and T16 merged; T17-T23 planned | Repeatable ingestion, deduplication, updates and retrieval checks |
-| 4 | Hybrid retrieval, ranking and AI similarity explanations | In progress: T10 merged, T11 awaiting review; T12-T15, T27 planned | Agreed relevance evaluation, provenance and failure handling |
+| 4 | Hybrid retrieval, ranking and AI similarity explanations | In progress: T10 and T11 merged; T12-T15, T27 planned | Agreed relevance evaluation, provenance and failure handling |
 | 5 | Mobile text discovery flow | Planned (blocked on unmerged mobile foundation; T24-T26) | Client tests and end-to-end submission/results verification |
 | 6 | Voice submission and transcription | Planned | Voice-to-search flow and privacy/error behavior verification |
 | 7 | Scale validation and deployment readiness | Planned | Agreed performance, reliability and deployment checks |
@@ -260,7 +260,7 @@ Scope: publish the existing proposed hybrid/archive architecture plus portable O
 | --- | --- | --- |
 | Handbook authoring | Complete; merged as `2e4a9ff` via PR #11 (reviewed head `5cba2a4`, [CI 40084144348](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40084144348)) | Static checks passed for 37 Markdown files, 30 required task workflows, 289 local links/anchors, dependency ordering and both diagram themes. Independent review found one missing T17 dependency on T08 publication; it was added to the task and tracker. [PR #11](https://github.com/SumukhaK/open-source-projectFinder/pull/11) and its current-head review/checks are authoritative for publication status. |
 | T00 readiness | Complete (accepted and merged as `6dc4233`) | [PR #13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) on base `2e4a9ff353de7a137c49fff0c99bea1765a357a2`; exact-head review of `b535011` and [CI 40086438932](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40086438932) passed. The rest of this cell is the original delivery note: [READINESS](execution-plans/hybrid-search/READINESS.md) records the fresh dependency audits, merged #10/#12/#11 prerequisites, unmerged mobile foundation, eight pending operator decisions and the task readiness/blocker matrix. Exact-head review and CI are pending; the implementer has not accepted or merged. |
-| T01-T29 implementation | T01-T10 and T16 merged; T11 awaiting review; T12-T15 and T17-T29 not started | [Task tracker](execution-plans/hybrid-search/TRACKER.md) is authoritative for per-task status, full reviewed SHA/review/CI evidence and merged SHA. Only review acceptance checks a task done; dependents require merge into main. |
+| T01-T29 implementation | T01-T11 and T16 merged; T12-T15 and T17-T29 not started | [Task tracker](execution-plans/hybrid-search/TRACKER.md) is authoritative for per-task status, full reviewed SHA/review/CI evidence and merged SHA. Only review acceptance checks a task done; dependents require merge into main. |
 
 Main baseline was 2237c7e5241a698258a28952150194b943d616b0. Search PR #10 and the local discovery mobile foundation were not merged during authoring. Fresh dependency policy evaluation on 2026-10-24 blocked main's mobile lock on zod 3.25.76 / GHSA-mrhx-c7xc-m3w5; the earlier braces/sprintf advisories were withdrawn, not patched here. The first handbook CI run additionally blocked the unchanged Python lock on six advisories across certifi, filelock, opentelemetry-api and setuptools; backend/mobile quality and secrets passed at that earlier head. See the dated evidence in REQUEST.md; later-head checks remain required. The handbook preserves current gates and requires rechecking prerequisite/security state. No unrelated workspace changes are included.
 
@@ -1088,3 +1088,30 @@ D7 detail, daily cleanup time (India time) → "Late evening ~22:00"
 ```
 
 Recorded in [TRACKER](execution-plans/hybrid-search/TRACKER.md#blockers-and-decisions), [READINESS](execution-plans/hybrid-search/READINESS.md#3-decision-gates) and [REQUEST](execution-plans/hybrid-search/REQUEST.md#request-and-decision-boundaries). All eight decisions are now approved; D8's numeric thresholds still need owner approval after T27. Open prerequisites: P1 rotation/revocation ownership, P2 mobile discovery foundation, P3 hardware evidence as applicable.
+
+## Tracker sync for T11 - 2026-10-29
+
+User request (verbatim):
+
+```text
+merge and update the tracker
+```
+
+Scope: documentation only. PR #38 was merged by the reviewed-merge workflow on its exact reviewed head before this sync.
+
+- **T11** ([PR #38](https://github.com/SumukhaK/open-source-projectFinder/pull/38)): exact-head acceptance of `41545f6e1e6d5add7932350a706beef72b6eec1a` ([review 5695094494](https://github.com/SumukhaK/open-source-projectFinder/pull/38#pullrequestreview-5695094494)), with [CI 40844827828](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40844827828) passing. Merged as `0655834` on 2026-10-29. The legacy search contract is unchanged.
+- **Follow-ups recorded in the task tracker for T12/T13:**
+  - map a shared licence filter to both GitHub keywords (`mit`) and archive SPDX IDs (`MIT`);
+  - optionally distinguish a GitHub 422 from `unavailable`.
+- **Next unblocked:** T12 (fuse repository candidates; T10 and T11 merged) and T17 remain available. T13 also needs T12.
+
+Owner follow-up request (verbatim):
+
+```text
+* T12/T13 must map licence names between the two styles: GitHub's licence filter uses names like `mit`, while the library stores `MIT`.
+* GitHub rejecting a query is reported as "unavailable": that's fine for now.
+
+update the tracker and acceptrance criteria and implemntation guide accordingly
+```
+
+Added to the [execution guide](execution-plans/hybrid-search/EXECUTION_GUIDE.md#non-negotiable-product-and-safety-rules) (one licence filter mapped to both forms), [T12](execution-plans/hybrid-search/tasks/T12-rank-fusion.md) (compare/report licences by SPDX ID) and [T13](execution-plans/hybrid-search/tasks/T13-hybrid-service.md) (single mapping table, RED tests and acceptance; GitHub 422 stays `failed`/`unavailable`).

@@ -271,7 +271,7 @@ deletion; outages/401 do not purge data. No automatic unsuppression is provided.
 Production serving stays gated by **D4** and T13/T15 integration. See
 [T10 evidence](../execution-plans/hybrid-search/T10_EVIDENCE.md) for tests and rollback.
 
-## Keyword candidate source (T11, awaiting review)
+## Keyword candidate source (T11, merged)
 
 `app.services.keyword_query` now holds the one bounded GitHub keyword compiler
 used by both the compatibility route and the internal candidate source. It keeps
