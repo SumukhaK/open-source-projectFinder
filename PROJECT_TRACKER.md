@@ -47,7 +47,7 @@ feel free to create a remote git repo with the name "open-source-projectFinder" 
 | 0 | Repository, folder scaffold, architecture and scope documents | Complete | Diff reviewed; secret exclusions verified; pushed scaffold PR #1; GitGuardian check passed |
 | 1 | Finalize requirements, API contract, providers and evaluation criteria | In progress | Hybrid contract proposed in execution-plans/hybrid-search; T00 merged; eight operator decisions (D1-D8) still pending |
 | 2 | Text idea submission and GitHub search baseline | Backend complete; mobile pending | Backend keyword search, details and favourites merged (#9, #10, plus fixes below); mobile discovery UI unmerged |
-| 3 | Periodic ingestion, embeddings and Milvus index | In progress: T01-T09 and T16 merged; T17-T23 planned | Repeatable ingestion, deduplication, updates and retrieval checks |
+| 3 | Periodic ingestion, embeddings and Milvus index | In progress: T01-T09, T16 and T17 merged; T18-T23 planned | Repeatable ingestion, deduplication, updates and retrieval checks |
 | 4 | Hybrid retrieval, ranking and AI similarity explanations | In progress: T10 and T11 merged; T12-T15, T27 planned | Agreed relevance evaluation, provenance and failure handling |
 | 5 | Mobile text discovery flow | Planned (blocked on unmerged mobile foundation; T24-T26) | Client tests and end-to-end submission/results verification |
 | 6 | Voice submission and transcription | Planned | Voice-to-search flow and privacy/error behavior verification |
@@ -260,7 +260,7 @@ Scope: publish the existing proposed hybrid/archive architecture plus portable O
 | --- | --- | --- |
 | Handbook authoring | Complete; merged as `2e4a9ff` via PR #11 (reviewed head `5cba2a4`, [CI 40084144348](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40084144348)) | Static checks passed for 37 Markdown files, 30 required task workflows, 289 local links/anchors, dependency ordering and both diagram themes. Independent review found one missing T17 dependency on T08 publication; it was added to the task and tracker. [PR #11](https://github.com/SumukhaK/open-source-projectFinder/pull/11) and its current-head review/checks are authoritative for publication status. |
 | T00 readiness | Complete (accepted and merged as `6dc4233`) | [PR #13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) on base `2e4a9ff353de7a137c49fff0c99bea1765a357a2`; exact-head review of `b535011` and [CI 40086438932](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40086438932) passed. The rest of this cell is the original delivery note: [READINESS](execution-plans/hybrid-search/READINESS.md) records the fresh dependency audits, merged #10/#12/#11 prerequisites, unmerged mobile foundation, eight pending operator decisions and the task readiness/blocker matrix. Exact-head review and CI are pending; the implementer has not accepted or merged. |
-| T01-T29 implementation | T01-T11 and T16 merged; T12-T15 and T17-T29 not started | [Task tracker](execution-plans/hybrid-search/TRACKER.md) is authoritative for per-task status, full reviewed SHA/review/CI evidence and merged SHA. Only review acceptance checks a task done; dependents require merge into main. |
+| T01-T29 implementation | T01-T11, T16 and T17 merged; T12-T15 and T18-T29 not started | [Task tracker](execution-plans/hybrid-search/TRACKER.md) is authoritative for per-task status, full reviewed SHA/review/CI evidence and merged SHA. Only review acceptance checks a task done; dependents require merge into main. |
 
 Main baseline was 2237c7e5241a698258a28952150194b943d616b0. Search PR #10 and the local discovery mobile foundation were not merged during authoring. Fresh dependency policy evaluation on 2026-10-24 blocked main's mobile lock on zod 3.25.76 / GHSA-mrhx-c7xc-m3w5; the earlier braces/sprintf advisories were withdrawn, not patched here. The first handbook CI run additionally blocked the unchanged Python lock on six advisories across certifi, filelock, opentelemetry-api and setuptools; backend/mobile quality and secrets passed at that earlier head. See the dated evidence in REQUEST.md; later-head checks remain required. The handbook preserves current gates and requires rechecking prerequisite/security state. No unrelated workspace changes are included.
 
@@ -1195,3 +1195,20 @@ Linux full suite: 819 passed, 2 optional live-service skips. Windows full suite:
 756 passed, 65 platform/optional skips. See T17_EVIDENCE.md for coverage, migration
 rollback and the deliberately conservative immutable-payload/retired-ID rules.
 No task acceptance, review marker, merge, scheduler or later task was performed.
+
+## Tracker sync for T17 - 2026-10-30
+
+User request (verbatim):
+
+```text
+merge and update the tracker
+```
+
+Scope: documentation only. PR #40 was merged by the reviewed-merge workflow on its exact reviewed head before this sync.
+
+- **T17** ([PR #40](https://github.com/SumukhaK/open-source-projectFinder/pull/40)): exact-head acceptance of `3c1c1d9371c7caa83fd71992ed6a393918fd5d3e` ([review 5708590150](https://github.com/SumukhaK/open-source-projectFinder/pull/40#pullrequestreview-5708590150)), with [CI 41010866798](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/41010866798) passing. Merged as `ca191fc` on 2026-10-30. The catalogue is now at schema v4.
+- **Follow-ups recorded:**
+  - **T19 (blocks its acceptance):** a README reverted to previously retired content (A→B→A) currently stays on B. T19 must add a safe generation protocol and an A→B→A regression test; added to the T19 task's RED list and acceptance criteria.
+  - **T20:** compaction of run rows must preserve `MAX(fence)`; added to the T20 acceptance criteria.
+- **Owner reminder delivered (T17 near merge):** before T18 starts, confirm who owns P1 rotation/revocation; T18's first real run must log per-partition query, `total_count`, `incomplete_results`, pages, IDs and split decision.
+- **Next unblocked:** T18 (bounded resumable backfill; T09, T16, T17 merged; needs P1 ownership and the D1 1k sample) and T12 (fusion; may already be in progress).

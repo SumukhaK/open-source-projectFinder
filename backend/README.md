@@ -297,7 +297,7 @@ remain T12-T15 work. See
 tests-first record and limits.
 
 
-## Durable worker state (T17, awaiting review)
+## Durable worker state (T17, merged)
 
 Migration 4 adds `archive_runs`, `archive_partitions` and `archive_tasks` without
 changing migrations 1-3. `app.services.archive_runs.RunStore` persists unique

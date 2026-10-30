@@ -1,6 +1,6 @@
 # T17: Persist runs, checkpoints and fenced worker leases
 
-Status: Awaiting review. Implementation and verification: [T17 evidence](../T17_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged (`ca191fc`, 2026-10-30) after exact-head acceptance of `3c1c1d9`. Implementation and verification: [T17 evidence](../T17_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
