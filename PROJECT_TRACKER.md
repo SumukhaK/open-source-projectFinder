@@ -1326,3 +1326,18 @@ Scope: documentation only. PR #42 was merged by the reviewed-merge workflow on i
   - a `license_conflict` card shows the live licence and drops the archive snippet;
   - `archive_status` must come from the real Milvus/T10 outcome.
 - **Next unblocked:** T13 (orchestrate hybrid retrieval; T02, T07, T10, T11, T12 merged) and T18 (bounded backfill; needs P1 rotation ownership confirmed).
+
+## T30 upkeep task added - 2026-10-30
+
+Owner request (verbatim):
+
+```text
+Two notes for T13 (not blockers), similarly if we have notes piled up which could help us improve our system, combine them and make an upkeep or update task and add it to the tracker and as each tasks gets marked done add notes if required, once we implemnt whole task list we will take up this upkeep/update so that we improve system overall at one shot
+```
+
+Recorded as [T30](execution-plans/hybrid-search/tasks/T30-upkeep.md), after T29 in the [task tracker](execution-plans/hybrid-search/TRACKER.md):
+
+- **Backlog (T30 owns):** U1-U9, gathered from the accepted reviews of T04, T05, T07, T09 and T11 and re-checked against current main: Milvus adapter literals (ordinal bound, dimension), `close()` guard, inline-HTML paragraph loss in chunking, snippet truncation, collection creation in preflight, GitHub 422 reason, single token copy, measured decompression bound.
+- **Verify closed (other tasks own):** notes already written into T13, T18, T19 and T20 acceptance criteria, plus the P1 ownership and deepmerge-expiry operational checks. T30 confirms each is closed.
+- **Process:** [REVIEW_CHECKLIST](execution-plans/hybrid-search/REVIEW_CHECKLIST.md) now says each post-merge sync adds non-blocking notes to T30 (or to the owning task plus T30's verify list).
+- T30 runs after T29 in small slices (the chunker change on its own), each with normal TDD, review and merge.
