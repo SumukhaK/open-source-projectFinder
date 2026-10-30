@@ -1,6 +1,6 @@
 # T17 durable runs and fenced publication
 
-Status: Awaiting review. No acceptance, merge or review marker has been recorded.
+Status: Awaiting review in [PR #40](https://github.com/SumukhaK/open-source-projectFinder/pull/40). No acceptance, merge or review marker has been recorded.
 Implemented and verified 2026-10-29/30. Branch: `codex/hybrid-t17-durable-runs`.
 Base: `f2d86d14a64979391e3210dd5b9f12db9a78943c`.
 
