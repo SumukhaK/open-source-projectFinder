@@ -1,6 +1,6 @@
 # T12: Fuse repository candidates deterministically
 
-Status: Awaiting review. Review/merge evidence belongs in [TRACKER](../TRACKER.md); implementation evidence is in [T12_EVIDENCE](../T12_EVIDENCE.md).
+Status: Merged (`aec996f`, 2026-10-30) after exact-head acceptance of `1aeb8b1` in [PR #42](https://github.com/SumukhaK/open-source-projectFinder/pull/42). Review/merge evidence belongs in [TRACKER](../TRACKER.md); implementation evidence is in [T12_EVIDENCE](../T12_EVIDENCE.md).
 
 | Control | Value |
 | --- | --- |

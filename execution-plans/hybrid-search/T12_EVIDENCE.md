@@ -1,6 +1,6 @@
 # T12 rank fusion evidence
 
-Date: 2026-10-30. Status: Awaiting review. Branch:
+Date: 2026-10-30. Status: **Merged** as `aec996f` after exact-head acceptance of `1aeb8b1` ([review 5708907208](https://github.com/SumukhaK/open-source-projectFinder/pull/42#pullrequestreview-5708907208)). Branch:
 `codex/hybrid-t12-rank-fusion`. Base:
 `f2d86d14a64979391e3210dd5b9f12db9a78943c` (fetched `origin/main`).
 Prerequisites T10 (`22295fa`) and T11 (`0655834`) are merged into `main`.

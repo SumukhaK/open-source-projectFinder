@@ -296,7 +296,7 @@ remain T12-T15 work. See
 [T11 evidence](../execution-plans/hybrid-search/T11_EVIDENCE.md) for the
 tests-first record and limits.
 
-## Rank fusion (T12, awaiting review)
+## Rank fusion (T12, merged)
 
 `app.services.rank_fusion.fuse_candidates(github, archive=(), *,
 archive_status="ok")` is one pure helper over the real T11 `KeywordCandidates`
