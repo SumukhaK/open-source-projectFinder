@@ -46,7 +46,7 @@ Use real focused commands from [the guide](../EXECUTION_GUIDE.md#verification-co
 
 ## What counts as acceptable
 
-Confirmed unsafe live content overrides ordinary superseded retention. Ledger retains only necessary ID/reason/time/version, not README/user text or credentials. Quota/5xx/expired token does not wipe the catalogue; cleanup cannot remove a current safe revision by stale task.
+Confirmed unsafe live content overrides ordinary superseded retention. Ledger retains only necessary ID/reason/time/version, not README/user text or credentials. Quota/5xx/expired token does not wipe the catalogue; cleanup cannot remove a current safe revision by stale task. Any compaction of T17 run rows (including per-call `manual` runs) preserves the catalogue-wide `MAX(fence)` so fences never go backwards.
 
 An independent trusted reviewer must accept the exact current PR head after required checks pass, using [REVIEW_CHECKLIST](../REVIEW_CHECKLIST.md). Only that acceptance checks this task done. Merge into main is separately required before a dependent task starts. Include relevant rollback/operator steps and actual migration compatibility evidence in the handoff.
 

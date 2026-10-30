@@ -76,6 +76,46 @@ MIGRATIONS = (
             observed_at REAL NOT NULL CHECK (observed_at >= 0)
         ) STRICT""",
     ),
+    (
+        """CREATE TABLE archive_runs (
+            run_id INTEGER PRIMARY KEY,
+            kind TEXT NOT NULL CHECK (length(kind) BETWEEN 1 AND 64),
+            due_period TEXT NOT NULL CHECK (length(due_period) BETWEEN 1 AND 128),
+            owner TEXT,
+            fence INTEGER NOT NULL DEFAULT 0 CHECK (fence >= 0),
+            heartbeat_at REAL,
+            expires_at REAL,
+            completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+            UNIQUE (kind, due_period)
+        ) STRICT""",
+        """CREATE TABLE archive_partitions (
+            run_id INTEGER NOT NULL REFERENCES archive_runs(run_id),
+            partition_key TEXT NOT NULL CHECK (length(partition_key) = 64),
+            record TEXT NOT NULL CHECK (json_valid(record)),
+            state TEXT NOT NULL DEFAULT 'pending'
+                CHECK (state IN ('pending', 'completed')),
+            PRIMARY KEY (run_id, partition_key)
+        ) STRICT""",
+        """CREATE TABLE archive_tasks (
+            task_id INTEGER PRIMARY KEY,
+            run_id INTEGER NOT NULL REFERENCES archive_runs(run_id),
+            partition_key TEXT,
+            repo_id INTEGER CHECK (repo_id > 0),
+            revision TEXT CHECK (length(revision) = 64),
+            payload_digest TEXT CHECK (length(payload_digest) = 64),
+            page INTEGER NOT NULL DEFAULT 1 CHECK (page BETWEEN 1 AND 10),
+            stage TEXT NOT NULL DEFAULT 'discover' CHECK (length(stage) BETWEEN 1 AND 64),
+            last_repo_id INTEGER CHECK (last_repo_id > 0),
+            retry_count INTEGER NOT NULL DEFAULT 0 CHECK (retry_count >= 0),
+            retry_at REAL CHECK (retry_at >= 0),
+            CHECK ((partition_key IS NOT NULL AND repo_id IS NULL AND revision IS NULL)
+                OR (partition_key IS NULL AND repo_id IS NOT NULL AND revision IS NOT NULL)),
+            UNIQUE (run_id, partition_key),
+            UNIQUE (repo_id, revision),
+            FOREIGN KEY (run_id, partition_key)
+                REFERENCES archive_partitions(run_id, partition_key)
+        ) STRICT""",
+    ),
 )
 
 

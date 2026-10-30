@@ -75,6 +75,12 @@ candidates and invalid input rejection) were added during GREEN hardening to
 cover otherwise-uncovered branches, and the final 14-test set was rerun against
 the same stub, so the recorded 14 failures are the final test set.
 
+`main` moved from `f2d86d1` to `1479b8f` (T17 merge) before this PR. `origin/main`
+was merged with a merge commit (no rebase) and the checks were rerun on the
+merged tree: full suite 770 passed, 65 skipped, 1 warning; coverage 94.5%
+combined / 92.2% branches; Ruff check/format, Bandit (0 findings) and
+`git diff --check` clean.
+
 Hand-computed RRF fixture: GitHub ranks 1/2/3 for repositories 10/20/30 and
 archive ranks 1/2/3 for 20/40/10 produce
 `20 = 1/62 + 1/61`, `10 = 1/61 + 1/63`, `40 = 1/62`, `30 = 1/63`, and the
