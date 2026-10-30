@@ -387,7 +387,7 @@ def test_activation_failure_after_vectors_keeps_revision_pending(connect, db_pat
         nonlocal writes
         if write:
             writes += 1
-            if writes == 2:
+            if writes == 4:  # temporary run, claim, stage, then activation
                 raise sqlite3.OperationalError("synthetic activation failure")
         with connect(write=write) as db:
             yield db
@@ -870,7 +870,7 @@ def test_activation_refuses_a_revision_removed_after_vectors(connect, db_path):
         nonlocal writes
         if write:
             writes += 1
-            if writes == 2:
+            if writes == 4:  # temporary run, claim, stage, then activation
                 with connect(write=True) as db:
                     db.execute(
                         "DELETE FROM archive_documents WHERE repo_id=? AND revision=?",
@@ -898,7 +898,7 @@ def test_activation_refuses_a_revision_superseded_after_vectors(connect, db_path
         nonlocal writes
         if write:
             writes += 1
-            if writes == 2:
+            if writes == 4:  # temporary run, claim, stage, then activation
                 with connect(write=True) as db:
                     db.execute(
                         "UPDATE archive_documents SET state='superseded' "
@@ -933,7 +933,7 @@ def test_activation_refuses_published_revision_that_is_not_active(connect, db_pa
         nonlocal writes
         if write:
             writes += 1
-            if writes == 2:
+            if writes == 4:  # temporary run, claim, stage, then activation
                 with connect(write=True) as db:
                     db.execute(
                         "UPDATE archive_documents SET state='published' "
@@ -968,7 +968,7 @@ def test_activation_refuses_a_changed_catalogue_chunk_set(connect, db_path):
         nonlocal writes
         if write:
             writes += 1
-            if writes == 2:
+            if writes == 4:  # temporary run, claim, stage, then activation
                 with connect(write=True) as db:
                     db.execute(
                         "DELETE FROM archive_chunks WHERE chunk_id=?",
@@ -1003,7 +1003,7 @@ def test_reconcile_skips_a_document_that_is_no_longer_superseded(connect, db_pat
         nonlocal writes
         if write:
             writes += 1
-            if writes == 1:
+            if writes == 3:  # temporary run, claim, then catalogue cleanup
                 with connect(write=True) as db:
                     db.execute(
                         "UPDATE archive_documents SET state='pending' "
@@ -1041,7 +1041,7 @@ def test_reconcile_skips_a_document_that_became_active(connect, db_path):
         nonlocal writes
         if write:
             writes += 1
-            if writes == 1:
+            if writes == 3:  # temporary run, claim, then catalogue cleanup
                 with connect(write=True) as db:
                     db.execute(
                         "UPDATE archive_repositories SET active_revision=? "
@@ -1073,7 +1073,7 @@ def test_activation_supersedes_other_pending_revisions(connect, db_path):
         nonlocal writes
         if write:
             writes += 1
-            if writes == 2:
+            if writes == 4:  # temporary run, claim, stage, then activation
                 raise sqlite3.OperationalError("synthetic activation failure")
         with connect(write=write) as db:
             yield db
