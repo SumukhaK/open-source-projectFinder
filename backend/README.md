@@ -295,3 +295,31 @@ wired into an API route. Fusion, totals, concurrency and the versioned endpoint
 remain T12-T15 work. See
 [T11 evidence](../execution-plans/hybrid-search/T11_EVIDENCE.md) for the
 tests-first record and limits.
+
+## Rank fusion (T12, awaiting review)
+
+`app.services.rank_fusion.fuse_candidates(github, archive=(), *,
+archive_status="ok")` is one pure helper over the real T11 `KeywordCandidates`
+and T10 `ArchiveEvidence` values; it performs no HTTP, Milvus, SQLite or file
+access. It collapses archive chunks to the best chunk per numeric repository ID
+(highest score, then lowest ordinal, then chunk ID), deduplicates and orders each
+source, and caps each source at 100 repositories. The union never requires a
+repository to appear in both sources, so older or live-only results survive.
+
+Equal-weight reciprocal rank fusion uses `k=60`: `rrf_score` is the sum of
+`1 / (60 + source_rank)` over the sources containing the repository. Final order
+is score descending, then the best source rank, then numeric repository ID, so
+reversed input produces identical output. The score is a ranking value only, not
+a match probability or percentage.
+
+Current live metadata wins a card conflict; archive snippet/section/revision/
+chunk provenance is attached only for eligible, current `ArchiveEvidence`, and
+malformed or mismatched evidence is dropped. Licences are reported as SPDX IDs
+from `license.spdx_id` (never a GitHub filter keyword); a case-only difference
+such as `mit` versus `MIT` is not a conflict. `FusedResults.total` is always
+`None` because source totals are never added, and both sources' health status is
+preserved. The legacy `POST /projects/search` contract is unchanged and no route
+uses this helper yet; T13-T15 own orchestration, cursors and the versioned
+endpoint. See
+[T12 evidence](../execution-plans/hybrid-search/T12_EVIDENCE.md) for the
+tests-first record and limits.

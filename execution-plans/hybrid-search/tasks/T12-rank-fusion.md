@@ -1,6 +1,6 @@
 # T12: Fuse repository candidates deterministically
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review. Review/merge evidence belongs in [TRACKER](../TRACKER.md); implementation evidence is in [T12_EVIDENCE](../T12_EVIDENCE.md).
 
 | Control | Value |
 | --- | --- |

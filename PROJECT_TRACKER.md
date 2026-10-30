@@ -1115,3 +1115,98 @@ update the tracker and acceptrance criteria and implemntation guide accordingly
 ```
 
 Added to the [execution guide](execution-plans/hybrid-search/EXECUTION_GUIDE.md#non-negotiable-product-and-safety-rules) (one licence filter mapped to both forms), [T12](execution-plans/hybrid-search/tasks/T12-rank-fusion.md) (compare/report licences by SPDX ID) and [T13](execution-plans/hybrid-search/tasks/T13-hybrid-service.md) (single mapping table, RED tests and acceptance; GitHub 422 stays `failed`/`unavailable`).
+
+## T12 rank fusion - 2026-10-30
+
+User request (verbatim):
+
+```text
+Read execution-plans/hybrid-search/OPENCODE_PROMPT.md, replace TASK_ID with T12, and execute only T12
+(execution-plans/hybrid-search/tasks/T12-rank-fusion.md). Read every referenced document first.
+
+Context (verify, don't assume):
+- Fetch origin/main (expected at or after f2d86d1) and create codex/hybrid-t12-rank-fusion FROM it; record the base SHA.
+- Prerequisites T10 (22295fa) and T11 (0655834) are merged. D1-D8 are approved; T12 needs no policy gate.
+
+Scope: pure, deterministic fusion helpers with no I/O, network, Milvus or SQLite calls.
+- Inputs:
+  - T11 KeywordCandidates (app/services/keyword_candidates.py: rank, metadata, status/reason/retry_after);
+  - archive chunk hits that have already passed T08 filter_active_hits and the T10 EligibilityService.
+  Read their real types; do not change T11, T08 or T10 behaviour.
+- Collapse the archive chunks to one ranked repository: its best chunk.
+- Then run equal-weight RRF with k=60 over the union, keyed by numeric repo ID. Tie-breaks must be deterministic:
+  best source rank, then repo ID. Results must be identical regardless of input order.
+- Cap each source at 100 repositories. Never require a repository to be in both sources. Older or live-only
+  results survive. Never add source totals together (total is nullable). Preserve each source's health status.
+- On a card conflict, current live metadata wins. Archive snippets and provenance are attached only when that
+  archive evidence is eligible and current.
+- Licence (owner follow-up 2026-10-29): compare and report licences by SPDX ID (GitHub items carry
+  license.spdx_id), never by GitHub's filter keyword. `mit` vs `MIT` is not a conflict, and this needs a test.
+- Scores are never shown as match probabilities.
+- The task file names backend/app/services/discovery.py, but main now has app/discovery.py and app/services/.
+  Put the helpers in one small services module and explain the choice in the PR.
+
+Tests: a RED test first for each item in the task file (GitHub-only, archive-only, common IDs, many chunks per
+repo, equal scores, metadata conflicts, invalid archive evidence, repeated input order) plus the licence case.
+Include a hand-computed RRF fixture. Then GREEN; then run the full backend/scripts suite, coverage
+(gate unchanged at 90/80), ruff check/format, bandit and git diff --check.
+
+No T13 orchestration, T14 cursor, T15 route, configurable ranker, popularity rerank or persistence of ideas.
+Update the T12 task file, T12_EVIDENCE.md, TRACKER (Awaiting review), README and backend/README with real
+evidence. Push, raise ONE PR against main, wait for green required CI, report the PR URL and full head SHA,
+then STOP. Never merge, approve or write a review marker. If main moves before review, merge origin/main
+(merge commit, no rebase), rerun the checks and report the new head.
+```
+
+Status: Awaiting review. Branch `codex/hybrid-t12-rank-fusion`, base
+`f2d86d14a64979391e3210dd5b9f12db9a78943c` (fetched `origin/main`). T10
+(`22295fa`) and T11 (`0655834`) are verified merged; D1-D8 are approved and T12
+needs no policy gate.
+
+Phased plan:
+
+1. Write `backend/tests/test_rank_fusion.py` first and record the expected RED
+   assertions for GitHub-only, archive-only, common IDs, chunk collapse, equal
+   scores, hand-computed RRF, metadata conflicts, invalid archive evidence,
+   input-order independence, source caps/health and the SPDX licence case.
+2. Add one pure helper module, `backend/app/services/rank_fusion.py`, because
+   `app/services/` is the existing service layer and `app/discovery.py` is the
+   legacy router. It imports the real T10 `ArchiveEvidence` and T11
+   `KeywordCandidates` types but performs no I/O.
+3. Implement archive chunk collapse, per-source caps, equal-weight RRF (k=60),
+   deterministic ordering, live-wins metadata, SPDX licence reporting and
+   source-health preservation. Do not modify T08/T10/T11 behaviour.
+4. Run focused tests, the full backend/scripts suite, the unchanged coverage
+   gate, ruff check/format, bandit, `git diff --check` and a secret inspection.
+5. Update `T12_EVIDENCE.md`, the T12 task, hybrid tracker (Awaiting review),
+   root README, backend README and this tracker; commit only task files; push
+   and raise one PR against `main`. Stop for independent exact-head review.
+
+Acceptance criteria: hand-computed RRF fixtures agree with ranks; the union
+contains GitHub-only, archive-only and common repositories; archive chunks
+produce one card per repository using the best chunk; equal scores break by
+best source rank then numeric repo ID; reversed input order is identical; each
+source is capped at 100 repositories; source totals are not added (`total` is
+null); source health is preserved; live metadata wins conflicts; archive
+snippets/provenance appear only for eligible current evidence; licence values
+are SPDX IDs and case-only differences are not conflicts; scores are documented
+as RRF values, not match probabilities. No T13+ orchestration or persistence.
+
+Progress as of 2026-10-30: all five phases complete. `backend/app/services/
+rank_fusion.py` is the one pure helper over the real T10 `ArchiveEvidence` and
+T11 `KeywordCandidates` types; it performs no HTTP, Milvus, SQLite or file
+access. Archive chunks collapse to the best chunk per numeric repository ID,
+each source is capped at 100 repositories, and equal-weight RRF (k=60) orders
+the ID-keyed union by score, best source rank then numeric ID. Live metadata
+wins conflicts, invalid archive evidence is dropped, licences are compared as
+SPDX IDs with case-only differences accepted, source health is preserved and
+`total` stays null. Verification: RED 14 failed with an empty-union skeleton
+before implementation; GREEN 14 passed; affected existing tests 89 passed; full
+backend/scripts suite 743 passed, 49 skipped, 1 warning; unchanged coverage gate
+passed at 94.5% combined / 92.4% branches; Ruff check/format, Bandit (0 findings)
+and `git diff --check` clean; changed files inspected and no `.env` staged. See
+[T12 evidence](execution-plans/hybrid-search/T12_EVIDENCE.md). Status: Awaiting
+exact-head CI and trusted review; no acceptance, review marker or merge.
+
+Rollback: revert the T12 commit. There is no migration, stored data, route or
+configuration change; the legacy endpoint and T08/T10/T11 remain untouched.
