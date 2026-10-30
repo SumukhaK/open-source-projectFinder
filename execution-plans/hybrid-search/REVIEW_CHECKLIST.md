@@ -6,6 +6,7 @@ Reviewer: read the task, its dependencies and current diff against main, not jus
 - Behavioral RED is an expected assertion failure for the requirement, followed by GREEN and relevant regression checks. Fixtures cover failure and trust boundaries. Assertions prove outcomes rather than mirroring internals. Integration/hardware claims have corresponding real evidence.
 - Check source-specific eligibility, union/dedup/RRF, model/token limits, identity/visibility, cursor isolation, source-failure empties, authenticated boundaries, bounded concurrency and data recovery where touched. No secrets/raw ideas in artifacts or logs.
 - Migrations/backfill/publication/cleanup are resumable, bounded and reversible where possible; backup/restore evidence includes suppression reapplication. No feature shipped based on mocks alone.
+- Non-blocking notes: if a named later task owns a note, add it to that task's RED list/acceptance criteria and to the "Verify closed" list in [T30](tasks/T30-upkeep.md); otherwise add it to T30's backlog at the post-merge tracker sync, with its source PR, problem and intended change.
 - All current quality/security/coverage checks pass at that SHA. Inherited failures remain blockers; do not silently waive them. All important findings are fixed and rechecked. Record limits and explicit unavailable checks.
 
 PR body template:

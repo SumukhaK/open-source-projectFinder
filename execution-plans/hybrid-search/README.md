@@ -21,6 +21,7 @@ Start with [the copy-ready session prompt](OPENCODE_PROMPT.md), set a task ID an
 4. T16-T23: partitioned discovery, durable fenced runs, bounded backfill, content-aware weekly refresh, suppression/purge, backup, quarantined restore and host schedule preparation.
 5. T24-T26: migrate the mobile discovery foundation (once it is merged into main through its own reviewed PR; prerequisite P2 in [READINESS](READINESS.md#3-decision-gates)), one combined UI and real HTTP/Milvus integration.
 6. T27-T29: human-judged relevance, measured capacity/fairness and rollout/recovery evidence.
+7. T30: upkeep — apply the deferred non-blocking improvements collected from every review, in small slices, after T29.
 
 The tracker is the precise dependency graph, not an instruction to implement a whole numbered range in one PR. T00 must verify the delivered search/security prerequisites and the still-unmerged mobile foundation; see the dated update in [REQUEST](REQUEST.md#delivered-prerequisites-2026-10-24). If main lacks a dependency, link its delivery PR and stop dependent work rather than recreating it in an archive task. Do not copy the local mobile draft without its own review.
 

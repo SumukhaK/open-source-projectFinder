@@ -1,6 +1,6 @@
 # Task acceptance tracker
 
-T00-T12, T16 and T17 are **Merged**; T13-T15 and T18-T29 are **Not started**. T03's listed prerequisites (T00, T01) are merged, and its real WAL path passes with the dedicated WSL worker's SQLite 3.53.1 (see [T03 evidence](T03_EVIDENCE.md)). Publishing this handbook completes none of the implementation tasks. Owner: the implementer records progress/PR links; only a trusted reviewer records acceptance. [Review format](REVIEW_CHECKLIST.md).
+T00-T12, T16 and T17 are **Merged**; T13-T15 and T18-T30 are **Not started**. T30 is the upkeep task that collects deferred review notes and runs after T29. T03's listed prerequisites (T00, T01) are merged, and its real WAL path passes with the dedicated WSL worker's SQLite 3.53.1 (see [T03 evidence](T03_EVIDENCE.md)). Publishing this handbook completes none of the implementation tasks. Owner: the implementer records progress/PR links; only a trusted reviewer records acceptance. [Review format](REVIEW_CHECKLIST.md).
 
 Status values: Not started, In progress, Awaiting review, Changes requested, Blocked, Accepted, Merged. The `[ ]` marker in a row is editable: change it to `[x]` only after exact-head review acceptance and passing required checks. This table uses explicit checkbox text for row alignment; it is not an automatic GitHub task-list widget.
 
@@ -40,6 +40,7 @@ Do not amend a PR after review simply to tick its own tracker row. The GitHub re
 | [ ] | [T27: Evaluate relevance on a human-judged query set](tasks/T27-relevance-evaluation.md) | T26 | Not started | — | — | — |
 | [ ] | [T28: Measure capacity and foreground fairness before expansion](tasks/T28-capacity.md) | T23, T26, T27 | Not started | — | — | — |
 | [ ] | [T29: Close rollout readiness and recovery documentation](tasks/T29-rollout-readiness.md) | T28 | Not started | — | — | — |
+| [ ] | [T30: Upkeep — apply deferred improvements in one pass](tasks/T30-upkeep.md) | T29 (all of T00-T29) | Not started (backlog open: U1-U9) | — | — | — |
 
 ## Blockers and decisions
 
@@ -110,3 +111,5 @@ Append dated task ID, state change, full SHA, evidence links and reviewer identi
 - 2026-10-30 - T17: Awaiting review -> Merged. Exact-head acceptance by SumukhaK of `3c1c1d9371c7caa83fd71992ed6a393918fd5d3e` ([review 5708590150](https://github.com/SumukhaK/open-source-projectFinder/pull/40#pullrequestreview-5708590150)) with a T19-owned follow-up (README revert to a retired revision) and a T20 note (see Blockers and decisions); passing [CI 41010866798](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/41010866798); merged by the reviewed-merge workflow as `ca191fc` at 2026-10-30T05:59:11Z. Adds additive catalogue migration 4 (runs/partitions/tasks). Recorded through a separate documentation sync.
 
 - 2026-10-30 - T12: Awaiting review -> Merged. Exact-head acceptance by SumukhaK of `1aeb8b11f1ca0af56e8646edb7b793dfdbf5f923` ([review 5708907208](https://github.com/SumukhaK/open-source-projectFinder/pull/42#pullrequestreview-5708907208)) with two non-blocking follow-ups for T13/T15 (see Blockers and decisions); passing [CI 41013241575](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/41013241575); merged by the reviewed-merge workflow as `aec996f` at 2026-10-30T06:42:51Z. Pure helper only; no route or I/O. Recorded through a separate documentation sync.
+
+- 2026-10-30 - T30 added (owner request): upkeep task collecting non-blocking review notes not owned by a later task (backlog U1-U9 from T04, T05, T07, T09, T11) plus a "verify closed" list of notes owned by T13/T18/T19/T20. Reviewers extend it at each post-merge sync; it runs after T29.
