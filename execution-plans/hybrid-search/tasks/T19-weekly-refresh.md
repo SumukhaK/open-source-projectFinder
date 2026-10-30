@@ -40,13 +40,13 @@ Keep the production change approximately 1-5 files plus necessary tests/docs. If
 
 ## Tests and verification before acceptance
 
-RED: 304 unchanged, changed description/topics with unchanged README, metadata-only stars, removed README, rename, model change, overlap gap, partial run and quota pause. GREEN: unchanged content makes zero embedding calls; failures never advance unfinished coverage watermarks.
+RED: README revert A→B→A after A was retired by T17 cleanup (must republish safely, not stay on B or report `failed`), 304 unchanged, changed description/topics with unchanged README, metadata-only stars, removed README, rename, model change, overlap gap, partial run and quota pause. GREEN: unchanged content makes zero embedding calls; failures never advance unfinished coverage watermarks.
 
 Use real focused commands from [the guide](../EXECUTION_GUIDE.md#verification-commands) and existing suite paths found during discovery. Record baseline and RED/GREEN command, date/platform, exit code and assertions in the PR. Run affected existing tests, lint/type/format and required CI; document unavailable integration evidence as blocked. `git diff --check` and secret inspection are required before staging/push.
 
 ## What counts as acceptable
 
-Known IDs are reconciled even without new pushes. Date cutoff/selection remain source-specific. Status exposes actual success/partial/failure with no fabricated seven-day SLA, credentials or raw ideas.
+Known IDs are reconciled even without new pushes. Date cutoff/selection remain source-specific. Status exposes actual success/partial/failure with no fabricated seven-day SLA, credentials or raw ideas. T17 follow-up (2026-10-30): a safe generation protocol (for example generation-salted chunk IDs) lets a repository return to previously retired content without reusing IDs a late Milvus delete could still target; the A→B→A regression passes.
 
 An independent trusted reviewer must accept the exact current PR head after required checks pass, using [REVIEW_CHECKLIST](../REVIEW_CHECKLIST.md). Only that acceptance checks this task done. Merge into main is separately required before a dependent task starts. Include relevant rollback/operator steps and actual migration compatibility evidence in the handoff.
 

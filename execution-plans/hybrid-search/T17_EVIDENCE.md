@@ -1,6 +1,6 @@
 # T17 durable runs and fenced publication
 
-Status: Awaiting review in [PR #40](https://github.com/SumukhaK/open-source-projectFinder/pull/40). No acceptance, merge or review marker has been recorded.
+Status: **Merged** as `ca191fc` (2026-10-30) after exact-head acceptance of `3c1c1d9` ([review 5708590150](https://github.com/SumukhaK/open-source-projectFinder/pull/40#pullrequestreview-5708590150)) in [PR #40](https://github.com/SumukhaK/open-source-projectFinder/pull/40). Follow-up for T19: README revert to a retired revision.
 Implemented and verified 2026-10-29/30. Branch: `codex/hybrid-t17-durable-runs`.
 Base: `f2d86d14a64979391e3210dd5b9f12db9a78943c`.
 
