@@ -295,3 +295,54 @@ wired into an API route. Fusion, totals, concurrency and the versioned endpoint
 remain T12-T15 work. See
 [T11 evidence](../execution-plans/hybrid-search/T11_EVIDENCE.md) for the
 tests-first record and limits.
+
+
+## Durable worker state (T17, awaiting review)
+
+Migration 4 adds `archive_runs`, `archive_partitions` and `archive_tasks` without
+changing migrations 1-3. `app.services.archive_runs.RunStore` persists unique
+`(kind, scheduled UTC instant)` runs, T16 partition records, page/stage/last-ID
+checkpoints and retry counts/timestamps. Supply the original scheduled instant
+on catch-up; daily privacy and weekly refresh use different kinds. T23 will
+calculate those instants and install a scheduler; T17 installs nothing.
+
+`claim` grants one catalogue-wide writer, `heartbeat` renews it and `release`
+relinquishes it. The default lease is 300 seconds, bounded at 3,600. Callers must
+renew before expiry; expired owners must claim again and receive a higher fence.
+`add_split` validates and registers the entire T16 child set atomically, so a
+crash cannot leave a parent with silently missing children. `checkpoint`
+atomically updates page/stage and completion. `defer` persists the
+retry timestamp; no sleep is performed. `completed_partitions` returns typed
+completed intervals with their created/star restrictions, not a single maximum
+pushed timestamp that could conceal gaps. A completed partition cannot reopen,
+and a parent cannot complete while persisted children remain incomplete.
+
+Pass the lease to T08 `publish_revision(..., lease=lease)` and
+`reconcile(..., lease=lease)`. They check it inside each catalogue mutation and
+before vector batches. A nonblocking OS lock (`catalogue.sqlite3.writer.lock`)
+serializes vector operations across processes without a SQL transaction held
+over network IO. Takeover can advance the fence while the old call finishes;
+the successor must retry `WriterBusy` until that call releases the lock. An old
+owner then fails activation/cleanup. The existing T09 command needs no new
+argument: each publication/reconciliation automatically claims a temporary
+lease and takes the same lock. It cannot bypass another active writer.
+
+Use one Linux-native private catalogue path and the WAL-fixed worker runtime.
+Never delete/replace the writer lock while workers run. Do not delete run rows:
+the maximum fence is the sequence high-water mark; future T20 history retention
+must preserve that high-water mark before purging history. No retention or
+scheduler is implemented here. Migration rollback and crash limits are in
+[T17 evidence](../execution-plans/hybrid-search/T17_EVIDENCE.md).
+
+
+A timed-out Milvus request can finish after its client process exits. Publication
+therefore persists a digest of the complete vector payload before sending it;
+retries for the same revision must use identical payloads, including scalar
+metadata. It stores no vector values in the task ledger. Activation checks that
+identity, and cleanup records intent before deleting. Every cleanup leaves a content-free revision quarantine after it removes the
+old content rows, including successful calls: SDK retries can hide an earlier
+ambiguous request. This prevents delayed requests from overwriting a new payload or
+removing newly active vectors with reused IDs. Same-revision scalar updates are
+refused in T17; T19 must provide a safe generation/recovery protocol for them.
+Quarantine recovery is an explicit future operator action, not an automatic
+expiry. Stop all writers and drain old-version in-flight calls before upgrading.

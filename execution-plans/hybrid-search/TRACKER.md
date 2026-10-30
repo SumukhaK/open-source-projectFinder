@@ -1,6 +1,6 @@
 # Task acceptance tracker
 
-T00-T11 and T16 are **Merged**; T12-T15 and T17-T29 are **Not started**. T03's listed prerequisites (T00, T01) are merged, and its real WAL path passes with the dedicated WSL worker's SQLite 3.53.1 (see [T03 evidence](T03_EVIDENCE.md)). Publishing this handbook completes none of the implementation tasks. Owner: the implementer records progress/PR links; only a trusted reviewer records acceptance. [Review format](REVIEW_CHECKLIST.md).
+T00-T11 and T16 are **Merged**; T17 is **Awaiting review**; T12-T15 and T18-T29 are **Not started**. T03's listed prerequisites (T00, T01) are merged, and its real WAL path passes with the dedicated WSL worker's SQLite 3.53.1 (see [T03 evidence](T03_EVIDENCE.md)). Publishing this handbook completes none of the implementation tasks. Owner: the implementer records progress/PR links; only a trusted reviewer records acceptance. [Review format](REVIEW_CHECKLIST.md).
 
 Status values: Not started, In progress, Awaiting review, Changes requested, Blocked, Accepted, Merged. The `[ ]` marker in a row is editable: change it to `[x]` only after exact-head review acceptance and passing required checks. This table uses explicit checkbox text for row alignment; it is not an automatic GitHub task-list widget.
 
@@ -27,7 +27,7 @@ Do not amend a PR after review simply to tick its own tracker row. The GitHub re
 | [ ] | [T14: Paginate fused snapshots with account-bound cursors](tasks/T14-fused-cursors.md) | T13 | Not started | — | — | — |
 | [ ] | [T15: Expose authenticated versioned hybrid search and status](tasks/T15-hybrid-api.md) | T14 | Not started | — | — | — |
 | [x] | [T16: Plan partitioned rolling-year discovery](tasks/T16-discovery-partitions.md) | T04 | Merged | [PR #24](https://github.com/SumukhaK/open-source-projectFinder/pull/24) / base `c73c457b937fd6038f33dbbeb59c54a43c97374c`; main `d7b9ccf` merged in; [evidence](T16_EVIDENCE.md) | `e82119215538f5b2ab562ac968e347008408baac` / [review](https://github.com/SumukhaK/open-source-projectFinder/pull/24#pullrequestreview-5662877227) (partial author at owner's direction) / [CI 40458476274](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40458476274) | `539d02e` / 2026-10-27 |
-| [ ] | [T17: Persist runs, checkpoints and fenced worker leases](tasks/T17-durable-runs.md) | T03, T08, T16 | Not started | — | — | — |
+| [ ] | [T17: Persist runs, checkpoints and fenced worker leases](tasks/T17-durable-runs.md) | T03, T08, T16 | Awaiting review | base `f2d86d14a64979391e3210dd5b9f12db9a78943c` | [implementation evidence](T17_EVIDENCE.md); acceptance pending | — |
 | [ ] | [T18: Run a bounded resumable backfill](tasks/T18-backfill.md) | T09, T16, T17 | Not started | — | — | — |
 | [ ] | [T19: Refresh weekly with content-aware change detection](tasks/T19-weekly-refresh.md) | T10, T17, T18 | Not started | — | — | — |
 | [ ] | [T20: Suppress and retire unsafe or expired archive content](tasks/T20-retirement.md) | T10, T19 | Not started | — | — | — |
@@ -100,3 +100,5 @@ Append dated task ID, state change, full SHA, evidence links and reviewer identi
 - 2026-10-29 - T11: Not started -> Awaiting review. Shared bounded keyword compiler, internal 100-candidate live GitHub source with `ok`/`incomplete`/`query_not_supported`/`failed` status, typed language/licence filters, and unchanged legacy search contract. Base `2492d60401ea698017bc1a3386da1b02ddf24dd5`; T00/T10 verified merged. [Evidence](T11_EVIDENCE.md): RED 25 failed / 78 passed, GREEN 163 passed, full 729 passed / 49 skipped, coverage 94.4% / 92.3% branches. No acceptance, review marker or merge.
 
 - 2026-10-29 - T11: Awaiting review -> Merged. Exact-head acceptance by SumukhaK of `41545f6e1e6d5add7932350a706beef72b6eec1a` ([review 5695094494](https://github.com/SumukhaK/open-source-projectFinder/pull/38#pullrequestreview-5695094494)) with two non-blocking follow-ups for T12/T13 (see Blockers and decisions); passing [CI 40844827828](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40844827828); merged by the reviewed-merge workflow as `0655834` at 2026-10-29T08:57:06Z. Legacy `POST /projects/search` contract unchanged. Recorded through a separate documentation sync.
+
+- 2026-10-30 - T17: Not started -> Awaiting review. Additive migration 4, durable partition checkpoints/retries and fenced local writer publication/cleanup; [evidence](T17_EVIDENCE.md). No scheduler or backfill activated; exact-head acceptance remains pending.

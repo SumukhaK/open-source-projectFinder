@@ -12,12 +12,14 @@ crash can leave extra rows but never an untracked vector.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from app.core.config import ARCHIVE_MAX_CHUNKS, ARCHIVE_RECONCILE_DOCUMENTS
 from app.integrations.milvus import VectorChunk
 from app.services.archive_index import PreparedChunk, PreparedRepository
+from app.services.archive_runs import check_lease, publication_writer
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _MAX_BATCH = 64
@@ -146,8 +148,9 @@ def _batches(items, size):
         yield items[start : start + size]
 
 
-def _stage(connect, prepared):
+def _stage(connect, prepared, *, lease, payload_digest):
     with connect(write=True) as db:
+        check_lease(db, lease)
         row = db.execute(
             "SELECT state, model_revision FROM archive_documents "
             "WHERE repo_id=? AND revision=?",
@@ -172,6 +175,20 @@ def _stage(connect, prepared):
             if active is None or active[0] != prepared.semantic_hash:
                 raise PublicationContractError(
                     "published revision is not the active revision"
+                )
+        intent = db.execute(
+            "SELECT stage,payload_digest FROM archive_tasks WHERE repo_id=? AND revision=?",
+            (prepared.repo_id, prepared.semantic_hash),
+        ).fetchone()
+        if intent is not None:
+            if intent[0] == "cleanup":
+                raise PublicationIncomplete(
+                    "revision is quarantined after uncertain vector IO; "
+                    "drain outstanding writes and rebuild the vector generation before reuse"
+                )
+            if intent[1] != payload_digest:
+                raise PublicationIncomplete(
+                    "revision payload differs from its fenced vector identity"
                 )
         for chunk in prepared.chunks:
             db.execute(
@@ -210,9 +227,25 @@ def _stage(connect, prepared):
                 "catalogue chunks do not match the prepared revision"
             )
 
+        # Keep only a digest, never vector values; identical late writes are safe.
+        db.execute(
+            "INSERT INTO archive_tasks(run_id,repo_id,revision,stage,payload_digest) "
+            "VALUES(?,?,?,'publish',?) ON CONFLICT(repo_id,revision) DO UPDATE SET "
+            "retry_count=retry_count+CASE WHEN stage='publish' THEN 1 ELSE 0 END, "
+            "stage='publish'",
+            (lease.run_id, prepared.repo_id, prepared.semantic_hash, payload_digest),
+        )
 
-def _activate(connect, prepared):
+
+def _activate(connect, prepared, *, lease, payload_digest=None):
     with connect(write=True) as db:
+        check_lease(db, lease)
+        intent = db.execute(
+            "SELECT stage,payload_digest FROM archive_tasks WHERE repo_id=? AND revision=?",
+            (prepared.repo_id, prepared.semantic_hash),
+        ).fetchone()
+        if intent is None or intent[0] != "publish" or intent[1] != payload_digest:
+            raise PublicationIncomplete("activation requires the staged vector payload")
         row = db.execute(
             "SELECT state FROM archive_documents WHERE repo_id=? AND revision=?",
             (prepared.repo_id, prepared.semantic_hash),
@@ -266,10 +299,14 @@ def _activate(connect, prepared):
             "UPDATE archive_repositories SET active_revision=? WHERE repo_id=?",
             (prepared.semantic_hash, prepared.repo_id),
         )
+        db.execute(
+            "UPDATE archive_tasks SET stage='published' WHERE repo_id=? AND revision=?",
+            (prepared.repo_id, prepared.semantic_hash),
+        )
         return previous
 
 
-def publish_revision(connect, vectors, *, prepared, chunks):
+def publish_revision(connect, vectors, *, prepared, chunks, lease=None):
     """Stage, write and verify one revision, then atomically activate it.
 
     ``connect`` is the archive catalogue's ``connect(write=...)`` factory and
@@ -281,21 +318,36 @@ def publish_revision(connect, vectors, *, prepared, chunks):
     _validate_prepared(prepared)
     vector_chunks = _vector_chunks(prepared, chunks)
     batch_size = _batch_size(vectors)
+    payload_digest = hashlib.sha256(
+        json.dumps(
+            [asdict(chunk) for chunk in vector_chunks],
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
 
-    _stage(connect, prepared)
-    for batch in _batches(vector_chunks, batch_size):
-        vectors.upsert(batch)
-    for batch in _batches(vector_chunks, batch_size):
-        if not vectors.ready(batch):
-            raise PublicationIncomplete("the complete vector set is not readable")
+    with publication_writer(connect, lease) as active_lease:
+        _stage(connect, prepared, lease=active_lease, payload_digest=payload_digest)
+        for batch in _batches(vector_chunks, batch_size):
+            with connect() as db:
+                check_lease(db, active_lease)
+            vectors.upsert(batch)
+        for batch in _batches(vector_chunks, batch_size):
+            with connect() as db:
+                check_lease(db, active_lease)
+            if not vectors.ready(batch):
+                raise PublicationIncomplete("the complete vector set is not readable")
 
-    previous = _activate(connect, prepared)
-    return PublicationResult(
-        prepared.repo_id, prepared.semantic_hash, len(vector_chunks), previous
-    )
+        previous = _activate(
+            connect, prepared, lease=active_lease, payload_digest=payload_digest
+        )
+        return PublicationResult(
+            prepared.repo_id, prepared.semantic_hash, len(vector_chunks), previous
+        )
 
 
-def reconcile(connect, vectors, *, limit=ARCHIVE_RECONCILE_DOCUMENTS):
+def reconcile(connect, vectors, *, limit=ARCHIVE_RECONCILE_DOCUMENTS, lease=None):
     """Retire bounded superseded work and report pending publications.
 
     Vectors are deleted before their catalogue rows. Pending revisions are
@@ -305,8 +357,14 @@ def reconcile(connect, vectors, *, limit=ARCHIVE_RECONCILE_DOCUMENTS):
     """
     if type(limit) is not int or not 1 <= limit <= ARCHIVE_RECONCILE_DOCUMENTS:
         raise PublicationContractError("reconcile limit must be within its bound")
+    with publication_writer(connect, lease) as active_lease:
+        return _reconcile(connect, vectors, limit, active_lease)
+
+
+def _reconcile(connect, vectors, limit, lease):
     batch_size = _batch_size(vectors)
     with connect() as db:
+        check_lease(db, lease)
         documents = db.execute(
             "SELECT d.repo_id, d.revision FROM archive_documents AS d "
             "JOIN archive_repositories AS r ON r.repo_id = d.repo_id "
@@ -330,10 +388,23 @@ def reconcile(connect, vectors, *, limit=ARCHIVE_RECONCILE_DOCUMENTS):
                     (repo_id, revision),
                 )
             )
+        # Persist before remote deletion: a timeout does not cancel server work.
+        with connect(write=True) as db:
+            check_lease(db, lease)
+            db.execute(
+                "INSERT INTO archive_tasks(run_id,repo_id,revision,stage) VALUES(?,?,?,'cleanup') "
+                "ON CONFLICT(repo_id,revision) DO UPDATE SET "
+                "retry_count=retry_count+CASE WHEN stage='published' THEN 0 ELSE 1 END, "
+                "stage='cleanup'",
+                (lease.run_id, repo_id, revision),
+            )
         for batch in _batches(chunk_ids, batch_size):
+            with connect() as db:
+                check_lease(db, lease)
             vectors.delete(batch)
             retired_vectors += len(batch)
         with connect(write=True) as db:
+            check_lease(db, lease)
             row = db.execute(
                 "SELECT state FROM archive_documents WHERE repo_id=? AND revision=?",
                 (repo_id, revision),
@@ -351,6 +422,8 @@ def reconcile(connect, vectors, *, limit=ARCHIVE_RECONCILE_DOCUMENTS):
                 "AND state='superseded'",
                 (repo_id, revision),
             )
+            # Retain the tombstone even after success: SDK retries can hide an
+            # earlier ambiguous RPC, so retired IDs must never be reused.
             retired_documents += 1
     return ReconcileResult(retired_documents, retired_vectors, pending)
 
