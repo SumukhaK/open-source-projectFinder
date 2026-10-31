@@ -217,7 +217,7 @@ Both content and catalogue disk locations are checked. The owner-approved fastap
 
 Output is one sanitized JSON line with `repo_id`, revision, chunk/embed/vector counts, timings and `result` (`published`, `unchanged`, `refused` or `failed`). It never prints the worker token, README text or user data. Exit code is 0 only for `published`/`unchanged`.
 
-## Bounded archive backfill (T18, Phase A in progress)
+## Bounded archive backfill (T18, Phase A merged; real run pending approval)
 
 `python -m app.workers.archive backfill --cap 1000` is a manual, serial local-worker command. It persists T16 partition pages, T17 leases/checkpoints and numeric-ID outcomes so a stopped pilot resumes without duplicate repository ingestion. It uses the approved D2 SPDX list exactly, keeps REST and search request accounting separate, leaves long GitHub waits as a durable `retry_at`, and writes a sanitized JSON-lines partition log beside the private catalogue. It reports `curated` or `partial` coverage only; it never claims a complete year. No scheduler is installed. Phase B real execution remains blocked until the owner explicitly approves it.
 
@@ -329,7 +329,7 @@ and the versioned endpoint. See
 [T12 evidence](../execution-plans/hybrid-search/T12_EVIDENCE.md) for the
 tests-first record and limits.
 
-## Hybrid orchestration (T13, awaiting review)
+## Hybrid orchestration (T13, merged)
 
 `app.services.hybrid_search.HybridSearchService(settings, github, embeddings,
 vectors, eligibility, *, executor=None)` is the one internal orchestration
