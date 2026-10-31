@@ -1414,3 +1414,63 @@ once per admitted numeric ID. Request attempts and observed responses/bytes are
 separate; interrupted requests are reported uncertain, never invented successes.
 No claim of exact remote network delivery across a process kill. Coverage is
 curated or partial only; moving GitHub pages are not a complete-year snapshot.
+
+## T13 hybrid orchestration - 2026-10-30
+
+User request (verbatim):
+
+```text
+Execute T13 only. Follow AGENTS.md and execution-plans/hybrid-search/EXECUTION_GUIDE.md.
+Verify all listed prerequisites are MERGED into main and required decisions are
+approved; stop dependent work if missing. Read current code/tests before editing.
+Preserve unrelated work. Fetch origin main and create branch
+codex/hybrid-t13-hybrid-service FROM origin/main; record base SHA.
+Use Ponytail discipline: minimum complete, human-readable code, existing patterns
+and standard library first, no speculative abstractions or unrelated changes.
+For behavior, write and RUN meaningful failing tests FIRST (RED), implement the
+minimum code (GREEN), then refactor and run affected tests/lint/type/security checks.
+Documentation-only changes use relevant static checks; do not invent behavioral RED.
+Implement only the scope and acceptance criteria below. Do not lower CI gates,
+add security exceptions or claim unrun real-server/hardware checks passed.
+Update relevant docs and tracker to Awaiting review with actual evidence.
+Commit explicit task files, push this branch, and RAISE ONE PR AGAINST main.
+Return PR URL, full head SHA and verification/limits; STOP AND WAIT FOR REVIEW.
+Do not self-accept, write a review marker, merge or start the next task.
+Address review changes on this PR, rerun affected checks and await fresh head review.
+```
+
+Context verified: `origin/main` was fetched at `d6927f4ea8fe18ead3fcff2927ebe4ed62583faf` and the branch was created from it. Prerequisites T02 (`e400076`), T07 (`21e6db3`), T10 (`22295fa`), T11 (`0655834`) and T12 (`aec996f`) are merged. D1-D8 are approved; production serving remains gated by D4 and the T15 route.
+
+Scope: one internal orchestration service, no route and no cursor.
+
+- `backend/app/services/hybrid_search.py` provides `HybridSearchService(settings, github, embeddings, vectors, eligibility, *, executor=None)` and `async search(token, idea, *, language=None, license=None) -> HybridSearchResult`. The task proposed `services/discovery.py`; main already has the legacy router at `app/discovery.py`, so a service module keeps that route untouched.
+- Live calls T11 `GitHubKeywordCandidates.search`; archive embeds the full idea with T02 (`kind="query"`), searches T07 `MilvusAdapter.search` from 200 chunks with bounded repository overfetch up to 1,000, then runs T08 `filter_active_hits` inside T10 `EligibilityService.check`.
+- T12 `fuse_candidates` produces the fused list; a `license_conflict` card keeps the live licence and drops the archive snippet/provenance.
+- One 8-second monotonic deadline funds admission, embedding, GitHub, Milvus and validation with `min(remaining, setting)`. T07 is bounded caller-side with `asyncio.wait_for`; native cancellation is not claimed.
+- `BoundedExecutor` (thread pool plus outstanding-slot semaphore) keeps blocking work off the event loop and caps abandoned work. A full executor returns busy instead of queueing forever; admission returns an explicit `busy` result.
+- Real archive status is derived (`failed`/`incomplete`/`ok`), never assumed. Complete-empty plus complete-empty is definitive `empty`; partial verified hits are `degraded`; partial zero hits are `incomplete`; a missing index is distinct from an empty index. T02 `UnsupportedInput`/`EmbeddingError` degrades the archive branch, not the request. GitHub 422 keeps `failed`/`unavailable` and archive results still serve.
+- One `LICENSE_FILTERS` table maps a typed value to the GitHub keyword and SPDX ID; unmappable values raise before either source runs. Language is passed to both sources.
+- Logging is one `reporadar.hybrid` line with counts, statuses and duration only.
+
+Phased plan and completion:
+
+1. Read prerequisites, config, callers and tests; fetch `origin/main`, record base, create branch. Complete.
+2. Write the RED suite in `backend/tests/test_hybrid_search.py` with fakes/barriers and no network. Complete: initial run failed at import (`ModuleNotFoundError`) for the new module.
+3. Implement the service, executor, licence table and status derivation; add `HYBRID_*` settings and a validator; add placeholders to `.env.example`. Complete.
+4. Run focused and affected tests, the full backend/scripts suite, the unchanged coverage gate, Ruff, Bandit, `git diff --check` and a secret inspection. Complete.
+5. Update `T13_EVIDENCE.md`, the T13 task, the hybrid tracker, root README, backend README and this tracker; commit explicit task files, push and raise one PR against `main`. Complete; awaiting exact-head CI and trusted review.
+
+Acceptance criteria and actual verification:
+
+- Two healthy sources invoked concurrently: proven with a two-party barrier test.
+- Definitive empty only when both complete `ok` and empty: covered with complete-empty vs incomplete/failed variants.
+- Partial verified hits degraded and partial zero hits incomplete: covered, including GitHub 422 and unsupported live query with archive hits.
+- Archive status derived from Milvus/T10 outcome: covered for missing, unavailable and incompatible index vs empty index, validation failure, partial validation and unverifiable hits.
+- Licence mapping from one table and unmappable rejection with no source call: covered for `mit`/`MIT` and `apache-2.0`/`Apache-2.0`.
+- `license_conflict` drops the archive snippet and keeps the live licence: covered.
+- Disconnect and overload cannot grow an unbounded backlog: covered with outstanding-slot assertions.
+- No raw idea persisted or logged: covered by a log-capture test.
+
+Verification evidence (2026-10-30, Windows, Python 3.11.9, worktree venv): RED import failure; GREEN 35 passed; affected existing tests 198 passed; full backend/scripts suite 805 passed, 65 skipped, 1 warning; unchanged coverage gate 93.8% combined / 91.6% branches; Ruff check and format clean; Bandit 0 findings; `git diff --check` clean; changed-file secret scan found no credential-like values and only the placeholder `backend/.env.example` changed. Real-stack run not run (deferred to T26): no Docker, Milvus, embedding model or live GitHub call. See [T13 evidence](execution-plans/hybrid-search/T13_EVIDENCE.md). Status: Awaiting review; no acceptance, review marker or merge.
+
+Rollback: revert the T13 commit. There is no migration, stored data, route or scheduled job to undo. The new `HYBRID_*` settings are inert without a caller; T02/T07/T08/T10/T11/T12 and the legacy endpoint remain unchanged.

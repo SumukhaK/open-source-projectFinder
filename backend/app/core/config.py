@@ -85,6 +85,16 @@ class Settings(BaseSettings):
     milvus_timeout: float = Field(default=10, gt=0, le=30)
     milvus_build_timeout: float = Field(default=120, gt=0, le=120)
     milvus_batch_size: int = Field(default=64, ge=1, le=64)
+    hybrid_search_budget: float = Field(default=8, gt=0, le=30)
+    hybrid_search_max_workers: int = Field(default=8, ge=1, le=32)
+    hybrid_search_max_outstanding: int = Field(default=16, ge=1, le=64)
+    hybrid_search_max_concurrent: int = Field(default=4, ge=1, le=32)
+    hybrid_search_admission_timeout: float = Field(default=0.25, ge=0, le=5)
+    hybrid_archive_initial_limit: int = Field(default=200, ge=1, le=MILVUS_MAX_TOP_K)
+    hybrid_archive_max_limit: int = Field(
+        default=MILVUS_MAX_TOP_K, ge=1, le=MILVUS_MAX_TOP_K
+    )
+    hybrid_archive_target_repositories: int = Field(default=100, ge=1, le=100)
     allowed_redirects: list[str] = ["reporadar://auth/callback"]
     cors_origins: list[str] = []
     rate_limit: int = Field(default=20, ge=1)
@@ -196,4 +206,10 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Archive database, content directory and auth database must be separate"
             )
+        return self
+
+    @model_validator(mode="after")
+    def bounded_hybrid_archive_limits(self):
+        if self.hybrid_archive_initial_limit > self.hybrid_archive_max_limit:
+            raise ValueError("Hybrid archive initial limit must not exceed max limit")
         return self
