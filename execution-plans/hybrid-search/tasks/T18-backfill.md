@@ -1,6 +1,6 @@
 # T18: Run a bounded resumable backfill
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: In progress — Phase A fake-only implementation is under review preparation; the real run remains pending explicit owner approval. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

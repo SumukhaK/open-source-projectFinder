@@ -1343,6 +1343,78 @@ Recorded as [T30](execution-plans/hybrid-search/tasks/T30-upkeep.md), after T29 
 - T30 runs after T29 in small slices (the chunker change on its own), each with normal TDD, review and merge.
 
 
+## T18 bounded backfill — Phase A (2026-10-30)
+
+Base `d6927f4ea8fe18ead3fcff2927ebe4ed62583faf`; branch
+`codex/hybrid-t18-backfill`. Verified ancestor prerequisites: T09 `7766744`,
+T16 `539d02e`, T17 `ca191fc`. Phase B requires the owner's exact approval
+"T18 real run approved"; it is not authorized by Phase A.
+
+Plan (tests first, in progress):
+1. Add bounded worker-only search and per-request accounting hooks to the T04
+   reader. Extend T09 with an optional lease and progress hook, preserving its
+   existing single-repository behavior. Test fake HTTP and leased publication.
+2. Add migration 5 without altering migrations 1-4: durable backfill run state,
+   page inbox/log events and numeric-ID outcome ledger. Build a serial command
+   using T16 partitions/T17 add_split/leases. Checkpoint before/after acquisition
+   and publication; deduplicate across partitions and recover committed outcomes.
+3. Enforce 1,000 candidate maximum, exact D2 allowlist, queue/partition/byte/disk
+   bounds and independent header-driven search/REST headroom. Persist long waits;
+   stop on invalid credentials. Test every crash/pause boundary, counts and JSONL.
+4. Run offline Linux/Windows regression, unchanged coverage, lint/security and
+   independent implementation review. Update docs to In progress: real run pending;
+   create one PR, wait for CI, then stop for explicit Phase B authorization.
+
+Production ownership: core/archive_store.py (additive migration), core/config.py
+(only T18 settings/constants), integrations/archive_github.py (worker reader),
+workers/archive.py (T09/CLI), workers/backfill.py (new). Do not edit T13 service,
+API or tests. Shared documentation edits append T18 records without removing main.
+No Docker/Milvus/model startup, real GitHub requests or application closing in A.
+
+### T18 owner request (recorded scope)
+
+```text
+Read execution-plans/hybrid-search/OPENCODE_PROMPT.md, replace TASK_ID with T18, and execute only T18
+(execution-plans/hybrid-search/tasks/T18-backfill.md). Read every referenced document first. T13 is being built
+in parallel on another branch; do not touch its files.
+
+Context (verify, don't assume):
+- Fetch origin/main (at or after d6927f4) and create codex/hybrid-t18-backfill FROM it; record the base SHA.
+- Merged prerequisites:
+  - T09 single-repository ingest (7766744);
+  - T16 partition planner (539d02e);
+  - T17 runs/checkpoints/fenced leases (ca191fc). The catalogue is at schema v4.
+- Approved decisions:
+  - D1: a 1,000-repository sample first. 10,000 only after measured disk/RAM/latency AND a separate owner OK.
+  - D2: store only MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, CC0-1.0. Everything else
+    is skipped and counted.
+  - D4/D7 apply later, in T19/T20/T23. T18 is a manually started command, not a scheduler.
+
+PHASE A: implement and verify with fakes only.
+- A resumable worker command (for example `python -m app.workers.archive backfill --cap 1000`) that:
+  - creates or resumes one T17 run, claims a lease and heartbeats it;
+  - plans with T16 and registers splits through T17 add_split;
+  - pages GitHub search serially with checkpoints;
+  - ingests each eligible repository through the existing T09 path, passing the lease to publish/reconcile;
+  - marks partitions completed only when fully processed.
+- Budgets: separate REST and search budgets from actual headers with about 20% headroom; long waits persist as retry_at and exit cleanly; invalid credentials stop immediately; stop at cap, disk minimum or queue bound; duplicate IDs are ingested once.
+- Report discovered, eligible, skipped by reason, published, unchanged, failed, bytes, requests, deferred/unresolved partitions and language/activity/star distributions. Coverage is curated or partial, never complete year.
+- Log each partition query, total_count, incomplete_results, pages read, IDs returned and split/unresolved decision as sanitized JSON-lines.
+- Tests: RED first for crashes, caps/quota/disk, 429/secondary limits, incomplete discovery, duplicate IDs, invalid credentials, partition log and licence skip counts; then GREEN, full suite, coverage, ruff, bandit and diff check.
+- Phase A must not start Docker, Milvus or the model, call real GitHub or close apps.
+- Update T18 task/evidence/tracker/README docs, push one PR, wait for green CI, report it and stop. Do not start Phase B until the owner explicitly replies "T18 real run approved".
+
+Never merge, approve or write a review marker. No scheduler/host activation, weekly refresh, retirement, 10k expansion, new dependencies, CI gate or quality-policy changes.
+```
+
+Counting contract: cap bounds distinct candidate IDs admitted to the sample,
+including skips; this cannot accidentally ingest more than 1,000. Page logs keep
+all returned IDs and show excluded/deferred work. Outcomes and distribution are
+once per admitted numeric ID. Request attempts and observed responses/bytes are
+separate; interrupted requests are reported uncertain, never invented successes.
+No claim of exact remote network delivery across a process kill. Coverage is
+curated or partial only; moving GitHub pages are not a complete-year snapshot.
+
 ## T13 hybrid orchestration - 2026-10-30
 
 User request (verbatim):

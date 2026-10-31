@@ -21,6 +21,18 @@ ARCHIVE_RECONCILE_DOCUMENTS = 100
 ARCHIVE_LEASE_SECONDS = 300
 ARCHIVE_LEASE_MAX_SECONDS = 3600
 ARCHIVE_VISIBILITY_CACHE_SIZE = 1000
+ARCHIVE_BACKFILL_CAP = 1000
+ARCHIVE_SEARCH_MAX_BYTES = 2 * 1024 * 1024
+ARCHIVE_BACKFILL_LICENSES = (
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "0BSD",
+    "Unlicense",
+    "CC0-1.0",
+)
 
 MILVUS_MAX_TOP_K = 1000
 MILVUS_TEXT_BYTES = {
@@ -58,6 +70,11 @@ class Settings(BaseSettings):
     # allowlist refuses every repository instead of guessing.
     archive_license_allowlist: list[str] = Field(default_factory=list)
     archive_min_free_bytes: int = Field(default=2 * 1024**3, ge=0)
+    archive_backfill_queue_limit: int = Field(default=100, ge=1, le=1000)
+    archive_backfill_partition_limit: int = Field(default=2048, ge=1, le=4096)
+    archive_backfill_byte_limit: int = Field(
+        default=512 * 1024**2, ge=1, le=2 * 1024**3
+    )
     milvus_uri: str = "http://127.0.0.1:19530"
     milvus_token: SecretStr = Field(default=SecretStr(""), repr=False)
     milvus_profile: Literal["cpu", "gpu"] = "gpu"

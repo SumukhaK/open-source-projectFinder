@@ -217,6 +217,10 @@ Both content and catalogue disk locations are checked. The owner-approved fastap
 
 Output is one sanitized JSON line with `repo_id`, revision, chunk/embed/vector counts, timings and `result` (`published`, `unchanged`, `refused` or `failed`). It never prints the worker token, README text or user data. Exit code is 0 only for `published`/`unchanged`.
 
+## Bounded archive backfill (T18, Phase A in progress)
+
+`python -m app.workers.archive backfill --cap 1000` is a manual, serial local-worker command. It persists T16 partition pages, T17 leases/checkpoints and numeric-ID outcomes so a stopped pilot resumes without duplicate repository ingestion. It uses the approved D2 SPDX list exactly, keeps REST and search request accounting separate, leaves long GitHub waits as a durable `retry_at`, and writes a sanitized JSON-lines partition log beside the private catalogue. It reports `curated` or `partial` coverage only; it never claims a complete year. No scheduler is installed. Phase B real execution remains blocked until the owner explicitly approves it.
+
 Operator limits: no bulk crawl, scheduler, public ingestion API or corpus acquisition before policy approval. Run it only against an explicitly approved public repository and licence, with `HF_HUB_OFFLINE=1` and private `ARCHIVE_GITHUB_TOKEN`/`MILVUS_TOKEN`. Before activation, stopping the command leaves the previous published revision serving; after activation, stopping it does not undo the new revision. Retry failures by the same numeric ID without deleting catalogue/content/vector data. Evidence: [T09 evidence](../execution-plans/hybrid-search/T09_EVIDENCE.md).
 
 ## API

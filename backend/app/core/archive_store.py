@@ -116,6 +116,29 @@ MIGRATIONS = (
                 REFERENCES archive_partitions(run_id, partition_key)
         ) STRICT""",
     ),
+    (
+        """CREATE TABLE archive_backfill_repositories (
+            run_id INTEGER NOT NULL REFERENCES archive_runs(run_id),
+            repo_id INTEGER NOT NULL CHECK (repo_id > 0),
+            status TEXT NOT NULL CHECK (status IN ('pending','published','unchanged','skipped','failed')),
+            reason TEXT,
+            facts_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(facts_json)),
+            PRIMARY KEY (run_id, repo_id)
+        ) STRICT""",
+        """CREATE TABLE archive_backfill_pages (
+            run_id INTEGER NOT NULL REFERENCES archive_runs(run_id),
+            partition_key TEXT NOT NULL,
+            page INTEGER NOT NULL CHECK (page BETWEEN 1 AND 10),
+            record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+            PRIMARY KEY (run_id, partition_key, page),
+            FOREIGN KEY (run_id, partition_key)
+                REFERENCES archive_partitions(run_id, partition_key)
+        ) STRICT""",
+        """CREATE TABLE archive_backfill_state (
+            run_id INTEGER PRIMARY KEY REFERENCES archive_runs(run_id),
+            state_json TEXT NOT NULL CHECK (json_valid(state_json))
+        ) STRICT""",
+    ),
 )
 
 

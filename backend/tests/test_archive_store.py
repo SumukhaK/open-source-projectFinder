@@ -99,6 +99,9 @@ def test_migration_is_idempotent_and_preserves_stable_ids(tmp_path):
             "archive_runs",
             "archive_tasks",
             "archive_partitions",
+            "archive_backfill_repositories",
+            "archive_backfill_pages",
+            "archive_backfill_state",
         }
     with store.connect(write=True) as db:
         add_repository(db)
@@ -109,7 +112,7 @@ def test_migration_is_idempotent_and_preserves_stable_ids(tmp_path):
     store.migrate()
     reopened = archive_store.ArchiveStore(settings)
     with reopened.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 5
         assert db.execute(
             "SELECT repo_id, full_name FROM archive_repositories"
         ).fetchall()[0][:] == (101, "owner/project")
@@ -127,6 +130,9 @@ def test_migration_is_idempotent_and_preserves_stable_ids(tmp_path):
             "archive_runs",
             "archive_tasks",
             "archive_partitions",
+            "archive_backfill_repositories",
+            "archive_backfill_pages",
+            "archive_backfill_state",
         }
 
 
@@ -151,7 +157,7 @@ def test_existing_v1_catalogue_upgrades_to_v2_without_data_loss(tmp_path):
     store = archive_store.ArchiveStore(settings_for(tmp_path))
 
     with store.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 5
         row = db.execute(
             "SELECT state, normalized_path, blob_sha, raw_bytes, truncated "
             "FROM archive_documents"
@@ -373,7 +379,7 @@ def test_migration_failure_rolls_back_ddl_and_version(tmp_path, monkeypatch):
     monkeypatch.undo()
     store = archive_store.ArchiveStore(settings_for(tmp_path))
     with store.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 5
 
 
 def test_private_file_and_wal_sidecars_and_bounded_lock_wait(catalogue):
