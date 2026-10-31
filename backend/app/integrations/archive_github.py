@@ -21,10 +21,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
-from urllib.parse import quote, urljoin, urlsplit
+from urllib.parse import quote, urlencode, urljoin, urlsplit
 
 import httpx
-from app.core.config import Settings
+from app.core.config import ARCHIVE_SEARCH_MAX_BYTES, Settings
 
 API_VERSION = "2022-11-28"
 _JSON_MEDIA = "application/vnd.github+json"
@@ -133,6 +133,14 @@ class ArchiveResponse:
     retry_at: datetime | None
     encoded_bytes: int
     decoded_bytes: int
+
+
+@dataclass(frozen=True)
+class SearchPage:
+    ids: tuple[int, ...]
+    total_count: int
+    incomplete: bool
+    response: ArchiveResponse
 
 
 @dataclass(frozen=True)
@@ -285,11 +293,51 @@ class ArchiveGitHubReader:
                 "archive reader requires ARCHIVE_GITHUB_TOKEN; "
                 "end-user OAuth tokens are not accepted"
             )
+        self.observer = None
         self.transport = transport
         self.sleep = sleep
         self._now = now or (lambda: datetime.now(timezone.utc))
         self.api_url = self.settings.archive_github_api_url.rstrip("/")
         self._api_origin = _origin(self.api_url)
+
+    def search_repositories(self, query, *, page):
+        if (
+            not isinstance(query, str)
+            or not query.strip()
+            or len(query) > 256
+            or type(page) is not int
+            or not 1 <= page <= 10
+        ):
+            raise ArchiveRequestError("search query/page exceeds its bound")
+        response = self._get(
+            "/search/repositories?"
+            + urlencode({"q": query, "page": page, "per_page": 100}),
+            accept=_JSON_MEDIA,
+            max_bytes=ARCHIVE_SEARCH_MAX_BYTES,
+        )
+        if response.status != 200:
+            raise ArchiveProtocolError("search response must be 200")
+        payload = _json_object(response, "search")
+        count, incomplete, items = (
+            payload.get("total_count"),
+            payload.get("incomplete_results"),
+            payload.get("items"),
+        )
+        if (
+            type(count) is not int
+            or count < 0
+            or type(incomplete) is not bool
+            or not isinstance(items, list)
+            or len(items) > 100
+        ):
+            raise ArchiveProtocolError("invalid search page")
+        ids = []
+        for item in items:
+            repo_id = item.get("id") if isinstance(item, dict) else None
+            if type(repo_id) is not int or not 0 < repo_id < 2**63:
+                raise ArchiveProtocolError("invalid search repository identity")
+            ids.append(repo_id)
+        return SearchPage(tuple(ids), count, incomplete, response)
 
     def fetch_metadata(
         self,
@@ -610,8 +658,13 @@ class ArchiveGitHubReader:
         ) as client:
             for _ in range(self.settings.archive_github_max_redirects + 1):
                 request = client.build_request("GET", url, headers=headers)
+                if self.observer is not None:
+                    self.observer.before_request(urlsplit(url).path)
                 response = client.send(request, stream=True)
                 try:
+                    consumed = self._consume(response, max_bytes, url)
+                    if self.observer is not None:
+                        self.observer.after_response(consumed)
                     if response.status_code in _REDIRECT_STATUSES:
                         location = response.headers.get("Location")
                         if not location:
@@ -620,7 +673,7 @@ class ArchiveGitHubReader:
                             )
                         url = self._redirect_url(url, location)
                         continue
-                    return self._consume(response, max_bytes, url)
+                    return consumed
                 finally:
                     response.close()
         raise ArchiveRedirectError("archive redirect exceeded the configured hop limit")

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from app.core.archive_store import ArchiveStore
-from app.core.config import MILVUS_TEXT_BYTES, Settings
+from app.core.config import ARCHIVE_BACKFILL_LICENSES, MILVUS_TEXT_BYTES, Settings
 from app.integrations.archive_github import (
     ArchiveGitHubError,
     ArchiveGitHubReader,
@@ -43,6 +43,7 @@ from app.services.archive_publication import (
     publish_revision,
     reconcile,
 )
+from app.services.archive_runs import check_lease
 from app.services.embeddings import EmbeddingAdapter, EmbeddingError
 from pydantic import ValidationError
 from pydantic_settings import SettingsError
@@ -142,10 +143,14 @@ def _check_disk(path, minimum):
         )
 
 
-def ingest_one(runtime, repo_id, *, now=None):
+def ingest_one(runtime, repo_id, *, now=None, lease=None, progress=None):
     """Acquire, prepare, persist and publish one repository; return a summary."""
     if type(repo_id) is not int or not 0 < repo_id < 2**63:
         raise IngestError("repository id must be a positive integer")
+    if lease is not None:
+        with runtime.connect() as db:
+            check_lease(db, lease)
+    report = progress or (lambda stage, facts: None)
     cutoff = _utc(now) - timedelta(days=ELIGIBILITY_DAYS)
     timings = {}
     started = time.perf_counter()
@@ -160,6 +165,15 @@ def ingest_one(runtime, repo_id, *, now=None):
         metadata, runtime.settings.archive_license_allowlist, cutoff
     )
     payload = _metadata_payload(metadata)
+    report(
+        "eligible",
+        {
+            "license": metadata.license_spdx,
+            "language": _bounded(payload.get("language") or "Unknown", 128),
+            "pushed_at": pushed_at.timestamp(),
+            "stars": payload.get("stargazers_count", 0),
+        },
+    )
 
     step = time.perf_counter()
     readme = runtime.reader.fetch_readme(metadata).readme
@@ -181,6 +195,9 @@ def ingest_one(runtime, repo_id, *, now=None):
         "chunks": len(prepared.chunks),
         "readme": prepared.readme_status,
     }
+    report(
+        "prepared", {"revision": prepared.semantic_hash, "chunks": len(prepared.chunks)}
+    )
     if _active_revision(runtime.connect, repo_id) == prepared.semantic_hash:
         timings["total"] = _elapsed(started)
         return {
@@ -194,6 +211,8 @@ def ingest_one(runtime, repo_id, *, now=None):
 
     step = time.perf_counter()
     with runtime.connect(write=True) as db:
+        if lease is not None:
+            check_lease(db, lease)
         persist_revision(
             db,
             runtime.content,
@@ -203,23 +222,26 @@ def ingest_one(runtime, repo_id, *, now=None):
             raw=raw,
         )
     timings["persist"] = _elapsed(step)
+    report("persisted", {})
 
     step = time.perf_counter()
     embedded = runtime.adapter.embed(
         [chunk.text for chunk in prepared.chunks], kind="passage"
     )
     timings["embed"] = _elapsed(step)
+    report("embedded", {})
     chunks = _vector_chunks(prepared, embedded, metadata, pushed_at, payload)
 
     step = time.perf_counter()
     published = publish_revision(
-        runtime.connect, runtime.vectors, prepared=prepared, chunks=chunks
+        runtime.connect, runtime.vectors, prepared=prepared, chunks=chunks, lease=lease
     )
     timings["publish"] = _elapsed(step)
+    report("published", {"revision": prepared.semantic_hash})
 
     step = time.perf_counter()
     try:
-        retired = reconcile(runtime.connect, runtime.vectors)
+        retired = reconcile(runtime.connect, runtime.vectors, lease=lease)
         reconcile_summary = {
             "documents": retired.documents,
             "vectors": retired.vectors,
@@ -368,6 +390,12 @@ def _positive_id(value):
     return int(value)
 
 
+def _backfill_cap(value):
+    if not value.isascii() or not value.isdigit() or not 1 <= int(value) <= 1000:
+        raise argparse.ArgumentTypeError("--cap must be an integer from 1 through 1000")
+    return int(value)
+
+
 def _failure(repo_id, message, started, *, result="failed"):
     return {
         "result": result,
@@ -392,29 +420,47 @@ def main(argv=None):
         "ingest", help="Ingest one approved public repository by numeric id"
     )
     ingest.add_argument("--repo-id", type=_positive_id, required=True)
+    backfill = commands.add_parser(
+        "backfill", help="Resume the bounded local archive pilot"
+    )
+    backfill.add_argument("--cap", type=_backfill_cap, default=1000)
     args = parser.parse_args(argv)
 
     started = time.perf_counter()
     runtime = None
     try:
         settings = Settings()
-        runtime = build_runtime(settings)
-        summary = ingest_one(runtime, args.repo_id)
+        if args.command == "backfill":
+            if tuple(settings.archive_license_allowlist) != ARCHIVE_BACKFILL_LICENSES:
+                raise IngestError(
+                    "ARCHIVE_LICENSE_ALLOWLIST must equal the approved backfill policy"
+                )
+            runtime = build_runtime(settings)
+            from app.workers.backfill import Backfill
+
+            summary = Backfill(runtime, clock=time.time).run(cap=args.cap)
+        else:
+            runtime = build_runtime(settings)
+            summary = ingest_one(runtime, args.repo_id)
     except ValidationError as error:
         summary = _failure(
-            args.repo_id, "invalid settings: " + _invalid_fields(error), started
+            getattr(args, "repo_id", None),
+            "invalid settings: " + _invalid_fields(error),
+            started,
         )
     except SettingsError:
         summary = _failure(
-            args.repo_id,
+            getattr(args, "repo_id", None),
             "invalid settings: check JSON arrays in environment configuration",
             started,
         )
     except IneligibleRepository as error:
-        summary = _failure(args.repo_id, str(error), started, result="refused")
+        summary = _failure(
+            getattr(args, "repo_id", None), str(error), started, result="refused"
+        )
         summary["reason"] = error.reason
     except IngestError as error:
-        summary = _failure(args.repo_id, str(error), started)
+        summary = _failure(getattr(args, "repo_id", None), str(error), started)
     except (
         ArchiveGitHubError,
         EmbeddingError,
@@ -427,23 +473,36 @@ def main(argv=None):
         RuntimeError,
         OSError,
     ) as error:
-        summary = _failure(args.repo_id, _safe_error(error), started)
+        summary = _failure(getattr(args, "repo_id", None), _safe_error(error), started)
     except Exception as error:  # never print a traceback or provider payload
-        summary = _failure(args.repo_id, f"unexpected {type(error).__name__}", started)
+        summary = _failure(
+            getattr(args, "repo_id", None),
+            f"unexpected {type(error).__name__}",
+            started,
+        )
     finally:
         if runtime is not None:
             try:
                 runtime.vectors.close()
             except Exception:
                 summary = _failure(
-                    args.repo_id,
+                    getattr(args, "repo_id", None),
                     "Milvus cleanup failed; check the local service",
                     started,
                 )
 
+    if "timings_ms" not in summary:
+        summary["result"] = summary["stop_reason"]
+        summary["repo_id"] = None
+        summary["timings_ms"] = {"total": _elapsed(started)}
     summary["timings_ms"]["total"] = _elapsed(started)
     print(json.dumps(summary, sort_keys=True))
-    return 0 if summary["result"] in ("published", "unchanged") else 1
+    return (
+        0
+        if summary["result"]
+        in ("published", "unchanged", "finished", "cap", "quota", "rate_limit")
+        else 1
+    )
 
 
 if __name__ == "__main__":
