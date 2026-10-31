@@ -8,6 +8,8 @@ import httpx
 import pytest
 from app.core.config import ARCHIVE_BACKFILL_LICENSES
 from app.integrations.archive_github import ArchiveGitHubReader
+from app.services.archive_runs import LeaseLost
+from app.services.embeddings import EmbeddingError
 from test_archive_github import repo_payload
 from test_archive_worker import NOW, harness, make_settings
 
@@ -296,3 +298,203 @@ def test_incomplete_search_is_logged_and_never_claims_completed_year(tmp_path):
         / f"backfill-{result['run_id']}.jsonl"
     )
     assert json.loads(log.read_text().splitlines()[0])["decision"] == "unresolved"
+
+
+class FailingAdapter:
+    """Delegates preparation but raises a chosen error from the embed step."""
+
+    def __init__(self, adapter, error):
+        self.adapter = adapter
+        self.manifest = adapter.manifest
+        self.encoder = adapter.encoder
+        self.error = error
+
+    def embed(self, texts, *, kind):
+        if self.error is not None:
+            error, self.error = self.error, None
+            raise error
+        return self.adapter.embed(texts, kind=kind)
+
+
+def test_transient_embedding_failure_leaves_repository_pending_and_resumes(tmp_path):
+    runtime, requests, clock = setup(tmp_path)
+    runtime = replace(
+        runtime,
+        adapter=FailingAdapter(runtime.adapter, EmbeddingError("model unavailable")),
+    )
+
+    first = api()(runtime, clock=lambda: clock[0]).run(cap=2)
+
+    assert first["stop_reason"] == "dependency"
+    assert first["coverage"] == "partial"
+    assert first["failed"] == 0 and first["published"] == 0
+    with runtime.connect() as db:
+        assert [
+            row[0]
+            for row in db.execute(
+                "SELECT status FROM archive_backfill_repositories ORDER BY repo_id"
+            ).fetchall()
+        ] == ["pending"]
+        assert db.execute("SELECT completed FROM archive_runs").fetchone()[0] == 0
+
+    clock[0] += 301
+    second = api()(runtime, clock=lambda: clock[0]).run(cap=2)
+
+    assert second["stop_reason"] == "finished"
+    assert second["published"] == 2 and second["failed"] == 0
+    assert second["coverage"] == "curated"
+    with runtime.connect() as db:
+        assert (
+            db.execute(
+                "SELECT count(*) FROM archive_backfill_repositories WHERE status='pending'"
+            ).fetchone()[0]
+            == 0
+        )
+
+
+def test_lease_loss_during_ingest_does_not_fail_the_repository(tmp_path):
+    runtime, requests, clock = setup(tmp_path)
+    runtime = replace(
+        runtime, adapter=FailingAdapter(runtime.adapter, LeaseLost("lease lost"))
+    )
+
+    with pytest.raises(LeaseLost):
+        api()(runtime, clock=lambda: clock[0]).run(cap=2)
+
+    with runtime.connect() as db:
+        assert [
+            row[0]
+            for row in db.execute(
+                "SELECT status FROM archive_backfill_repositories"
+            ).fetchall()
+        ] == ["pending"]
+
+
+def test_resume_reprocesses_a_pending_repository_at_the_cap(tmp_path):
+    runtime, requests, clock = setup(tmp_path)
+    persisted = []
+
+    def crash(stage):
+        if stage == "persisted":
+            persisted.append(stage)
+            if len(persisted) == 2:
+                raise Crash()
+
+    with pytest.raises(Crash):
+        api()(runtime, clock=lambda: clock[0], checkpoint=crash).run(cap=2)
+
+    clock[0] += 301
+    result = api()(runtime, clock=lambda: clock[0]).run(cap=2)
+
+    assert result["published"] == 2
+    assert result["stop_reason"] == "finished"
+    assert result["coverage"] == "curated"
+    with runtime.connect() as db:
+        assert (
+            db.execute(
+                "SELECT count(*) FROM archive_backfill_repositories WHERE status='pending'"
+            ).fetchone()[0]
+            == 0
+        )
+
+
+def test_accounting_is_cumulative_across_invocations(tmp_path):
+    runtime, requests, clock = setup(tmp_path)
+
+    first = api()(runtime, clock=lambda: clock[0]).run(cap=1)
+    assert first["stop_reason"] == "cap"
+    assert first["bytes"] > 0 and first["requests"]["search"] == 1
+    first_rest = first["requests"]["rest"]
+
+    clock[0] += 301
+    second = api()(runtime, clock=lambda: clock[0]).run(cap=1)
+
+    assert second["bytes"] > first["bytes"]
+    assert second["requests"]["search"] == 2
+    assert second["requests"]["rest"] == first_rest
+    with runtime.connect() as db:
+        state = json.loads(
+            db.execute("SELECT state_json FROM archive_backfill_state").fetchone()[0]
+        )
+    assert state["bytes"] == second["bytes"]
+    assert state["requests"] == second["requests"]
+
+
+def test_cumulative_byte_limit_stops_the_resumed_run(tmp_path):
+    runtime, requests, clock = setup(tmp_path)
+
+    first = api()(runtime, clock=lambda: clock[0]).run(cap=1)
+    assert first["stop_reason"] == "cap" and first["bytes"] > 0
+    limited = replace(
+        runtime,
+        settings=runtime.settings.model_copy(
+            update={"archive_backfill_byte_limit": first["bytes"] + 1}
+        ),
+    )
+
+    clock[0] += 301
+    before = len(requests)
+    second = api()(limited, clock=lambda: clock[0]).run(cap=2)
+
+    assert second["stop_reason"] == "bytes"
+    assert second["coverage"] == "partial"
+    assert second["bytes"] > first["bytes"] + 1
+    assert len(requests) - before == 1
+
+
+def test_quota_stop_persists_retry_at_and_blocks_early_rerun(tmp_path):
+    faults = []
+
+    def fault(request, headers):
+        if request.url.path == "/repositories/1" and not faults:
+            faults.append(1)
+            headers["X-RateLimit-Remaining"] = "20"
+            return httpx.Response(200, json=repo_payload(1), headers=headers)
+
+    runtime, requests, clock = setup(tmp_path, fault=fault)
+
+    first = api()(runtime, clock=lambda: clock[0]).run(cap=2)
+    assert first["stop_reason"] == "quota"
+    assert first["retry_at"] == clock[0] + 3600
+
+    count = len(requests)
+    second = api()(runtime, clock=lambda: clock[0]).run(cap=2)
+    assert second["stop_reason"] == "rate_limit"
+    assert second["retry_at"] == first["retry_at"]
+    assert len(requests) == count
+
+    clock[0] = first["retry_at"] + 1
+    third = api()(runtime, clock=lambda: clock[0]).run(cap=2)
+    assert third["stop_reason"] == "finished"
+    assert third["published"] == 2
+
+
+def test_malformed_rate_limit_headers_stop_as_quota_and_release_the_lease(tmp_path):
+    def fault(request, headers):
+        if request.url.path == "/search/repositories":
+            headers["X-RateLimit-Remaining"] = "unknown"
+
+    runtime, requests, clock = setup(tmp_path, fault=fault)
+
+    result = api()(runtime, clock=lambda: clock[0]).run(cap=2)
+
+    assert result["stop_reason"] == "quota"
+    assert result["retry_at"] == clock[0] + 60
+    with runtime.connect() as db:
+        assert db.execute("SELECT owner FROM archive_runs").fetchone()[0] is None
+        assert db.execute("SELECT completed FROM archive_runs").fetchone()[0] == 0
+
+
+def test_backfill_license_policy_ignores_order_and_rejects_duplicates():
+    from types import SimpleNamespace
+
+    from app.workers.archive import backfill_license_policy_ok
+
+    def settings(values):
+        return SimpleNamespace(archive_license_allowlist=values)
+
+    approved = list(ARCHIVE_BACKFILL_LICENSES)
+    assert backfill_license_policy_ok(settings(list(reversed(approved))))
+    assert not backfill_license_policy_ok(settings(approved + ["MIT"]))
+    assert not backfill_license_policy_ok(settings(approved[:-1]))
+    assert not backfill_license_policy_ok(settings([]))

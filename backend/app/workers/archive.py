@@ -396,6 +396,14 @@ def _backfill_cap(value):
     return int(value)
 
 
+def backfill_license_policy_ok(settings):
+    """The approved SPDX set, order-insensitive and without duplicates."""
+    values = settings.archive_license_allowlist
+    return len(values) == len(set(values)) and set(values) == set(
+        ARCHIVE_BACKFILL_LICENSES
+    )
+
+
 def _failure(repo_id, message, started, *, result="failed"):
     return {
         "result": result,
@@ -431,7 +439,7 @@ def main(argv=None):
     try:
         settings = Settings()
         if args.command == "backfill":
-            if tuple(settings.archive_license_allowlist) != ARCHIVE_BACKFILL_LICENSES:
+            if not backfill_license_policy_ok(settings):
                 raise IngestError(
                     "ARCHIVE_LICENSE_ALLOWLIST must equal the approved backfill policy"
                 )

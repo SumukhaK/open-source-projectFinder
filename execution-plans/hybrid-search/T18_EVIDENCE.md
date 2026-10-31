@@ -16,6 +16,51 @@ Full WSL WAL-fixed verification: `/home/sumukha/reporadar-worker-venv/bin/python
 
 After merging `origin/main` as `4f66fcf`, the Windows regression command passed: 797 passed, 65 skipped, 94.16% combined coverage (Python 3.11.9 / SQLite 3.45.1). A final WSL repeat was unavailable because WSL returned `HCS_E_NO_SYSTEM_RESOURCES`; no WSL setting or application was changed. Required Linux CI remains the final current-head platform check.
 
+## Review fixes (2026-10-31)
+
+Exact-head review of `780c41d` requested five fixes. All are addressed in
+`backfill.py`, `archive.py` and their tests; Phase B remains blocked.
+
+1. **Transient vs terminal failures.** `_ingest` lets `LeaseLost` propagate
+   (never marking the repository), keeps the credential and rate-limit
+   re-raises, marks only a deterministic `IngestError` as `failed`, and treats
+   every other exception (embedding/model, Milvus, disk, bugs) as a run stop:
+   the repository stays `pending`, `stop_reason` is `dependency`, the lease is
+   released without completing the run, and coverage is `partial`. `run` also
+   reports `incomplete` when unfinished repositories remain, and completion
+   requires no `pending` or `failed` repository.
+2. **Cap applies only to new admissions.** `_page` checks the cap only when the
+   repository has no row for this run, so a `pending` repository is resumed even
+   when `_admitted >= cap`.
+3. **Durable accounting.** Cumulative `bytes` and per-bucket `requests` are
+   merged into `archive_backfill_state` after every response, loaded at run
+   start, enforced against the cumulative byte limit, and reported cumulatively.
+   `_save_state` merges instead of replacing, so clearing `retry_at` preserves
+   accounting.
+4. **Quota stops persist `retry_at`.** The headroom stop writes the retry time
+   to `archive_backfill_state`, so an early re-run returns `rate_limit` with
+   zero HTTP requests until the reset time.
+5. **Allowlist and malformed headers.** `backfill_license_policy_ok` compares
+   the allowlist as a set with no duplicates (order-insensitive), and
+   `after_response` parses `x-ratelimit-*` in a guarded block. A malformed or
+   missing reset value becomes a conservative quota stop with
+   `retry_at = now + 60`, so the lease is released rather than leaked.
+
+RED: the eight new tests were run against the previous implementation
+(`8 failed, 20 deselected`): a transient embedding failure still reported
+`finished`; `LeaseLost` did not propagate; the cap-th pending repository was
+lost on resume; accounting restarted at zero; the crossed byte limit reported
+`finished`; the quota stop did not persist `retry_at`; malformed headers raised
+`ValueError`; and `backfill_license_policy_ok` did not exist.
+
+GREEN: `python -m pytest backend/tests/test_archive_backfill.py -q` — 28
+passed. The requested affected suite (`test_archive_backfill`,
+`test_backfill_io`, `test_archive_runs`, `test_archive_store`,
+`test_archive_worker`) — 92 passed, 57 skipped. Full `backend/tests
+scripts/tests` with coverage — 805 passed, 65 skipped; gate 94.1% combined /
+91.6% branches. Ruff check/format, Bandit (0 findings) and `git diff --check`
+clean. Windows, Python 3.11.9, fake HTTP/model/Milvus; no external service.
+
 ## Operator and rollback notes
 
 The command exits cleanly with its persisted retry time rather than sleeping through a long limit. Re-run the same command after that time; it resumes the same durable manual pilot. Reverting migration 5 code must not be followed by opening the catalogue with old code, because old code correctly refuses a newer schema. The real pilot is blocked until the owner replies exactly `T18 real run approved`.

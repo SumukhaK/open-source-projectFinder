@@ -15,8 +15,8 @@ from app.integrations.archive_github import (
     RepositoryNotPublic,
 )
 from app.services.archive_partitions import needs_split, plan_root, split_partition
-from app.services.archive_runs import RunStore
-from app.workers.archive import IneligibleRepository, ingest_one
+from app.services.archive_runs import LeaseLost, RunStore
+from app.workers.archive import IneligibleRepository, IngestError, ingest_one
 
 _PERIOD = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
@@ -32,6 +32,7 @@ class Backfill:
         self.store = RunStore(runtime.connect, clock=clock)
         self.requests = {"search": 0, "rest": 0}
         self.bytes = 0
+        self._run_id = None
         self._stop = None
         self._retry_at = None
 
@@ -45,11 +46,21 @@ class Backfill:
         if type(cap) is not int or not 1 <= cap <= 1000:
             raise ValueError("--cap must be an integer from 1 through 1000")
         run_id = self.store.create_run("backfill", _PERIOD)
+        self._run_id, self._stop, self._retry_at = run_id, None, None
         state = self._state(run_id)
-        if state.get("retry_at", 0) > self.clock():
-            return self._summary(run_id, "rate_limit", state["retry_at"])
-        if state.get("retry_at"):
-            self._save_state(run_id, {})
+        self.bytes = int(state.get("bytes") or 0)
+        saved = state.get("requests") or {}
+        self.requests = {
+            "search": int(saved.get("search") or 0),
+            "rest": int(saved.get("rest") or 0),
+        }
+        retry_at = state.get("retry_at")
+        if retry_at and retry_at > self.clock():
+            return self._summary(run_id, "rate_limit", retry_at)
+        if retry_at:
+            self._save_state(run_id, {"retry_at": None})
+        if self.bytes > self.runtime.settings.archive_backfill_byte_limit:
+            return self._summary(run_id, "bytes", None)
         lease = self.store.claim(run_id, uuid.uuid4().hex)
         reader, self.runtime.reader.observer = self.runtime.reader, self
         try:
@@ -61,8 +72,11 @@ class Backfill:
                         continue
                     break
                 self._page(run_id, lease, task, cap)
-            complete = not self._stop and not self._pending(run_id)
-            self.store.release(lease, completed=complete)
+            if not self._stop and (
+                self._pending(run_id) or self._unresolved_repos(run_id)
+            ):
+                self._stop = "incomplete"
+            self.store.release(lease, completed=not self._stop)
             return self._summary(run_id, self._stop or "finished", self._retry_at)
         except ArchiveAuthenticationError:
             self._stop = "credential"
@@ -92,14 +106,26 @@ class Backfill:
 
     def after_response(self, response):
         self.bytes += response.encoded_bytes
+        state = {"bytes": self.bytes, "requests": dict(self.requests)}
         if self.bytes > self.runtime.settings.archive_backfill_byte_limit:
             self._stop = "bytes"
         remaining = response.headers.get("x-ratelimit-remaining")
         limit = response.headers.get("x-ratelimit-limit")
         reset = response.headers.get("x-ratelimit-reset")
-        if remaining and limit and reset and int(remaining) <= max(1, int(limit) // 5):
-            self._stop = "quota"
-            self._retry_at = float(reset)
+        if remaining is not None and limit is not None:
+            try:
+                low = int(remaining) <= max(1, int(limit) // 5)
+                retry_at = float(reset) if reset is not None else self.clock() + 60
+                if not retry_at > self.clock():
+                    retry_at = self.clock() + 60
+            except (TypeError, ValueError):
+                # Unknown quota state is treated as exhausted, not as success.
+                low, retry_at = True, self.clock() + 60
+            if low:
+                self._stop = "quota"
+                self._retry_at = retry_at
+                state["retry_at"] = retry_at
+        self._save_state(self._run_id, state)
 
     def _ensure_root(self, run_id, lease):
         with self.runtime.connect() as db:
@@ -179,7 +205,8 @@ class Backfill:
             self._stop = "queue"
             return
         for repo_id in result.ids:
-            if self._admitted(run_id) >= cap:
+            existing = self._repo_status(run_id, repo_id)
+            if existing is None and self._admitted(run_id) >= cap:
                 self._stop = "cap"
                 return
             if not self._claim_repo(run_id, repo_id):
@@ -241,8 +268,24 @@ class Backfill:
             raise
         except (ArchiveRateLimited, ArchiveUnavailable):
             raise
-        except Exception:
+        except LeaseLost:
+            raise
+        except IngestError:
+            # Data-specific and deterministic: this repository cannot succeed.
             self._outcome(run_id, repo_id, "failed", "failed")
+            self.checkpoint("outcome_saved")
+        except Exception:
+            # Model, Milvus, disk and other infrastructure failures are
+            # resumable. Leave the repository pending and stop this run.
+            self._stop = "dependency"
+
+    def _repo_status(self, run_id, repo_id):
+        with self.runtime.connect() as db:
+            row = db.execute(
+                "SELECT status FROM archive_backfill_repositories WHERE run_id=? AND repo_id=?",
+                (run_id, repo_id),
+            ).fetchone()
+        return row[0] if row else None
 
     def _claim_repo(self, run_id, repo_id):
         with self.runtime.connect(write=True) as db:
@@ -296,6 +339,17 @@ class Backfill:
                 is not None
             )
 
+    def _unresolved_repos(self, run_id):
+        with self.runtime.connect() as db:
+            return (
+                db.execute(
+                    "SELECT 1 FROM archive_backfill_repositories WHERE run_id=? "
+                    "AND status IN ('pending','failed') LIMIT 1",
+                    (run_id,),
+                ).fetchone()
+                is not None
+            )
+
     def _finish_completed_parents(self, run_id, lease):
         """Only promote a split parent after every durable child is complete."""
         with self.runtime.connect() as db:
@@ -343,10 +397,12 @@ class Backfill:
             )
 
     def _save_state(self, run_id, state):
+        current = self._state(run_id)
+        current.update(state)
         with self.runtime.connect(write=True) as db:
             db.execute(
                 "UPDATE archive_backfill_state SET state_json=? WHERE run_id=?",
-                (json.dumps(state), run_id),
+                (json.dumps(current, sort_keys=True), run_id),
             )
 
     def _replace_page(self, run_id, key, page, record):
@@ -371,7 +427,13 @@ class Backfill:
                 "SELECT count(*) FROM archive_tasks WHERE run_id=? AND retry_at IS NOT NULL",
                 (run_id,),
             ).fetchone()[0]
-        counts = {"published": 0, "unchanged": 0, "failed": 0, "eligible": 0}
+        counts = {
+            "published": 0,
+            "unchanged": 0,
+            "failed": 0,
+            "pending": 0,
+            "eligible": 0,
+        }
         skipped, language, stars = {}, {}, {}
         activity = {"30d": 0, "31d-180d": 0, "181d-365d": 0}
         for row in rows:
@@ -404,6 +466,12 @@ class Backfill:
                 stars[star_band] = stars.get(star_band, 0) + 1
             if row["status"] == "skipped":
                 skipped[row["reason"]] = skipped.get(row["reason"], 0) + 1
+        unresolved_repos = self._unresolved_repos(run_id)
+        curated = (
+            stop_reason in ("finished", "cap")
+            and not unresolved
+            and not unresolved_repos
+        )
         return {
             "run_id": run_id,
             "discovered": self._admitted(run_id),
@@ -415,9 +483,7 @@ class Backfill:
             "stop_reason": stop_reason,
             "unresolved_partitions": unresolved,
             "deferred_partitions": deferred,
-            "coverage": "partial"
-            if stop_reason in ("disk", "queue", "partition", "bytes") or unresolved
-            else "curated",
+            "coverage": "curated" if curated else "partial",
             "distribution": {
                 "language": language,
                 "activity": activity,
