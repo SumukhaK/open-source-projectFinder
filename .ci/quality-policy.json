@@ -25,6 +25,38 @@
       "version": "4.3.1",
       "expires": "2026-12-31",
       "reason": "Low-severity prototype poisoning; no patched release exists (4.3.1 is latest). Reached only via @expo/config (build-time config) and jest-config (tests) merging trusted local config; absent from the exported iOS/Android/web bundles (checked 2026-10-28). npm audit's only fix is an Expo/Jest major downgrade, which policy forbids. Owner-approved 2026-10-28; recheck for a patch or upstream replacement before expiry."
+    },
+    {
+      "ecosystem": "npm",
+      "package": "glob",
+      "id": "GHSA-3g3m-2fjr-6pw4",
+      "version": "7.2.3",
+      "expires": "2026-11-30",
+      "reason": "Moderate: AbortSignal cancellation bypass allows post-timeout filesystem traversal; fixed only in glob 14.0.2+ (new major, released 2026-10-27/28). Reached only via Jest (@jest/reporters, babel-plugin-istanbul/test-exclude) at test time. No app code imports glob, it is absent from the exported iOS/Android/web bundles, and no caller relies on AbortSignal cancellation for a security boundary. Forcing glob 14 would break the glob 7 callback/sync API Jest uses. Owner-approved 2026-10-31; remove once upstream adopts a patched release."
+    },
+    {
+      "ecosystem": "npm",
+      "package": "glob",
+      "id": "GHSA-3g3m-2fjr-6pw4",
+      "version": "13.0.6",
+      "expires": "2026-11-30",
+      "reason": "Moderate: AbortSignal cancellation bypass allows post-timeout filesystem traversal; fixed only in glob 14.0.2+ (new major, released 2026-10-27/28). Reached only via Expo build tooling (@expo/cli, @expo/config, @expo/metro-config, @expo/fingerprint, @expo/config-plugins). No app code imports glob, it is absent from the exported iOS/Android/web bundles, and no caller relies on AbortSignal cancellation for a security boundary. Forcing glob 14 would break Expo's pinned tooling contract. Owner-approved 2026-10-31; remove once upstream adopts a patched release."
+    },
+    {
+      "ecosystem": "npm",
+      "package": "minimatch",
+      "id": "GHSA-g3hv-75wg-m249",
+      "version": "3.1.5",
+      "expires": "2026-11-30",
+      "reason": "Moderate: denial of service via globparts amplification; fixed only in minimatch 11.0.1+ (new major, released 2026-10-27). Reached only via ESLint (eslint, @eslint/*, eslint-plugin-import/react) and Jest (test-exclude, glob 7) at lint/test time. Patterns come from trusted local config, never from users, and the package is absent from the exported iOS/Android/web bundles. Forcing minimatch 11 would break the default-export API ESLint 9 and Jest 29 require. Owner-approved 2026-10-31; remove once upstream adopts a patched release."
+    },
+    {
+      "ecosystem": "npm",
+      "package": "minimatch",
+      "id": "GHSA-g3hv-75wg-m249",
+      "version": "10.2.6",
+      "expires": "2026-11-30",
+      "reason": "Moderate: denial of service via globparts amplification; fixed only in minimatch 11.0.1+ (new major, released 2026-10-27). Reached only via Expo build tooling (glob 13, @expo/fingerprint) and @typescript-eslint at build/lint time. Patterns come from trusted local config, never from users, and the package is absent from the exported iOS/Android/web bundles. Forcing minimatch 11 would break Expo's pinned tooling contract. Owner-approved 2026-10-31; remove once upstream adopts a patched release."
     }
   ]
 }
