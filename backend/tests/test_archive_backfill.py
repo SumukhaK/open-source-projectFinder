@@ -498,3 +498,69 @@ def test_backfill_license_policy_ignores_order_and_rejects_duplicates():
     assert not backfill_license_policy_ok(settings(approved + ["MIT"]))
     assert not backfill_license_policy_ok(settings(approved[:-1]))
     assert not backfill_license_policy_ok(settings([]))
+
+
+@pytest.mark.parametrize(
+    "kind,reason",
+    [
+        ("not_found", "not_found"),
+        ("identity", "identity_mismatch"),
+        ("forbidden", "forbidden"),
+        ("blocked", "forbidden"),
+    ],
+)
+def test_terminal_github_outcomes_do_not_stall_the_run(tmp_path, kind, reason):
+    def fault(request, headers):
+        if request.url.path != "/repositories/1":
+            return None
+        if kind == "not_found":
+            return httpx.Response(404, json={}, headers=headers)
+        if kind == "identity":
+            return httpx.Response(
+                200, json=repo_payload(2, "owner/r2"), headers=headers
+            )
+        if kind == "forbidden":
+            return httpx.Response(403, json={"message": "blocked"}, headers=headers)
+        return httpx.Response(451, json={"message": "blocked"}, headers=headers)
+
+    runtime, requests, clock = setup(tmp_path, fault=fault)
+    result = api()(runtime, clock=lambda: clock[0]).run(cap=2)
+
+    assert result["stop_reason"] == "finished"
+    assert result["coverage"] == "curated"
+    assert result["published"] == 1 and result["failed"] == 0
+    with runtime.connect() as db:
+        rows = {
+            row["repo_id"]: (row["status"], row["reason"])
+            for row in db.execute(
+                "SELECT repo_id,status,reason FROM archive_backfill_repositories"
+            ).fetchall()
+        }
+        completed = db.execute("SELECT completed FROM archive_runs").fetchone()[0]
+    assert rows[1] == ("skipped", reason)
+    assert rows[2][0] == "published"
+    assert completed == 1
+
+
+def test_protocol_failure_marks_only_that_repository_failed(tmp_path):
+    def fault(request, headers):
+        if request.url.path == "/repositories/1":
+            return httpx.Response(200, content=b"not-json", headers=headers)
+
+    runtime, requests, clock = setup(tmp_path, fault=fault)
+    result = api()(runtime, clock=lambda: clock[0]).run(cap=2)
+
+    assert result["stop_reason"] == "incomplete"
+    assert result["coverage"] == "partial"
+    assert result["published"] == 1 and result["failed"] == 1
+    with runtime.connect() as db:
+        rows = {
+            row["repo_id"]: (row["status"], row["reason"])
+            for row in db.execute(
+                "SELECT repo_id,status,reason FROM archive_backfill_repositories"
+            ).fetchall()
+        }
+        completed = db.execute("SELECT completed FROM archive_runs").fetchone()[0]
+    assert rows[1] == ("failed", "failed")
+    assert rows[2][0] == "published"
+    assert completed == 0

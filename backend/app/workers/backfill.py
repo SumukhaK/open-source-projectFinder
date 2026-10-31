@@ -10,8 +10,15 @@ from pathlib import Path
 
 from app.integrations.archive_github import (
     ArchiveAuthenticationError,
+    ArchiveForbidden,
+    ArchiveProtocolError,
     ArchiveRateLimited,
+    ArchiveRequestError,
     ArchiveUnavailable,
+    BlobIdentityMismatch,
+    BlobNotFound,
+    RepositoryIdentityMismatch,
+    RepositoryNotFound,
     RepositoryNotPublic,
 )
 from app.services.archive_partitions import needs_split, plan_root, split_partition
@@ -270,6 +277,29 @@ class Backfill:
             raise
         except LeaseLost:
             raise
+        except RepositoryNotFound:
+            # A 404 is ambiguous (private, transferred, deleted) but terminal
+            # for this run; retrying it forever would stall the whole backfill.
+            self._outcome(run_id, repo_id, "skipped", "not_found")
+            self.checkpoint("outcome_saved")
+        except RepositoryIdentityMismatch:
+            self._outcome(run_id, repo_id, "skipped", "identity_mismatch")
+            self.checkpoint("outcome_saved")
+        except ArchiveForbidden:
+            self._outcome(run_id, repo_id, "skipped", "forbidden")
+            self.checkpoint("outcome_saved")
+        except ArchiveRequestError as error:
+            # 451 is a DMCA/legal block; other unexpected statuses are
+            # repository-specific protocol failures, not infrastructure outages.
+            status = getattr(error.response, "status", None)
+            if status == 451:
+                self._outcome(run_id, repo_id, "skipped", "forbidden")
+            else:
+                self._outcome(run_id, repo_id, "failed", "failed")
+            self.checkpoint("outcome_saved")
+        except (ArchiveProtocolError, BlobNotFound, BlobIdentityMismatch):
+            self._outcome(run_id, repo_id, "failed", "failed")
+            self.checkpoint("outcome_saved")
         except IngestError:
             # Data-specific and deterministic: this repository cannot succeed.
             self._outcome(run_id, repo_id, "failed", "failed")

@@ -61,6 +61,36 @@ scripts/tests` with coverage — 805 passed, 65 skipped; gate 94.1% combined /
 91.6% branches. Ruff check/format, Bandit (0 findings) and `git diff --check`
 clean. Windows, Python 3.11.9, fake HTTP/model/Milvus; no external service.
 
+## Re-review fixes
+
+The re-review of `62bd75f` found one blocking issue: per-repository GitHub
+outcomes that subclass `ArchiveGitHubError` were still treated as an
+infrastructure outage, so one deleted or blocked repository stopped every
+resume at `dependency` and later repositories were never reached. `_ingest`
+now classifies them terminally:
+
+- `RepositoryNotFound` -> `skipped` / `not_found`
+- `RepositoryIdentityMismatch` -> `skipped` / `identity_mismatch`
+- `ArchiveForbidden` and 451 (`ArchiveRequestError`) -> `skipped` / `forbidden`
+- `ArchiveProtocolError`, `BlobNotFound`, `BlobIdentityMismatch` and other
+  per-repository request errors -> `failed` / `failed`
+
+Each saves the outcome and checkpoints `outcome_saved`. Credential,
+rate-limit, unavailable and `LeaseLost` still propagate; the generic
+`except Exception` still leaves the repository pending and stops with
+`dependency`.
+
+RED: the new tests against the previous implementation — `5 failed, 28
+deselected`: 404, identity mismatch, 403, 451 and a malformed metadata
+response all ended `dependency` instead of reaching repo 2.
+
+GREEN: `test_archive_backfill.py` — 33 passed; the requested affected suite —
+97 passed, 57 skipped; full `backend/tests scripts/tests` with coverage — 810
+passed, 65 skipped; gate 94.1% combined / 91.6% branches. Ruff check/format,
+Bandit (0 findings) and `git diff --check` clean.
+
 ## Operator and rollback notes
 
 The command exits cleanly with its persisted retry time rather than sleeping through a long limit. Re-run the same command after that time; it resumes the same durable manual pilot. Reverting migration 5 code must not be followed by opening the catalogue with old code, because old code correctly refuses a newer schema. The real pilot is blocked until the owner replies exactly `T18 real run approved`.
+
+A repository recorded as `failed` (a deterministic data-specific or per-repository protocol failure) keeps the run `incomplete` and the command exits 1 on every later invocation until an operator reviews or removes that outcome; the run is intentionally not released as completed. `skipped` outcomes (`not_found`, `identity_mismatch`, `forbidden`) do not block completion.
