@@ -14,6 +14,8 @@ GREEN: `E:/OpenSourceProjectFinder-t01/backend/.venv/Scripts/python.exe -m pytes
 
 Full WSL WAL-fixed verification: `/home/sumukha/reporadar-worker-venv/bin/python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch --cov-fail-under=90 -q` — 859 passed, 2 skipped, 95.95% combined coverage (Python 3.11.17, SQLite 3.53.1). Ruff check/format and Bandit passed. Native `git diff --check` passed; WSL cannot run Git in this Windows-created worktree because its `.git` worktree pointer contains a Windows path.
 
+After merging `origin/main` as `4f66fcf`, the Windows regression command passed: 797 passed, 65 skipped, 94.16% combined coverage (Python 3.11.9 / SQLite 3.45.1). A final WSL repeat was unavailable because WSL returned `HCS_E_NO_SYSTEM_RESOURCES`; no WSL setting or application was changed. Required Linux CI remains the final current-head platform check.
+
 ## Operator and rollback notes
 
 The command exits cleanly with its persisted retry time rather than sleeping through a long limit. Re-run the same command after that time; it resumes the same durable manual pilot. Reverting migration 5 code must not be followed by opening the catalogue with old code, because old code correctly refuses a newer schema. The real pilot is blocked until the owner replies exactly `T18 real run approved`.
