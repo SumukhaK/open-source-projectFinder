@@ -8,7 +8,7 @@ Mobile scopes a Zod 4.6.6 override to Expo CLI while that CLI declares Zod 3. Re
 
 Primary sources: [certifi advisory](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2), [filelock release](https://github.com/tox-dev/filelock/releases/tag/4.2.1), [OpenTelemetry advisory](https://github.com/open-telemetry/opentelemetry-python/security/advisories/GHSA-xcq7-p3pf-p88h), [setuptools advisory](https://github.com/advisories/GHSA-xmj3-9gf7-h52w), [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) and [Zod 3 maintenance discussion](https://github.com/colinhacks/zod/issues/6653).
 
-FastAPI GitHub signup/login, persistent rate limits, encrypted provider credentials and revocable app sessions, plus authenticated public GitHub keyword search, repository details and app-local favourites. A CPU embedding adapter and manifest are implemented but not yet wired into search; semantic (Milvus) search and repository ingestion remain planned.
+FastAPI GitHub signup/login, persistent rate limits, encrypted provider credentials and revocable app sessions, plus authenticated public GitHub keyword search, repository details and app-local favourites. Hybrid-search building blocks are merged: a CPU embedding adapter, a local Milvus adapter, an archive catalogue, source eligibility, keyword candidates, rank fusion and a bounded orchestration service. No hybrid API route is exposed yet; ingestion policy, cursors and the versioned endpoint remain planned.
 
 ## Setup
 
@@ -58,7 +58,7 @@ export HF_HUB_OFFLINE=1
 python ../scripts/embeddings_smoke.py --repeats 3
 ```
 
-The setup downloads only the pinned safetensors weights and model/tokenizer support files, excluding alternate pickle/export weights. After setup, the smoke command is offline-only and fails with a clear setup message if the pinned snapshot is missing. The smoke command verifies both cached hashes and prints CPU dimensions, norms, timings and memory as JSON. Unit tests use fake encoders and do not download models. Input rejections use `UnsupportedInput`; model/cache/manifest faults use `EmbeddingError`. T13 must map unsupported input to semantic `query_not_supported` while retaining live GitHub results; no API wiring is included here. Do not persist user ideas or embeddings. See [T02 evidence](../execution-plans/hybrid-search/T02_EVIDENCE.md).
+The setup downloads only the pinned safetensors weights and model/tokenizer support files, excluding alternate pickle/export weights. After setup, the smoke command is offline-only and fails with a clear setup message if the pinned snapshot is missing. The smoke command verifies both cached hashes and prints CPU dimensions, norms, timings and memory as JSON. Unit tests use fake encoders and do not download models. Input rejections use `UnsupportedInput`; model/cache/manifest faults use `EmbeddingError`. T13 maps unsupported input to archive `query_not_supported` while retaining live GitHub results; no API wiring is included here. Do not persist user ideas or embeddings. See [T02 evidence](../execution-plans/hybrid-search/T02_EVIDENCE.md).
 
 ## Configuration and storage
 
@@ -169,7 +169,7 @@ Rollback: migration 2 is forward-only. Reverting only the T06 code after upgrade
 
 ## Local vector collection adapter (T07, merged)
 
-`app/integrations/milvus.py` provides synchronous `MilvusAdapter`, `VectorChunk` and `ScalarFilters`. Nothing imports it from API startup. Create it explicitly with `MilvusAdapter.connect(Settings(), ModelManifest.load())`, then call `ensure_collection()` from the worker setup path; close the client in `finally`. Keep blocking SDK calls outside an async request loop. T13 owns request admission/cancellation and the total hybrid deadline.
+`app/integrations/milvus.py` provides synchronous `MilvusAdapter`, `VectorChunk` and `ScalarFilters`. Nothing imports it from API startup. Create it explicitly with `MilvusAdapter.connect(Settings(), ModelManifest.load())`, then call `ensure_collection()` from the worker setup path; close the client in `finally`. Keep blocking SDK calls outside an async request loop. T13 implements request admission and the total hybrid deadline.
 
 Use the already-pinned `pymilvus==2.6.17` and Milvus 2.6.26 from [the local runbook](../infra/milvus/README.md). Settings are `MILVUS_URI` (explicit HTTP 127.0.0.1 port), `MILVUS_TOKEN` (non-default `user:password`, at least 16 password characters), `MILVUS_PROFILE` (`gpu` default, or explicitly `cpu`), `MILVUS_COLLECTION` (`repo_chunks_e5small_v1`), `MILVUS_TIMEOUT` (10 seconds, >0 to 30), `MILVUS_BUILD_TIMEOUT` (120 seconds, >0 to 120), and `MILVUS_BATCH_SIZE` (64, 1-64). Secrets belong only in ignored environment files. Ordinary auth/search startup still needs no Milvus credentials/server.
 
@@ -268,7 +268,8 @@ public-read credential, never an end-user token.
 ID-bound and capped at 1,000 entries. Migration 3 adds sticky content-free
 suppression independent of content rows. A 404 is ambiguous and never proves
 deletion; outages/401 do not purge data. No automatic unsuppression is provided.
-Production serving stays gated by **D4** and T13/T15 integration. See
+Production serving stays gated by **D4** and the T15 route; T13 consumes this
+service internally. See
 [T10 evidence](../execution-plans/hybrid-search/T10_EVIDENCE.md) for tests and rollback.
 
 ## Keyword candidate source (T11, merged)
@@ -291,8 +292,8 @@ the archive 365-day or licence-content gates.
 Only typed `language` and `license` filters are translated; values are bounded,
 multi-word values are quoted, and unsafe characters are rejected before the
 provider call. The source stores no idea, transcript or embedding and is not yet
-wired into an API route. Fusion, totals, concurrency and the versioned endpoint
-remain T12-T15 work. See
+wired into an API route. T13 orchestration is implemented; totals, cursors and
+the versioned endpoint remain T14-T15 work. See
 [T11 evidence](../execution-plans/hybrid-search/T11_EVIDENCE.md) for the
 tests-first record and limits.
 
@@ -319,9 +320,67 @@ from `license.spdx_id` (never a GitHub filter keyword); a case-only difference
 such as `mit` versus `MIT` is not a conflict. `FusedResults.total` is always
 `None` because source totals are never added, and both sources' health status is
 preserved. The legacy `POST /projects/search` contract is unchanged and no route
-uses this helper yet; T13-T15 own orchestration, cursors and the versioned
-endpoint. See
+uses this helper yet; T13 orchestration is implemented, and T14-T15 own cursors
+and the versioned endpoint. See
 [T12 evidence](../execution-plans/hybrid-search/T12_EVIDENCE.md) for the
+tests-first record and limits.
+
+## Hybrid orchestration (T13, awaiting review)
+
+`app.services.hybrid_search.HybridSearchService(settings, github, embeddings,
+vectors, eligibility, *, executor=None)` is the one internal orchestration
+service. `async search(token, idea, *, language=None, license=None)` returns a
+`HybridSearchResult` with the T12 `FusedResults`, an overall status (`ok`,
+`empty`, `degraded`, `incomplete`, `busy`) and a sanitized archive reason. It
+owns no route, cursor or persistence; T15 exposes it and T14 adds pagination.
+
+Both sources start as concurrent asyncio tasks. The live task calls
+`GitHubKeywordCandidates.search`. The archive task embeds the full idea once with
+T02 (`kind="query"`, so the adapter applies the `query: ` prefix), searches T07
+`MilvusAdapter.search` starting at 200 chunks, doubles the limit while fewer
+than 100 distinct repositories are found, and stops at 1,000 or on a short page.
+T08 `filter_active_hits` runs inside T10 `EligibilityService.check` together with
+the ID-bound public check; T13 never re-implements it.
+
+One overall budget (`HYBRID_SEARCH_BUDGET`, default 8 seconds) becomes a
+monotonic deadline. Admission, embedding, GitHub, Milvus and T10 validation each
+receive `min(remaining, setting)`. T07 has no deadline parameter, so T13 bounds
+the synchronous call externally with `asyncio.wait_for`; this is a caller-side
+wait, not a claim that native Milvus work is cancelled.
+
+Blocking CPU/HTTP/Milvus/SQLite work runs in `BoundedExecutor`
+(`ThreadPoolExecutor` plus a `BoundedSemaphore` outstanding cap). A timed-out or
+disconnected caller keeps its slot until the worker really finishes, so
+abandoned native work is capped; a full executor returns `BusyError` instead of
+queueing indefinitely. A separate admission semaphore returns the explicit
+`busy` result when its bounded wait expires.
+
+Archive status is derived from the real outcome and never assumed `ok`: `failed`
+for embedding/model failure, missing or incompatible index, Milvus
+unavailability, timeout, overload, invalid data, or a validation failure with no
+verified hits; `incomplete` for an overfetch ceiling, partial validation, or hits
+T10 cannot verify; `ok` otherwise. A complete empty page is `ok` and distinct
+from a missing index. `UnsupportedInput` becomes `query_not_supported` and
+`EmbeddingError` becomes `embedding_failed`; neither fails the request. Overall
+status is `empty` only when both sources completed `ok` with no candidates, `ok`
+when candidates exist and both sources are `ok`, `degraded` when candidates
+survive a non-`ok` source, `incomplete` when none survive a non-`ok` source, and
+`busy` on admission rejection. T11's GitHub 422 mapping stays
+`failed`/`unavailable` and archive results still serve.
+
+One explicit `LICENSE_FILTERS` table maps a typed licence to the T11 GitHub
+keyword (`mit`, `apache-2.0`) and the T07/T10 SPDX ID (`MIT`, `Apache-2.0`);
+unmappable values raise before either source runs. Language is passed to both
+sources. After T12 fusion, a `license_conflict` card keeps the live licence and
+drops its archive snippet/provenance (`archive=None`). Logging is one
+`reporadar.hybrid` line with counts, statuses and duration only; the raw idea,
+transcript, token and query embedding are never persisted or logged.
+
+The service is constructed explicitly by its caller; app startup still does not
+construct Milvus, embeddings or the archive store. Rollback is a code revert with
+no migration or stored data; the `HYBRID_*` settings are inert without a caller.
+Real-stack timing was not run (deferred to T26). See
+[T13 evidence](../execution-plans/hybrid-search/T13_EVIDENCE.md) for the
 tests-first record and limits.
 
 ## Durable worker state (T17, merged)
