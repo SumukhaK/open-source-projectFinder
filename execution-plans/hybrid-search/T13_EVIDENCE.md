@@ -83,24 +83,29 @@ GitHub, OAuth, Milvus, SQLite, Docker or embedding-model call is claimed.
 | RED (module absent) | `backend\.venv\Scripts\python.exe -m pytest tests/test_hybrid_search.py -q` | 1 error, exit 1: `ModuleNotFoundError: No module named 'app.services.hybrid_search'` for the newly written 33-test suite |
 | GREEN focused | same command | 33 passed, exit 0 |
 | Hardening tests added | same command | 35 passed, exit 0 (added unsupported live query and unverifiable-hits cases) |
+| Review-fix RED | same command with the new tests against the previous implementation | 4 failed, 2 passed: all-ineligible hits (`True`/`False`), `operation_failed`, and queued-work cancellation |
+| Review-fix GREEN | same command | 37 passed, exit 0 |
 | Affected existing tests | `python -m pytest tests/test_hybrid_search.py tests/test_rank_fusion.py tests/test_keyword_candidates.py tests/test_eligibility.py tests/test_milvus.py -q` | 198 passed, exit 0 |
-| Full suite | `python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch --cov-report=term-missing --cov-report=json:reports/backend-coverage.json --cov-report=xml:reports/backend-coverage.xml --junitxml=reports/backend-tests.xml` | 805 passed, 65 skipped, 1 warning, exit 0 |
-| Coverage gate | `python scripts/quality.py coverage reports/backend-coverage.json` | 93.8% combined, 91.6% branches, exit 0; unchanged 90/80 policy |
+| Affected after review fixes | `python -m pytest tests/test_hybrid_search.py tests/test_rank_fusion.py tests/test_eligibility.py -q` | 99 passed, exit 0 |
+| Full suite | `python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch --cov-report=term-missing --cov-report=json:reports/backend-coverage.json --cov-report=xml:reports/backend-coverage.xml --junitxml=reports/backend-tests.xml` | 807 passed, 65 skipped, 1 warning, exit 0 |
+| Coverage gate | `python scripts/quality.py coverage reports/backend-coverage.json` | 93.9% combined, 91.6% branches, exit 0; unchanged 90/80 policy |
 | Ruff check | `python -m ruff check backend scripts` | All checks passed, exit 0 |
 | Ruff format | `python -m ruff format --check backend scripts` | 55 files already formatted, exit 0 |
 | Bandit | `python -m bandit -r backend/app -f json -o reports/bandit.json` | 0 findings, 0 errors, exit 0 |
 | Whitespace | `git diff --check` | exit 0 |
 | Secret inspection | changed-file scan for credential patterns and `.env` staging | no credential-like values; only placeholder `backend/.env.example` changed; no `.env` staged |
 
-The 35 focused tests cover: concurrent start with a two-party barrier;
+The 37 focused tests cover: concurrent start with a two-party barrier;
 both complete-empty vs one incomplete/failed source; slow live and slow
 archive with verified hits from the other source; GitHub 422 with archive
 results; unsupported keyword query; unsupported embedding and model failure;
-missing/unavailable/incompatible index vs empty index; validation failure and
-partial validation; unverifiable hits; overfetch stop and ceiling; both
+broken/unavailable/incompatible index vs empty index; validation failure and
+partial validation; all-ineligible hits (no issues) as a complete `ok` answer
+vs unverifiable hits (issues present); overfetch stop and ceiling; both
 licence mappings and unmappable rejection with no source call; `license_conflict`
 snippet removal; live metadata reuse; disconnect; overload; backlog cap after
-timeouts; no raw idea in logs; invalid source results; and executor guards.
+timeouts and cancellation of queued work; no raw idea in logs; invalid source
+results; and executor guards.
 
 The first RED run failed at import because the new module did not exist yet.
 After the module existed, two expectations were corrected to match the
@@ -108,6 +113,41 @@ architecture: a healthy archive-only result is `ok` (a repository need not be
 in both sources), and a partial archive result with verified hits is
 `degraded` regardless of the live branch. Two hardening tests were added for
 the unsupported live query and unverifiable archive hits.
+
+## Review fixes (2026-10-31)
+
+Exact-head review of `b85298f` requested two fixes and noted two low items. All
+four are addressed in `hybrid_search.py` and its tests:
+
+1. **All-ineligible archive hits are now a complete answer.** When T10 returns
+   no evidence and no issues, every hit was definitively dropped (archived,
+   private, suppressed, stale or no longer catalogued). `_archive` returns
+   `ok` (or `incomplete`/`overfetch_exhausted` if the ceiling was hit) instead
+   of `incomplete`/`unverified_hits`. A stale archive can now contribute to a
+   definitive `empty`, and with live candidates the overall status is `ok`.
+   Hits that T10 reports as `issues` still fail (`failed` with no evidence) or
+   are `incomplete` (partial evidence), unchanged.
+2. **Queued work for a timed-out or cancelled caller is cancelled.**
+   `BoundedExecutor.run` keeps the `concurrent.futures.Future` from
+   `submit`. On `TimeoutError`/`CancelledError` it calls `cancel()`; if the job
+   had not started, the slot is reclaimed there because `task()` will never
+   run. A running job still keeps its slot until it finishes, so abandoned
+   native work remains capped.
+3. **`MilvusOperationError` is reported as `operation_failed`.** T07 documents
+   it as a generic sanitized non-retryable SDK failure, not specifically a
+   missing index. It still yields archive `failed`, distinct from an empty
+   index, which stays `ok` with no hits.
+4. **Overfetch replaces rather than accumulates pages.** A larger Milvus search
+   already contains the previous top-k, so `rows = page` avoids holding up to
+   2,400 overlapping rows. T12 re-sorts by score, so the result is unchanged.
+
+RED/GREEN: the new tests were run against the previous implementation and
+failed as expected (`4 failed, 2 passed`: both all-ineligible cases,
+`operation_failed`, and queued-work cancellation). Against the fixed
+implementation the focused suite is `37 passed`; the requested affected suite
+is `99 passed`; the full backend/scripts suite is `807 passed, 65 skipped`
+with the unchanged 90/80 coverage gate at 93.9% combined / 91.6% branches.
+Ruff check/format, Bandit (0 findings) and `git diff --check` are clean.
 
 ## Limits and handoff
 

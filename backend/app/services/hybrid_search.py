@@ -146,7 +146,7 @@ class BoundedExecutor:
                 finish(result, None)
 
         try:
-            self._pool.submit(task)
+            pending = self._pool.submit(task)
         except RuntimeError:
             with self._lock:
                 self._active -= 1
@@ -155,9 +155,22 @@ class BoundedExecutor:
         try:
             return await asyncio.wait_for(future, timeout)
         except TimeoutError:
+            self._reclaim_queued(pending)
             if future.cancelled():
                 raise DeadlineExceeded("deadline exhausted") from None
             raise
+        except asyncio.CancelledError:
+            self._reclaim_queued(pending)
+            raise
+
+    def _reclaim_queued(self, pending):
+        # A job that never started will not call finish(); reclaim its slot.
+        # A running job cannot be cancelled here and keeps its slot until it
+        # really finishes, which caps abandoned native work.
+        if pending.cancel():
+            with self._lock:
+                self._active -= 1
+            self._slots.release()
 
     def close(self):
         if self._closed:
@@ -329,7 +342,7 @@ class HybridSearchService:
             except BusyError:
                 return _ArchiveOutcome(status="failed", reason="busy")
             except MilvusOperationError:
-                return _ArchiveOutcome(status="failed", reason="index_missing")
+                return _ArchiveOutcome(status="failed", reason="operation_failed")
             except MilvusUnavailable:
                 return _ArchiveOutcome(status="failed", reason="unavailable")
             except MilvusContractError:
@@ -340,7 +353,9 @@ class HybridSearchService:
                 not isinstance(row, dict) for row in page
             ):
                 return _ArchiveOutcome(status="failed", reason="invalid_response")
-            rows.extend(page)
+            # A larger search already contains the previous top-k, so replace
+            # rather than accumulate overlapping pages.
+            rows = page
             if len(_distinct_repositories(rows)) >= target:
                 break
             if len(page) < limit:
@@ -373,8 +388,9 @@ class HybridSearchService:
             return _ArchiveOutcome(checked.archive, "incomplete", "overfetch_exhausted")
         if checked.issues:
             return _ArchiveOutcome(checked.archive, "incomplete", "validation_failed")
-        if not checked.archive:
-            return _ArchiveOutcome(status="incomplete", reason="unverified_hits")
+        # No issues and no evidence means every hit was definitively dropped
+        # (archived, private, suppressed, stale or no longer catalogued). That is
+        # a complete answer, not an unverified one.
         return _ArchiveOutcome(checked.archive, "ok", None)
 
     async def _live_metadata(self, task, deadline):

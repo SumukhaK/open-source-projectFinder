@@ -429,17 +429,23 @@ def test_unsupported_live_query_keeps_verified_archive_hits(build):
     assert [card.repo_id for card in result.fused.candidates] == [20]
 
 
-def test_archive_hits_that_cannot_be_verified_are_incomplete(build):
-    github = FakeGitHub()
+@pytest.mark.parametrize("with_live", [True, False])
+def test_all_ineligible_archive_hits_are_a_complete_answer(build, with_live):
+    github = FakeGitHub(
+        KeywordCandidates((keyword(1, 10),)) if with_live else KeywordCandidates()
+    )
     vectors = FakeVectors([[hit(20)]])
     eligibility = FakeEligibility(EligibilityResult((), ()))
     service = build(github, vectors=vectors, eligibility=eligibility)
 
     result = run(service.search("token", "offline notes"))
 
-    assert result.fused.archive.status == "incomplete"
-    assert result.archive_reason == "unverified_hits"
-    assert result.status == "incomplete"
+    assert result.fused.archive.status == "ok"
+    assert result.archive_reason is None
+    assert result.status == ("ok" if with_live else "empty")
+    assert {card.repo_id for card in result.fused.candidates} == (
+        {10} if with_live else set()
+    )
 
 
 def test_only_two_complete_empty_sources_are_definitive_empty(build):
@@ -459,7 +465,7 @@ def test_only_two_complete_empty_sources_are_definitive_empty(build):
 @pytest.mark.parametrize(
     ("error", "reason"),
     [
-        (MilvusOperationError("missing"), "index_missing"),
+        (MilvusOperationError("failed"), "operation_failed"),
         (MilvusUnavailable("down"), "unavailable"),
         (MilvusContractError("bad"), "index_incompatible"),
     ],
@@ -781,3 +787,44 @@ def test_executor_rejects_closed_non_positive_and_full_work():
             await executor.run(lambda: 1, timeout=1)
 
     asyncio.run(asyncio.wait_for(scenario(), timeout=5))
+
+
+def test_executor_cancels_queued_work_after_a_timeout():
+    executor = BoundedExecutor(1, 4)
+    release = threading.Event()
+    started = threading.Event()
+    ran = []
+
+    def first():
+        started.set()
+        release.wait(2)
+        return 1
+
+    def second():
+        ran.append("second")
+        return 2
+
+    async def scenario():
+        first_task = asyncio.create_task(executor.run(first, timeout=2))
+        for _ in range(200):
+            if started.is_set():
+                break
+            await asyncio.sleep(0.01)
+        assert started.is_set()
+
+        with pytest.raises(DeadlineExceeded):
+            await executor.run(second, timeout=0.05)
+
+        release.set()
+        assert await first_task == 1
+        for _ in range(200):
+            if executor.outstanding == 0:
+                break
+            await asyncio.sleep(0.01)
+        assert executor.outstanding == 0
+        assert ran == []
+
+    try:
+        asyncio.run(asyncio.wait_for(scenario(), timeout=5))
+    finally:
+        executor.close()
