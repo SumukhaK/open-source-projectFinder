@@ -1,6 +1,6 @@
 # T13: Orchestrate concurrent bounded hybrid retrieval
 
-Status: Awaiting review. Branch `codex/hybrid-t13-hybrid-service`, base `d6927f4ea8fe18ead3fcff2927ebe4ed62583faf`. Implementation and local verification evidence are in [T13 evidence](../T13_EVIDENCE.md); review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged (`74de757`, 2026-10-31) from [PR #45](https://github.com/SumukhaK/open-source-projectFinder/pull/45) at head `a046b5b`, base `d6927f4ea8fe18ead3fcff2927ebe4ed62583faf`. Implementation and local verification evidence are in [T13 evidence](../T13_EVIDENCE.md); review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

@@ -1474,3 +1474,13 @@ Acceptance criteria and actual verification:
 Verification evidence (2026-10-30, Windows, Python 3.11.9, worktree venv): RED import failure; GREEN 35 passed; affected existing tests 198 passed; full backend/scripts suite 805 passed, 65 skipped, 1 warning; unchanged coverage gate 93.8% combined / 91.6% branches; Ruff check and format clean; Bandit 0 findings; `git diff --check` clean; changed-file secret scan found no credential-like values and only the placeholder `backend/.env.example` changed. Real-stack run not run (deferred to T26): no Docker, Milvus, embedding model or live GitHub call. See [T13 evidence](execution-plans/hybrid-search/T13_EVIDENCE.md). Status: Awaiting review; no acceptance, review marker or merge.
 
 Rollback: revert the T13 commit. There is no migration, stored data, route or scheduled job to undo. The new `HYBRID_*` settings are inert without a caller; T02/T07/T08/T10/T11/T12 and the legacy endpoint remain unchanged.
+
+## Tracker sync for T13, T18 Phase A and the dependency gate - 2026-10-31
+
+Owner request (verbatim): "yes merge them and update the tracker and readme"
+
+- [PR #46](https://github.com/SumukhaK/open-source-projectFinder/pull/46) → `7c265de`: four owner-approved npm exceptions (glob 7.2.3/13.0.6 GHSA-3g3m-2fjr-6pw4, minimatch 3.1.5/10.2.6 GHSA-g3hv-75wg-m249), all dev/build-only, expiring 2026-11-30. These unblocked the Dependency audit.
+- [PR #45](https://github.com/SumukhaK/open-source-projectFinder/pull/45) T13 → `74de757`. Review fixes were made in `63aab40`, and CI was green at `a046b5b`.
+- [PR #47](https://github.com/SumukhaK/open-source-projectFinder/pull/47) T18 Phase A → `aa5db53`. Review fixes were made in `62bd75f` and `5ad9e67`. Main was merged in as `ee4954f` (keeping both T13 and T18 sections of this file), and CI was green at that head.
+- Both were squash-merged directly on the owner's instruction, not through the reviewed-merge workflow. T18 stays unaccepted until Phase B (approved real 1k sample and the T16 per-partition real-search log) is reviewed.
+- Updated: hybrid [TRACKER](execution-plans/hybrid-search/TRACKER.md), T13/T18 task status, root README and backend README.

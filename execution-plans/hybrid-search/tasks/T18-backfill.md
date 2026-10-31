@@ -1,6 +1,6 @@
 # T18: Run a bounded resumable backfill
 
-Status: In progress — Phase A fake-only implementation is under review preparation; the real run remains pending explicit owner approval. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: In progress — Phase A (fake-only) merged as `aa5db53` (2026-10-31) from [PR #47](https://github.com/SumukhaK/open-source-projectFinder/pull/47); Phase B real run pending the owner's explicit "T18 real run approved". Not accepted until Phase B evidence, including the T16 per-partition real-search log, is reviewed. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
