@@ -1,6 +1,7 @@
 """T14: bounded fused snapshots and account-bound pagination cursors."""
 
 import asyncio
+import hashlib
 import json
 import threading
 
@@ -13,6 +14,7 @@ from app.services.fused_cursor import (
     SnapshotStore,
 )
 from app.services.hybrid_search import HybridSearchResult
+from app.services.live_scope import live_eligible
 from app.services.rank_fusion import FusedCandidate, FusedResults, SourceHealth
 
 IDEA = "an offline first app for sharing community tools"
@@ -69,6 +71,14 @@ def run(coro):
     return asyncio.run(asyncio.wait_for(coro, timeout=5))
 
 
+def still_eligible(candidates):
+    return [
+        candidate
+        for candidate in candidates
+        if live_eligible(candidate.repo_id, candidate.metadata)
+    ]
+
+
 @pytest.fixture
 def build():
     def factory(service, *, now=None, revalidate=None, key=KEY, **changes):
@@ -77,7 +87,7 @@ def build():
             service,
             settings,
             now=now or (lambda: 1000.0),
-            revalidate=revalidate,
+            revalidate=revalidate or still_eligible,
         )
 
     return factory
@@ -337,9 +347,12 @@ def test_snapshot_and_cursor_contain_no_idea_or_embedding(build):
     assert "vector" not in repr(snapshot).lower()
 
 
-def test_default_revalidation_drops_stored_ineligible_candidates(build):
+def test_revalidation_drops_stored_ineligible_candidates(build):
     pager = build(
-        FakeService(result([card(1, 1301), card(2, 1302, private=True), card(3, 1303)]))
+        FakeService(
+            result([card(1, 1301), card(2, 1302, private=True), card(3, 1303)])
+        ),
+        revalidate=still_eligible,
     )
 
     page = first(pager, page_size=1)
@@ -529,3 +542,63 @@ def test_cursor_payload_must_be_a_mapping(build):
 
     with pytest.raises(ValueError):
         pager.codec.encode([1, 2, 3])
+
+
+def test_missing_revalidator_is_refused():
+    settings = Settings(_env_file=None, hybrid_cursor_signing_key=KEY)
+
+    with pytest.raises(ValueError):
+        HybridPager(FakeService(result([])), settings)
+    with pytest.raises(ValueError):
+        HybridPager(FakeService(result([])), settings, revalidate=None)
+
+
+def test_cursor_digests_are_keyed_hmac_not_plain_sha256(build):
+    idea = "a keyed digest idea"
+    pager = build(FakeService(result([card(i, 3000 + i) for i in range(1, 4)])))
+
+    payload = pager.codec.decode(first(pager, idea=idea, page_size=1).next_cursor)
+
+    plain_query = hashlib.sha256(idea.encode()).hexdigest()
+    plain_filters = hashlib.sha256(b'{"language":null,"license":null}').hexdigest()
+    assert payload["q"] != plain_query
+    assert payload["f"] != plain_filters
+
+
+def test_different_signing_keys_produce_different_query_digests(build):
+    service = FakeService(result([card(i, 3100 + i) for i in range(1, 4)]))
+    one = build(service, key="k" * 40)
+    two = build(service, key="m" * 40)
+
+    first_digest = one.codec.decode(first(one, page_size=1).next_cursor)["q"]
+    second_digest = two.codec.decode(first(two, page_size=1).next_cursor)["q"]
+
+    assert first_digest != second_digest
+
+
+@pytest.mark.parametrize("page_size", [201, 1000])
+def test_page_size_above_the_snapshot_limit_is_rejected(build, page_size):
+    pager = build(FakeService(result([card(1, 3201)])))
+
+    with pytest.raises(ValueError):
+        first(pager, page_size=page_size)
+
+
+def test_next_page_size_is_bounded_too(build):
+    pager = build(FakeService(result([card(i, 3300 + i) for i in range(1, 4)])))
+    cursor = first(pager, page_size=1).next_cursor
+
+    with pytest.raises(ValueError):
+        next_page(pager, cursor, page_size=201)
+
+
+def test_page_size_equal_to_the_snapshot_limit_is_allowed(build):
+    pager = build(
+        FakeService(result([card(i, 3400 + i) for i in range(1, 5)])),
+        hybrid_snapshot_max_candidates=3,
+    )
+
+    page = first(pager, page_size=3)
+
+    assert len(page.items) == 3
+    assert page.has_more is False

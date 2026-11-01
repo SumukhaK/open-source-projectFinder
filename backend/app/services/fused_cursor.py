@@ -1,7 +1,7 @@
 """Account-bound, bounded in-memory pagination for fused hybrid results.
 
 T13 returns one fused ranking. T14 stores at most 200 candidate cards for five
-minutes per snapshot, keyed by account and request digests, and pages that
+minutes per snapshot, keyed by account and HMAC request digests, and pages that
 snapshot with an opaque signed cursor. Snapshots are process-local: expiry,
 eviction or a restart returns an explicit restart error instead of a changed
 ranking. No idea, transcript or query embedding is stored.
@@ -21,7 +21,6 @@ from dataclasses import dataclass, replace
 from threading import Lock
 
 from app.core.config import Settings
-from app.services.live_scope import live_eligible
 from app.services.rank_fusion import FusedCandidate, SourceHealth
 
 CURSOR_VERSION = 1
@@ -72,7 +71,7 @@ class _Binding:
     filters_digest: str
 
 
-def _binding(account, idea, language, license, generation):
+def _binding(codec, account, idea, language, license, generation):
     if type(account) is not int or not 0 < account < 2**63:
         raise ValueError("account must be a positive integer")
     if not isinstance(idea, str):
@@ -85,20 +84,20 @@ def _binding(account, idea, language, license, generation):
     for value in (language, license):
         if value is not None and not isinstance(value, str):
             raise ValueError("filters must be text")
-    query_digest = hashlib.sha256(idea.encode("utf-8")).hexdigest()
-    filters_digest = hashlib.sha256(
+    query_digest = codec.digest(idea.encode("utf-8"))
+    filters_digest = codec.digest(
         json.dumps(
             {"language": language, "license": license},
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
-    ).hexdigest()
+    )
     return _Binding(query_digest, filters_digest)
 
 
-def _page_size(value):
-    if type(value) is not int or value < 1:
-        raise ValueError("page_size must be a positive integer")
+def _page_size(value, limit):
+    if type(value) is not int or not 1 <= value <= limit:
+        raise ValueError("page_size must be between 1 and the candidate limit")
     return value
 
 
@@ -107,15 +106,6 @@ def _is_digest(value):
         isinstance(value, str)
         and len(value) == _DIGEST_HEX_CHARS
         and all(character in "0123456789abcdef" for character in value)
-    )
-
-
-def _still_eligible(candidates):
-    """Default later-page recheck: reject stored metadata that is not public."""
-    return tuple(
-        candidate
-        for candidate in candidates
-        if live_eligible(candidate.repo_id, candidate.metadata)
     )
 
 
@@ -208,6 +198,10 @@ class CursorCodec:
             raise ValueError("cursor signing key must be at least 32 characters")
         self._key = key.encode("utf-8")
 
+    def digest(self, data):
+        """Keyed request digest; equality checks stay constant-time."""
+        return hmac.new(self._key, data, hashlib.sha256).hexdigest()
+
     def encode(self, payload):
         if not isinstance(payload, dict):
             raise ValueError("cursor payload must be a mapping")
@@ -243,13 +237,23 @@ class CursorCodec:
 
 
 class HybridPager:
-    """Store one bounded fused snapshot per search and page it by signed cursor."""
+    """Store one bounded fused snapshot per search and page it by signed cursor.
+
+    ``revalidate`` is required: later pages call it with their own window of
+    stored cards and serve only the returned repositories. The callable may
+    block, so T15 must call ``next_page`` off the event loop with the request's
+    remaining deadline and adapt fused cards to T10
+    ``EligibilityService.check`` input. The pager never performs the fresh
+    visibility check itself.
+    """
 
     def __init__(self, service, settings: Settings, *, now=None, revalidate=None):
+        if not callable(revalidate):
+            raise ValueError("a revalidate callable is required for later pages")
         self.service = service
         self.settings = settings
         self._now = now or time.time
-        self._revalidate = revalidate or _still_eligible
+        self._revalidate = revalidate
         self.codec = CursorCodec(settings.hybrid_cursor_signing_key.get_secret_value())
         self.store = SnapshotStore(
             max_snapshots=settings.hybrid_cursor_cache_size,
@@ -269,8 +273,8 @@ class HybridPager:
         language=None,
         license=None,
     ):
-        page_size = _page_size(page_size)
-        binding = _binding(account, idea, language, license, generation)
+        page_size = _page_size(page_size, self.settings.hybrid_snapshot_max_candidates)
+        binding = _binding(self.codec, account, idea, language, license, generation)
         result = await self.service.search(
             token, idea, language=language, license=license
         )
@@ -310,8 +314,14 @@ class HybridPager:
         language=None,
         license=None,
     ):
-        page_size = _page_size(page_size)
-        expected = _binding(account, idea, language, license, generation)
+        """Return the next stored page without querying either source.
+
+        Synchronous by design: the injected revalidator may block, so T15 must
+        call this method off the event loop with the request's remaining
+        deadline.
+        """
+        page_size = _page_size(page_size, self.settings.hybrid_snapshot_max_candidates)
+        expected = _binding(self.codec, account, idea, language, license, generation)
         payload = self._payload(cursor)
         if (
             payload["acc"] != account
@@ -327,8 +337,8 @@ class HybridPager:
             raise CursorExpired("snapshot expired; start a new search")
         if (
             snapshot.account != account
-            or snapshot.query_digest != expected.query_digest
-            or snapshot.filters_digest != expected.filters_digest
+            or not hmac.compare_digest(snapshot.query_digest, expected.query_digest)
+            or not hmac.compare_digest(snapshot.filters_digest, expected.filters_digest)
             or snapshot.generation != generation
         ):
             raise CursorInvalid("cursor does not match this snapshot")

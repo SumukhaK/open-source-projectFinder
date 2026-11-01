@@ -36,7 +36,7 @@ Address review changes on this PR, rerun affected checks and await fresh head re
 
 Add POST /v1/projects/search with idea 2-1000 chars, page_size 1-50 default20, cursor and bounded typed language/license filters; both sources mandatory by default. Inject service through app factory. Return existing card fields plus source/degraded/freshness/cursor/ranking fields and nullable total. Add authenticated sanitized GET /v1/archive/status; distinguish uninitialized/unknown lifecycle status until T17/T19 supply it.
 
-Use T14's `HybridPager` rather than a second pagination path: resubmit the idea and typed filters, pass the same model/ranking generation on every page, map `CursorInvalid`/`CursorExpired` to typed sanitized errors, and inject T10's fresh visibility check as the later-page revalidator so a changed source needs a fresh search.
+Use T14's `HybridPager` rather than a second pagination path: resubmit the idea and typed filters, pass the same model/ranking generation on every page, map `CursorInvalid`/`CursorExpired` to typed sanitized errors, and inject T10's fresh visibility check as the required later-page revalidator so a changed source needs a fresh search. `next_page` is synchronous and calls that revalidator, so run it off the event loop with the request's remaining deadline and adapt fused cards to `EligibilityService.check` input. T15's 1-50 `page_size` stays within T14's 1-200 bound.
 
 Keep the production change approximately 1-5 files plus necessary tests/docs. If that cannot cover the task honestly, propose smaller slices for review before expanding. No placeholder implementation of later tasks.
 

@@ -390,27 +390,32 @@ tests-first record and limits.
 ## Fused pagination (T14, awaiting review)
 
 `app.services.fused_cursor.HybridPager(service, settings, *, now=None,
-revalidate=None)` wraps the T13 service. `async first_page(token, idea, *,
-account, page_size, generation, language=None, license=None)` performs the
-normal hybrid search, stores one bounded snapshot and returns its first
-`CursorPage`. `next_page(*, account, idea, cursor, page_size, generation,
-language=None, license=None)` pages the stored snapshot without calling either
-source again.
+revalidate=None)` wraps the T13 service; construction requires a callable
+`revalidate`. `async first_page(token, idea, *, account, page_size, generation,
+language=None, license=None)` performs the normal hybrid search, stores one
+bounded snapshot and returns its first `CursorPage`.
+`next_page(*, account, idea, cursor, page_size, generation, language=None,
+license=None)` pages the stored snapshot without calling either source again.
 
 A snapshot holds at most `HYBRID_SNAPSHOT_MAX_CANDIDATES` (200) fused cards for
-`HYBRID_CURSOR_TTL_SECONDS` (at most 300). `HYBRID_CURSOR_CACHE_SIZE` (256)
-bounds total snapshots and `HYBRID_CURSOR_CACHE_PER_ACCOUNT` (8) bounds one
-account. A cursor is a URL-safe HMAC-SHA256 token over the snapshot ID, account,
-idea/filter digests, model/ranking `generation` and expiry; it contains no idea,
-transcript, query embedding or repository ID list. The same idea and typed
-filters must be resubmitted on every page, and the caller must pass the same
-`generation` value (the pinned model revision plus ranking version). A tampered,
-cross-account/query/filter/model or out-of-range cursor raises `CursorInvalid`;
-expiry, eviction or a process restart raises `CursorExpired`, which means the
-client must start a fresh search. Later pages recheck the page's stored cards
-through `revalidate` (default: T10's `live_eligible` on stored metadata) and may
-return short pages; a recovered source never splices into an existing snapshot.
-T15 must inject the fresh visibility check for production serving.
+`HYBRID_CURSOR_TTL_SECONDS` (at most 300), and `page_size` must be 1-200.
+`HYBRID_CURSOR_CACHE_SIZE` (256) bounds total snapshots and
+`HYBRID_CURSOR_CACHE_PER_ACCOUNT` (8) bounds one account. A cursor is a URL-safe
+HMAC-SHA256 token over the snapshot ID, account, HMAC-SHA256 idea/filter
+digests (keyed by the signing key), model/ranking `generation` and expiry; it
+contains no idea, transcript, query embedding or repository ID list. The same
+idea and typed filters must be resubmitted on every page, and the caller must
+pass the same `generation` value (the pinned model revision plus ranking
+version). A tampered, cross-account/query/filter/model or out-of-range cursor
+raises `CursorInvalid`; expiry, eviction or a process restart raises
+`CursorExpired`, which means the client must start a fresh search. Later pages
+call the required `revalidate` callable with their own window of stored cards
+and serve only the returned repositories; pages may be short and a recovered
+source never splices into an existing snapshot. `next_page` is synchronous
+because that callable may block: T15 must call it off the event loop with the
+request's remaining deadline and adapt fused cards to T10
+`EligibilityService.check` input so a repository made private after the first
+page is not served later.
 
 Snapshots are single-process only: they do not survive a restart and are not
 shared between API hosts, so the T14 cursor is not a multi-host cache. There is
