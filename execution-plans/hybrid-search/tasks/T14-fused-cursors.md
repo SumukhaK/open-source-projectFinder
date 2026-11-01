@@ -1,6 +1,6 @@
 # T14: Paginate fused snapshots with account-bound cursors
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review ([PR #49](https://github.com/SumukhaK/open-source-projectFinder/pull/49)) from base `c4e320424f2859f325b2b21e30dcc34e20e2f351`. Implementation and local verification evidence are in [T14 evidence](../T14_EVIDENCE.md); review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

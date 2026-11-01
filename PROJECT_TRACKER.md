@@ -48,7 +48,7 @@ feel free to create a remote git repo with the name "open-source-projectFinder" 
 | 1 | Finalize requirements, API contract, providers and evaluation criteria | In progress | Hybrid contract proposed in execution-plans/hybrid-search; T00 merged; eight operator decisions (D1-D8) still pending |
 | 2 | Text idea submission and GitHub search baseline | Backend complete; mobile pending | Backend keyword search, details and favourites merged (#9, #10, plus fixes below); mobile discovery UI unmerged |
 | 3 | Periodic ingestion, embeddings and Milvus index | In progress: T01-T09, T16 and T17 merged; T18-T23 planned | Repeatable ingestion, deduplication, updates and retrieval checks |
-| 4 | Hybrid retrieval, ranking and AI similarity explanations | In progress: T10-T12 merged; T13-T15, T27 planned | Agreed relevance evaluation, provenance and failure handling |
+| 4 | Hybrid retrieval, ranking and AI similarity explanations | In progress: T10-T13 merged; T14 awaiting review; T15, T27 planned | Agreed relevance evaluation, provenance and failure handling |
 | 5 | Mobile text discovery flow | Planned (blocked on unmerged mobile foundation; T24-T26) | Client tests and end-to-end submission/results verification |
 | 6 | Voice submission and transcription | Planned | Voice-to-search flow and privacy/error behavior verification |
 | 7 | Scale validation and deployment readiness | Planned | Agreed performance, reliability and deployment checks |
@@ -260,7 +260,7 @@ Scope: publish the existing proposed hybrid/archive architecture plus portable O
 | --- | --- | --- |
 | Handbook authoring | Complete; merged as `2e4a9ff` via PR #11 (reviewed head `5cba2a4`, [CI 40084144348](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40084144348)) | Static checks passed for 37 Markdown files, 30 required task workflows, 289 local links/anchors, dependency ordering and both diagram themes. Independent review found one missing T17 dependency on T08 publication; it was added to the task and tracker. [PR #11](https://github.com/SumukhaK/open-source-projectFinder/pull/11) and its current-head review/checks are authoritative for publication status. |
 | T00 readiness | Complete (accepted and merged as `6dc4233`) | [PR #13](https://github.com/SumukhaK/open-source-projectFinder/pull/13) on base `2e4a9ff353de7a137c49fff0c99bea1765a357a2`; exact-head review of `b535011` and [CI 40086438932](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40086438932) passed. The rest of this cell is the original delivery note: [READINESS](execution-plans/hybrid-search/READINESS.md) records the fresh dependency audits, merged #10/#12/#11 prerequisites, unmerged mobile foundation, eight pending operator decisions and the task readiness/blocker matrix. Exact-head review and CI are pending; the implementer has not accepted or merged. |
-| T01-T29 implementation | T01-T12, T16 and T17 merged; T13-T15 and T18-T29 not started | [Task tracker](execution-plans/hybrid-search/TRACKER.md) is authoritative for per-task status, full reviewed SHA/review/CI evidence and merged SHA. Only review acceptance checks a task done; dependents require merge into main. |
+| T01-T29 implementation | T01-T13, T16 and T17 merged; T14 awaiting review; T15 and T18-T29 not started (T18 Phase A merged, Phase B pending approval) | [Task tracker](execution-plans/hybrid-search/TRACKER.md) is authoritative for per-task status, full reviewed SHA/review/CI evidence and merged SHA. Only review acceptance checks a task done; dependents require merge into main. |
 
 Main baseline was 2237c7e5241a698258a28952150194b943d616b0. Search PR #10 and the local discovery mobile foundation were not merged during authoring. Fresh dependency policy evaluation on 2026-10-24 blocked main's mobile lock on zod 3.25.76 / GHSA-mrhx-c7xc-m3w5; the earlier braces/sprintf advisories were withdrawn, not patched here. The first handbook CI run additionally blocked the unchanged Python lock on six advisories across certifi, filelock, opentelemetry-api and setuptools; backend/mobile quality and secrets passed at that earlier head. See the dated evidence in REQUEST.md; later-head checks remain required. The handbook preserves current gates and requires rechecking prerequisite/security state. No unrelated workspace changes are included.
 
@@ -1484,3 +1484,47 @@ Owner request (verbatim): "yes merge them and update the tracker and readme"
 - [PR #47](https://github.com/SumukhaK/open-source-projectFinder/pull/47) T18 Phase A → `aa5db53`. Review fixes were made in `62bd75f` and `5ad9e67`. Main was merged in as `ee4954f` (keeping both T13 and T18 sections of this file), and CI was green at that head.
 - Both were squash-merged directly on the owner's instruction, not through the reviewed-merge workflow. T18 stays unaccepted until Phase B (approved real 1k sample and the T16 per-partition real-search log) is reviewed.
 - Updated: hybrid [TRACKER](execution-plans/hybrid-search/TRACKER.md), T13/T18 task status, root README and backend README.
+
+## T14 fused snapshot cursors - 2026-11-01
+
+User request (verbatim):
+
+```text
+PR merged. well done. now Read execution-plans/hybrid-search/OPENCODE_PROMPT.md, replace TASK_ID with T14, and execute only that task. Read all referenced documents, follow its instructions, raise a PR, then stop and wait for review.
+```
+
+Context verified: `origin/main` was fetched at `c4e320424f2859f325b2b21e30dcc34e20e2f351` and the branch `codex/hybrid-t14-fused-cursors` was created from it. Prerequisite T13 (`74de757`) is merged. T14 needs no new policy decision; production serving remains gated by D4 and the T15 route.
+
+Scope: one internal pagination module, no route and no schema change.
+
+- `backend/app/services/fused_cursor.py` provides `HybridPager(service, settings, *, now=None, revalidate=None)` with `async first_page(token, idea, *, account, page_size, generation, language=None, license=None)` and sync `next_page(*, account, idea, cursor, page_size, generation, language=None, license=None)`. The task file proposed helpers; main already has the T13 service, so the pager wraps it without changing `hybrid_search.py`. Construction requires a callable `revalidate` (fail closed).
+- One snapshot keeps at most 200 fused cards for 300 s. `HYBRID_CURSOR_CACHE_SIZE` (256) bounds all snapshots and `HYBRID_CURSOR_CACHE_PER_ACCOUNT` (8) bounds one account, using insertion-order eviction under a `Lock`. `page_size` is bounded to 1-200.
+- Cursors are URL-safe `body.signature` HMAC-SHA256 tokens over canonical JSON with exactly `{"v","sid","acc","q","f","g","exp","off"}`. They bind the account, keyed HMAC-SHA256 idea/filter digests, model/ranking `generation`, snapshot ID, expiry and offset, and contain no idea, transcript, query embedding or repository list.
+- `next_page` never calls either source again, so a recovered source cannot splice into the stored ranking. Later pages call the required `revalidate` callable on only their own window; removed cards shorten the page and `off` advances by the examined count. `next_page` is synchronous, so T15 must run it off the event loop with the remaining deadline and adapt fused cards to T10 `EligibilityService.check` input.
+- `CursorInvalid` covers tampering, cross-account/query/filter/generation use, wrong payload shapes and out-of-range offsets. `CursorExpired` covers expiry, eviction and restart. An empty or short `HYBRID_CURSOR_SIGNING_KEY` refuses pager construction (fail closed).
+- An empty fused result stores nothing and returns no cursor; degraded/incomplete provenance is copied to every later page.
+
+Phased plan and completion:
+
+1. Read prerequisites, config, callers and tests; fetch `origin/main`, record base, create branch. Complete.
+2. Write the RED suite in `backend/tests/test_fused_cursor.py` with fakes and a fixed clock. Complete: 37 failed, 4 passed against a stub (the 4 passes only exercised trivial stub paths).
+3. Implement the pager, store, codec and settings; add placeholders to `.env.example`. Complete.
+4. Harden the security-boundary tests (tamper shapes, cross-snapshot binding, cache expiry, store limits) and keep the suite deterministic. Complete: 52 focused tests pass.
+5. Run focused/affected/full suites, the unchanged coverage gate, Ruff, Bandit, `git diff --check` and a secret inspection; update evidence, README, the T15 handoff, the hybrid tracker and this tracker; commit explicit files, push and raise one PR against `main`. Complete; awaiting exact-head CI and trusted review.
+
+Acceptance criteria and actual verification:
+
+- Snapshot order is paginated without duplicates or rank splicing: covered by full-coverage and repeat-page tests.
+- Cursor binds account, idea, typed filters, generation, expiry and offset: covered by binding, tamper, out-of-range and cross-snapshot tests.
+- Tampering, wrong key, eviction and restart fail closed: covered by seven tamper shapes, a foreign signing key and restart/eviction tests.
+- Snapshots are bounded in total and per account: covered by limit, eviction and concurrent-write tests.
+- No idea or embedding is stored or signed: covered by a representation and payload scan.
+- Visibility changes shorten later pages and a recovered source never splices: covered with an injected revalidator and a changed fake service.
+
+Verification evidence (2026-11-01, Windows, Python 3.11.9, worktree venv): RED 37 failed / 4 passed against a stub; GREEN focused 41 passed, then 52 after hardening tests; affected suite 167 passed; full backend/scripts suite 899 passed, 65 skipped, 1 warning; unchanged coverage gate 93.8% combined / 91.4% branches with the new module at 98.5%; Ruff check and format clean; Bandit 0 findings; `git diff --check` clean; changed-file secret scan found no credential-like values and only the placeholder `backend/.env.example` changed. Real-stack run not run (deferred to T26): no Docker, Milvus, embedding model or live GitHub call. See [T14 evidence](execution-plans/hybrid-search/T14_EVIDENCE.md). Status: Awaiting review on [PR #49](https://github.com/SumukhaK/open-source-projectFinder/pull/49); no acceptance, review marker or merge.
+
+Limits: snapshots are process-local, so cursors do not survive a restart or span API hosts; there is no exact global total; T15 must run `next_page` off the event loop with the remaining deadline and adapt fused cards to T10 `EligibilityService.check` input.
+
+Review fixes (2026-11-01): keyed idea/filter digests with HMAC-SHA256 under the signing key (constant-time comparisons kept), an explicit required `revalidate` callable with no stored-metadata default, and `page_size` bounded to 1-200. RED 6 failed / 1 passed; GREEN 59 focused, 96 for the requested `test_fused_cursor` + `test_hybrid_search` pair, full 906 passed / 65 skipped, coverage unchanged 93.8% / 91.4% (module 98.5%); Ruff, Bandit and `git diff --check` clean.
+
+Rollback: revert the T14 commit. There is no migration, stored data, route or scheduled job to undo. The `HYBRID_CURSOR_*`/`HYBRID_SNAPSHOT_*` settings are inert without a caller; T13 and the legacy endpoint remain unchanged.
