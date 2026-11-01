@@ -46,7 +46,8 @@ T30 does not implement these; it confirms each was closed by its owner (link the
 | T17, [PR #40](https://github.com/SumukhaK/open-source-projectFinder/pull/40) | T19 | Safe generation protocol for README reverts (A→B→A) with a regression test |
 | T17, [PR #40](https://github.com/SumukhaK/open-source-projectFinder/pull/40) | T20 | Run-row compaction preserves `MAX(fence)` |
 | T14, [PR #49](https://github.com/SumukhaK/open-source-projectFinder/pull/49) | T15 | Inject T10's fresh visibility check as the required `HybridPager` revalidator and call `next_page` off the event loop |
-| Operations | Owner | P1 worker-token rotation/revocation ownership confirmed; deepmerge audit exception (expires 2026-12-31) rechecked or removed |
+| T18 Phase A, [PR #47](https://github.com/SumukhaK/open-source-projectFinder/pull/47) | T18 Phase B | Watch `skipped.forbidden` in the real run; a broad 403 skips repositories instead of stopping, so add a consecutive-forbidden stop if it appears |
+| Operations | Owner | P1 worker-token rotation/revocation ownership confirmed; deepmerge audit exception (expires 2026-12-31) and glob/minimatch exceptions (expire 2026-11-30) rechecked or removed |
 
 ## Work and boundaries
 
