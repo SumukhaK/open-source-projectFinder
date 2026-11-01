@@ -8,7 +8,7 @@ Mobile scopes a Zod 4.6.6 override to Expo CLI while that CLI declares Zod 3. Re
 
 Primary sources: [certifi advisory](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2), [filelock release](https://github.com/tox-dev/filelock/releases/tag/4.2.1), [OpenTelemetry advisory](https://github.com/open-telemetry/opentelemetry-python/security/advisories/GHSA-xcq7-p3pf-p88h), [setuptools advisory](https://github.com/advisories/GHSA-xmj3-9gf7-h52w), [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) and [Zod 3 maintenance discussion](https://github.com/colinhacks/zod/issues/6653).
 
-FastAPI GitHub signup/login, persistent rate limits, encrypted provider credentials and revocable app sessions, plus authenticated public GitHub keyword search, repository details and app-local favourites. Hybrid-search building blocks in this tree: a CPU embedding adapter, a local Milvus adapter, an archive catalogue, source eligibility, keyword candidates, rank fusion, a bounded orchestration service and bounded fused-snapshot cursors (T14 awaiting review). No hybrid API route is exposed yet; the versioned endpoint remains planned.
+FastAPI GitHub signup/login, persistent rate limits, encrypted provider credentials and revocable app sessions, plus authenticated public GitHub keyword search, repository details and app-local favourites. Hybrid-search building blocks in this tree: a CPU embedding adapter, a local Milvus adapter, an archive catalogue, source eligibility, keyword candidates, rank fusion, a bounded orchestration service and bounded fused-snapshot cursors (T14 merged). No hybrid API route is exposed yet; the versioned endpoint remains planned.
 
 ## Setup
 
@@ -387,7 +387,7 @@ Real-stack timing was not run (deferred to T26). See
 [T13 evidence](../execution-plans/hybrid-search/T13_EVIDENCE.md) for the
 tests-first record and limits.
 
-## Fused pagination (T14, awaiting review)
+## Fused pagination (T14, merged)
 
 `app.services.fused_cursor.HybridPager(service, settings, *, now=None,
 revalidate=None)` wraps the T13 service; construction requires a callable
