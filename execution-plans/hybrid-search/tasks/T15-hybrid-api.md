@@ -36,11 +36,13 @@ Address review changes on this PR, rerun affected checks and await fresh head re
 
 Add POST /v1/projects/search with idea 2-1000 chars, page_size 1-50 default20, cursor and bounded typed language/license filters; both sources mandatory by default. Inject service through app factory. Return existing card fields plus source/degraded/freshness/cursor/ranking fields and nullable total. Add authenticated sanitized GET /v1/archive/status; distinguish uninitialized/unknown lifecycle status until T17/T19 supply it.
 
+Use T14's `HybridPager` rather than a second pagination path: resubmit the idea and typed filters, pass the same model/ranking generation on every page, map `CursorInvalid`/`CursorExpired` to typed sanitized errors, and inject T10's fresh visibility check as the later-page revalidator so a changed source needs a fresh search.
+
 Keep the production change approximately 1-5 files plus necessary tests/docs. If that cannot cover the task honestly, propose smaller slices for review before expanding. No placeholder implementation of later tasks.
 
 ## Tests and verification before acceptance
 
-RED: session/rate guards, invalid bounds/filter/cursor, legacy unchanged, both empty, partial hits, partial zero SEARCH_INCOMPLETE, expired cursor and sanitized status. GREEN: HTTP contract tests assert semantic results/provenance, not only status codes.
+RED: session/rate guards, invalid bounds/filter/cursor, legacy unchanged, both empty, partial hits, partial zero SEARCH_INCOMPLETE, expired cursor, later-page visibility revalidation through T14's hook and sanitized status. GREEN: HTTP contract tests assert semantic results/provenance, not only status codes.
 
 Use real focused commands from [the guide](../EXECUTION_GUIDE.md#verification-commands) and existing suite paths found during discovery. Record baseline and RED/GREEN command, date/platform, exit code and assertions in the PR. Run affected existing tests, lint/type/format and required CI; document unavailable integration evidence as blocked. `git diff --check` and secret inspection are required before staging/push.
 

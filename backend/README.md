@@ -8,7 +8,7 @@ Mobile scopes a Zod 4.6.6 override to Expo CLI while that CLI declares Zod 3. Re
 
 Primary sources: [certifi advisory](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2), [filelock release](https://github.com/tox-dev/filelock/releases/tag/4.2.1), [OpenTelemetry advisory](https://github.com/open-telemetry/opentelemetry-python/security/advisories/GHSA-xcq7-p3pf-p88h), [setuptools advisory](https://github.com/advisories/GHSA-xmj3-9gf7-h52w), [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) and [Zod 3 maintenance discussion](https://github.com/colinhacks/zod/issues/6653).
 
-FastAPI GitHub signup/login, persistent rate limits, encrypted provider credentials and revocable app sessions, plus authenticated public GitHub keyword search, repository details and app-local favourites. Hybrid-search building blocks are merged: a CPU embedding adapter, a local Milvus adapter, an archive catalogue, source eligibility, keyword candidates, rank fusion and a bounded orchestration service. No hybrid API route is exposed yet; ingestion policy, cursors and the versioned endpoint remain planned.
+FastAPI GitHub signup/login, persistent rate limits, encrypted provider credentials and revocable app sessions, plus authenticated public GitHub keyword search, repository details and app-local favourites. Hybrid-search building blocks in this tree: a CPU embedding adapter, a local Milvus adapter, an archive catalogue, source eligibility, keyword candidates, rank fusion, a bounded orchestration service and bounded fused-snapshot cursors (T14 awaiting review). No hybrid API route is exposed yet; the versioned endpoint remains planned.
 
 ## Setup
 
@@ -296,8 +296,8 @@ the archive 365-day or licence-content gates.
 Only typed `language` and `license` filters are translated; values are bounded,
 multi-word values are quoted, and unsafe characters are rejected before the
 provider call. The source stores no idea, transcript or embedding and is not yet
-wired into an API route. T13 orchestration is implemented; totals, cursors and
-the versioned endpoint remain T14-T15 work. See
+wired into an API route. T13 orchestration and T14 cursors are implemented;
+the versioned endpoint remains T15 work. See
 [T11 evidence](../execution-plans/hybrid-search/T11_EVIDENCE.md) for the
 tests-first record and limits.
 
@@ -324,8 +324,8 @@ from `license.spdx_id` (never a GitHub filter keyword); a case-only difference
 such as `mit` versus `MIT` is not a conflict. `FusedResults.total` is always
 `None` because source totals are never added, and both sources' health status is
 preserved. The legacy `POST /projects/search` contract is unchanged and no route
-uses this helper yet; T13 orchestration is implemented, and T14-T15 own cursors
-and the versioned endpoint. See
+uses this helper yet; T13 orchestration and T14 cursors are implemented, and
+T15 owns the versioned endpoint. See
 [T12 evidence](../execution-plans/hybrid-search/T12_EVIDENCE.md) for the
 tests-first record and limits.
 
@@ -385,6 +385,40 @@ construct Milvus, embeddings or the archive store. Rollback is a code revert wit
 no migration or stored data; the `HYBRID_*` settings are inert without a caller.
 Real-stack timing was not run (deferred to T26). See
 [T13 evidence](../execution-plans/hybrid-search/T13_EVIDENCE.md) for the
+tests-first record and limits.
+
+## Fused pagination (T14, awaiting review)
+
+`app.services.fused_cursor.HybridPager(service, settings, *, now=None,
+revalidate=None)` wraps the T13 service. `async first_page(token, idea, *,
+account, page_size, generation, language=None, license=None)` performs the
+normal hybrid search, stores one bounded snapshot and returns its first
+`CursorPage`. `next_page(*, account, idea, cursor, page_size, generation,
+language=None, license=None)` pages the stored snapshot without calling either
+source again.
+
+A snapshot holds at most `HYBRID_SNAPSHOT_MAX_CANDIDATES` (200) fused cards for
+`HYBRID_CURSOR_TTL_SECONDS` (at most 300). `HYBRID_CURSOR_CACHE_SIZE` (256)
+bounds total snapshots and `HYBRID_CURSOR_CACHE_PER_ACCOUNT` (8) bounds one
+account. A cursor is a URL-safe HMAC-SHA256 token over the snapshot ID, account,
+idea/filter digests, model/ranking `generation` and expiry; it contains no idea,
+transcript, query embedding or repository ID list. The same idea and typed
+filters must be resubmitted on every page, and the caller must pass the same
+`generation` value (the pinned model revision plus ranking version). A tampered,
+cross-account/query/filter/model or out-of-range cursor raises `CursorInvalid`;
+expiry, eviction or a process restart raises `CursorExpired`, which means the
+client must start a fresh search. Later pages recheck the page's stored cards
+through `revalidate` (default: T10's `live_eligible` on stored metadata) and may
+return short pages; a recovered source never splices into an existing snapshot.
+T15 must inject the fresh visibility check for production serving.
+
+Snapshots are single-process only: they do not survive a restart and are not
+shared between API hosts, so the T14 cursor is not a multi-host cache. There is
+no exact global total. `HYBRID_CURSOR_SIGNING_KEY` must be a random value of at
+least 32 characters; an empty key refuses pager construction (fail closed).
+Rollback is a code revert with no migration or stored data; the cursor settings
+are inert without a caller. See
+[T14 evidence](../execution-plans/hybrid-search/T14_EVIDENCE.md) for the
 tests-first record and limits.
 
 ## Durable worker state (T17, merged)

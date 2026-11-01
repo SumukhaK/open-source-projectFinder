@@ -95,6 +95,13 @@ class Settings(BaseSettings):
         default=MILVUS_MAX_TOP_K, ge=1, le=MILVUS_MAX_TOP_K
     )
     hybrid_archive_target_repositories: int = Field(default=100, ge=1, le=100)
+    # T14 fused snapshots are process-local; the key signs opaque cursors only.
+    # An empty key refuses pager construction (fail closed) until configured.
+    hybrid_cursor_signing_key: SecretStr = Field(default=SecretStr(""), repr=False)
+    hybrid_cursor_ttl_seconds: int = Field(default=300, ge=1, le=300)
+    hybrid_cursor_cache_size: int = Field(default=256, ge=1, le=4096)
+    hybrid_cursor_cache_per_account: int = Field(default=8, ge=1, le=64)
+    hybrid_snapshot_max_candidates: int = Field(default=200, ge=1, le=200)
     allowed_redirects: list[str] = ["reporadar://auth/callback"]
     cors_origins: list[str] = []
     rate_limit: int = Field(default=20, ge=1)
