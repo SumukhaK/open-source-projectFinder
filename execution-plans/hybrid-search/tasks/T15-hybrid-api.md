@@ -1,6 +1,6 @@
 # T15: Expose authenticated versioned hybrid search and status
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review on [PR #51](https://github.com/SumukhaK/open-source-projectFinder/pull/51). See [T15 evidence](../T15_EVIDENCE.md) and [TRACKER](../TRACKER.md) for the checks and limits. No acceptance or merge is claimed.
 
 | Control | Value |
 | --- | --- |

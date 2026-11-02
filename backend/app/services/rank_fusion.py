@@ -9,6 +9,8 @@ from app.services.live_scope import live_eligible
 
 RRF_K = 60
 MAX_SOURCE_REPOSITORIES = 100
+# Public ranking contract; a ranking change must bump this value.
+RANKING_VERSION = "rrf-v1"
 ARCHIVE_STATUSES = frozenset({"ok", "incomplete", "failed"})
 
 
