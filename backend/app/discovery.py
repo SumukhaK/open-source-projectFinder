@@ -43,8 +43,8 @@ def summary(data):
     }
 
 
-def discovery_router(store, provider, cipher, current, settings):
-    router = APIRouter()
+def credentials(store, cipher, current):
+    """Authenticated account plus its decrypted upstream GitHub token."""
 
     def identity(request):
         user = current(request)
@@ -58,6 +58,13 @@ def discovery_router(store, provider, cipher, current, settings):
         return user, json.loads(cipher.decrypt(row["credentials"].encode()))[
             "access_token"
         ]
+
+    return identity
+
+
+def discovery_router(store, provider, cipher, current, settings):
+    router = APIRouter()
+    identity = credentials(store, cipher, current)
 
     def read(token, path, **kwargs):
         try:

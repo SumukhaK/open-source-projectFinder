@@ -1,6 +1,6 @@
 # T15: Expose authenticated versioned hybrid search and status
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review. See [T15 evidence](../T15_EVIDENCE.md) and [TRACKER](../TRACKER.md) for the PR, checks and limits. No acceptance or merge is claimed.
 
 | Control | Value |
 | --- | --- |
