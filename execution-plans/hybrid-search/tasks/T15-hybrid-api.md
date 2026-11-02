@@ -1,6 +1,6 @@
 # T15: Expose authenticated versioned hybrid search and status
 
-Status: Awaiting review on [PR #51](https://github.com/SumukhaK/open-source-projectFinder/pull/51). See [T15 evidence](../T15_EVIDENCE.md) and [TRACKER](../TRACKER.md) for the checks and limits. No acceptance or merge is claimed.
+Status: Merged (`f5da7c7`, 2026-11-02) from [PR #51](https://github.com/SumukhaK/open-source-projectFinder/pull/51) at head `9aa3b94`, base `5d1b404ff8a0ea650a5f411c3d60d88f8d697c5d`. Implementation and local verification evidence are in [T15 evidence](../T15_EVIDENCE.md); review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

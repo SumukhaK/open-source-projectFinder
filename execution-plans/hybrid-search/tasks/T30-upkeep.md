@@ -30,6 +30,8 @@ At each post-merge tracker sync, the reviewer adds that task's non-blocking revi
 | U8 | T09, [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34) | Operator: the worker token sits in two ignored `.env` files (main checkout and T09 worktree) | Keep one private copy; document its location in the operator runbook. No secret values in the repository |
 | U9 | T04, [PR #19](https://github.com/SumukhaK/open-source-projectFinder/pull/19) | Compressed-response burst bound is documented, not measured | Measure peak memory during T18/T19 runs; tighten only if pressure is observed |
 | U10 | T14, [PR #49](https://github.com/SumukhaK/open-source-projectFinder/pull/49) | One key both signs cursors and computes the HMAC idea/filter digests | Add domain separation (for example, prefix digest input with `b"digest:"`) or derive two subkeys; invalidates live cursors, which is acceptable after a restart |
+| U11 | T15, [PR #51](https://github.com/SumukhaK/open-source-projectFinder/pull/51) | Requests that arrive while the lazy hybrid build runs each hold a `to_thread` worker blocked on the build lock until the build ends (the route itself returns a retryable 503 after `HYBRID_BUILD_WAIT_SECONDS`) | Let waiters check a build-in-progress flag and return immediately instead of queueing on the lock, so a slow build cannot drain the default thread pool |
+| U12 | T15, [PR #51](https://github.com/SumukhaK/open-source-projectFinder/pull/51) | Later-page live rechecks in `FusedRevalidator` reuse the worker-only `ARCHIVE_GITHUB_TOKEN` (documented in T15 evidence) | Give the API its own read-only public-metadata token, or a separate reader instance with its own budget, so serving traffic cannot spend the worker's rate limit |
 
 ## Verify closed — notes owned by other tasks
 
@@ -45,7 +47,7 @@ T30 does not implement these; it confirms each was closed by its owner (link the
 | T16, [PR #24](https://github.com/SumukhaK/open-source-projectFinder/pull/24) | T18 | First real run logs per-partition query, `total_count`, `incomplete_results`, pages, IDs and split decision |
 | T17, [PR #40](https://github.com/SumukhaK/open-source-projectFinder/pull/40) | T19 | Safe generation protocol for README reverts (A→B→A) with a regression test |
 | T17, [PR #40](https://github.com/SumukhaK/open-source-projectFinder/pull/40) | T20 | Run-row compaction preserves `MAX(fence)` |
-| T14, [PR #49](https://github.com/SumukhaK/open-source-projectFinder/pull/49) | T15 | Inject T10's fresh visibility check as the required `HybridPager` revalidator and call `next_page` off the event loop |
+| T14, [PR #49](https://github.com/SumukhaK/open-source-projectFinder/pull/49) | T15 | Inject T10's fresh visibility check as the required `HybridPager` revalidator and call `next_page` off the event loop (closed by T15, [PR #51](https://github.com/SumukhaK/open-source-projectFinder/pull/51)) |
 | T18 Phase A, [PR #47](https://github.com/SumukhaK/open-source-projectFinder/pull/47) | T18 Phase B | Watch `skipped.forbidden` in the real run; a broad 403 skips repositories instead of stopping, so add a consecutive-forbidden stop if it appears |
 | Operations | Owner | P1 worker-token rotation/revocation ownership confirmed; deepmerge audit exception (expires 2026-12-31) and glob/minimatch exceptions (expire 2026-11-30) rechecked or removed |
 
