@@ -1528,3 +1528,13 @@ Limits: snapshots are process-local, so cursors do not survive a restart or span
 Review fixes (2026-11-01): keyed idea/filter digests with HMAC-SHA256 under the signing key (constant-time comparisons kept), an explicit required `revalidate` callable with no stored-metadata default, and `page_size` bounded to 1-200. RED 6 failed / 1 passed; GREEN 59 focused, 96 for the requested `test_fused_cursor` + `test_hybrid_search` pair, full 906 passed / 65 skipped, coverage unchanged 93.8% / 91.4% (module 98.5%); Ruff, Bandit and `git diff --check` clean.
 
 Rollback: revert the T14 commit. There is no migration, stored data, route or scheduled job to undo. The `HYBRID_CURSOR_*`/`HYBRID_SNAPSHOT_*` settings are inert without a caller; T13 and the legacy endpoint remain unchanged.
+
+## Tracker sync for T14 - 2026-11-01
+
+Owner request (verbatim): "if its good merge and update the tracker and give me prompt for next task"
+
+- [PR #49](https://github.com/SumukhaK/open-source-projectFinder/pull/49) T14 → `5d1b404`, squash-merged on the owner's instruction after Claude's re-review of `32a11e1`. CI was green.
+- Updated the hybrid [TRACKER](execution-plans/hybrid-search/TRACKER.md), the T14 task status, the root and backend READMEs, and [T30](execution-plans/hybrid-search/tasks/T30-upkeep.md):
+  - new U10: cursor/digest key domain separation;
+  - new verify-closed row: T15 wires the T10 revalidator.
+- Next: T15 (authenticated versioned hybrid search API), which T14 unblocks.

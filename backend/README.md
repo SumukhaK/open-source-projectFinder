@@ -387,7 +387,7 @@ Real-stack timing was not run (deferred to T26). See
 [T13 evidence](../execution-plans/hybrid-search/T13_EVIDENCE.md) for the
 tests-first record and limits.
 
-## Fused pagination (T14, awaiting review)
+## Fused pagination (T14, merged)
 
 `app.services.fused_cursor.HybridPager(service, settings, *, now=None,
 revalidate=None)` wraps the T13 service; construction requires a callable

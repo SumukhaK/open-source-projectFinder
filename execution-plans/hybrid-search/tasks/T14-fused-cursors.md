@@ -1,6 +1,6 @@
 # T14: Paginate fused snapshots with account-bound cursors
 
-Status: Awaiting review ([PR #49](https://github.com/SumukhaK/open-source-projectFinder/pull/49)) from base `c4e320424f2859f325b2b21e30dcc34e20e2f351`. Implementation and local verification evidence are in [T14 evidence](../T14_EVIDENCE.md); review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged (`5d1b404`, 2026-11-01) from [PR #49](https://github.com/SumukhaK/open-source-projectFinder/pull/49) at head `32a11e1`, base `c4e320424f2859f325b2b21e30dcc34e20e2f351`. Implementation and local verification evidence are in [T14 evidence](../T14_EVIDENCE.md); review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
