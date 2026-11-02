@@ -9,14 +9,18 @@ from urllib.parse import urlencode
 
 from cryptography.fernet import Fernet
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
+from app.api.archive import archive_router
 from app.core.config import Settings
 from app.core.store import Store, digest
-from app.discovery import discovery_router
+from app.discovery import credentials, discovery_router
 from app.integrations.github import GitHubProvider, ProviderError
+from app.services.hybrid_runtime import HybridRuntime
 
 
 def challenge(verifier):
@@ -38,6 +42,8 @@ class SessionRequest(BaseModel):
 
 
 DISCOVERY_PATHS = ("/projects/", "/favourites")
+ARCHIVE_PATHS = ("/v1/projects/", "/v1/archive/")
+GUARDED_PATHS = DISCOVERY_PATHS + ARCHIVE_PATHS
 
 
 class BodyLimit:
@@ -72,7 +78,7 @@ class BodyLimit:
         return await self.app(scope, replay, send)
 
 
-def create_app(settings=None, transport=None, sleep=time.sleep):
+def create_app(settings=None, transport=None, sleep=time.sleep, *, hybrid=None):
     settings = settings or Settings()
     app = FastAPI(title="RepoRadar API")
     store = Store(settings.database_path)
@@ -85,6 +91,7 @@ def create_app(settings=None, transport=None, sleep=time.sleep):
         sleep,
         settings,
     )
+    hybrid = hybrid or HybridRuntime(settings, provider=provider)
     cipher = (
         Fernet(settings.token_encryption_key.encode())
         if settings.token_encryption_key
@@ -98,19 +105,19 @@ def create_app(settings=None, transport=None, sleep=time.sleep):
     )
 
     # Added before protection, so it runs inside it: throttling is checked first.
-    app.add_middleware(
-        BodyLimit, paths=("/auth/",) + DISCOVERY_PATHS, settings=settings
-    )
+    app.add_middleware(BodyLimit, paths=("/auth/",) + GUARDED_PATHS, settings=settings)
 
     @app.middleware("http")
     async def protection(request, call_next):
         discovery = request.url.path.startswith(DISCOVERY_PATHS)
-        if request.url.path.startswith("/auth/") or discovery:
+        archive = request.url.path.startswith(ARCHIVE_PATHS)
+        if request.url.path.startswith("/auth/") or discovery or archive:
             # Trust the actual connection, not user-supplied forwarding headers.
             ip = request.client.host if request.client else "unknown"
+            guarded = discovery or archive
             retry = store.throttle(
-                digest(("discovery:" if discovery else "auth:") + ip),
-                settings.discovery_rate_limit if discovery else settings.rate_limit,
+                digest(("discovery:" if guarded else "auth:") + ip),
+                settings.discovery_rate_limit if guarded else settings.rate_limit,
                 settings.rate_window,
             )
             if retry:
@@ -145,6 +152,31 @@ def create_app(settings=None, transport=None, sleep=time.sleep):
                 500,
                 headers={"Cache-Control": "no-store"},
             )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request, error):
+        if request.url.path.startswith(ARCHIVE_PATHS):
+            # Typed and value-free: never echo the submitted idea or filters.
+            fields = [
+                ".".join(
+                    str(part)
+                    for part in detail.get("loc", ())
+                    if isinstance(part, (str, int))
+                )[:120]
+                for detail in error.errors()
+            ]
+            return JSONResponse(
+                {
+                    "detail": {
+                        "code": "INVALID_REQUEST",
+                        "message": "Check the search request.",
+                        "retryable": False,
+                        "fields": fields[:8],
+                    }
+                },
+                422,
+            )
+        return JSONResponse({"detail": jsonable_encoder(error.errors())}, 422)
 
     def configured():
         if (
@@ -303,4 +335,7 @@ def create_app(settings=None, transport=None, sleep=time.sleep):
         return Response(status_code=204)
 
     app.include_router(discovery_router(store, provider, cipher, current, settings))
+    app.include_router(
+        archive_router(settings, current, credentials(store, cipher, current), hybrid)
+    )
     return app

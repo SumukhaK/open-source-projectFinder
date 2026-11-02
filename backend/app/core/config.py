@@ -102,6 +102,12 @@ class Settings(BaseSettings):
     hybrid_cursor_cache_size: int = Field(default=256, ge=1, le=4096)
     hybrid_cursor_cache_per_account: int = Field(default=8, ge=1, le=64)
     hybrid_snapshot_max_candidates: int = Field(default=200, ge=1, le=200)
+    # A request waits only briefly for the first lazy build; the build keeps
+    # running in its worker thread and the route returns a retryable 503.
+    hybrid_build_wait_seconds: float = Field(default=1.0, gt=0, le=5)
+    # Failed builds are cached briefly so Milvus/archive outages do not reload
+    # the embedding model on every request.
+    hybrid_build_retry_seconds: float = Field(default=30.0, ge=0, le=300)
     allowed_redirects: list[str] = ["reporadar://auth/callback"]
     cors_origins: list[str] = []
     rate_limit: int = Field(default=20, ge=1)

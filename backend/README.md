@@ -8,7 +8,7 @@ Mobile scopes a Zod 4.6.6 override to Expo CLI while that CLI declares Zod 3. Re
 
 Primary sources: [certifi advisory](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2), [filelock release](https://github.com/tox-dev/filelock/releases/tag/4.2.1), [OpenTelemetry advisory](https://github.com/open-telemetry/opentelemetry-python/security/advisories/GHSA-xcq7-p3pf-p88h), [setuptools advisory](https://github.com/advisories/GHSA-xmj3-9gf7-h52w), [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) and [Zod 3 maintenance discussion](https://github.com/colinhacks/zod/issues/6653).
 
-FastAPI GitHub signup/login, persistent rate limits, encrypted provider credentials and revocable app sessions, plus authenticated public GitHub keyword search, repository details and app-local favourites. Hybrid-search building blocks in this tree: a CPU embedding adapter, a local Milvus adapter, an archive catalogue, source eligibility, keyword candidates, rank fusion, a bounded orchestration service and bounded fused-snapshot cursors (T14 merged). No hybrid API route is exposed yet; the versioned endpoint remains planned.
+FastAPI GitHub signup/login, persistent rate limits, encrypted provider credentials and revocable app sessions, plus authenticated public GitHub keyword search, repository details and app-local favourites. Hybrid-search building blocks in this tree: a CPU embedding adapter, a local Milvus adapter, an archive catalogue, source eligibility, keyword candidates, rank fusion, a bounded orchestration service, bounded fused-snapshot cursors (T14 merged as `5d1b404`) and the versioned hybrid API (T15 awaiting review). The legacy `/projects/search` contract is unchanged; see [T15 evidence](../execution-plans/hybrid-search/T15_EVIDENCE.md).
 
 ## Setup
 
@@ -425,6 +425,59 @@ Rollback is a code revert with no migration or stored data; the cursor settings
 are inert without a caller. See
 [T14 evidence](../execution-plans/hybrid-search/T14_EVIDENCE.md) for the
 tests-first record and limits.
+
+## Versioned hybrid API (T15, awaiting review)
+
+`app.api.archive.archive_router(settings, current, identity, hybrid)` adds
+`POST /v1/projects/search` and `GET /v1/archive/status` to the existing app
+factory. Both require the normal session guard and share the discovery rate
+limit and body limit. Search accepts a 2-1000 character `idea`, `page_size`
+1-50 (default 20), an optional bounded cursor and typed `language`/`license`
+filters; unknown fields are rejected. It always runs both T13 sources and pages
+only through the T14 `HybridPager`. Later pages run `next_page` through the T13
+bounded executor with the remaining request deadline.
+
+The injected `FusedRevalidator` adapts fused cards to T10
+`EligibilityService.check`: archived cards become `{repo_id, revision,
+chunk_id}` hits, live-only cards are freshly re-read through
+`ArchiveGitHubReader.fetch_metadata` and passed as `live`, and only freshly
+verified public/eligible repositories are served. A failed fresh read drops the
+card (fail closed); stored snapshot metadata is never reused as the check.
+Successful live-only reads are cached by numeric repository ID with an absolute
+expiry of at most 15 minutes and a bounded size, so a warm later page performs
+no HTTP. Cache misses are fetched with bounded concurrency and stop at the
+remaining deadline minus a small margin; anything unverified is dropped, so a
+slow source yields a short page instead of a timeout. Rechecks keep the
+worker-only `ARCHIVE_GITHUB_TOKEN` reader because T10's archive path already
+depends on it and it refuses end-user OAuth tokens. `generation` is the pinned
+embedding manifest revision plus `rrf-v1` and must stay constant on every page;
+the account is the authenticated numeric `github_id`.
+
+Cards keep the legacy fields and add `sources`, `freshness`, `license`,
+`license_conflict`, `matched_section`, `snippet`, `rank` and `rrf_score`; rank
+scores are not percentages. Pages include `next_cursor`, `has_more`,
+`total: null`, `degraded`, per-source health, `archive_as_of` and
+`ranking_version`. Later pages repeat the first page's per-source health
+because they never re-query either source. `ok`/`degraded`/`empty` are served;
+`incomplete`, `busy`, timeout and unavailable are typed retryable errors;
+invalid and expired cursors are typed client errors. `GET /v1/archive/status`
+returns only sanitized lifecycle facts (no paths, tokens or exception text) and
+never invents a last success. It reads the catalogue through a read-only SQLite
+URI and never constructs or migrates `ArchiveStore`; a missing, unreadable or
+wrong-schema catalogue reports `unknown` with null counts.
+
+`app.services.hybrid_runtime.HybridRuntime` builds the model, Milvus, archive
+store/reader and services on first use, never at import or boot. A successful
+embedding adapter is retained across failed builds, and a failed build is cached
+for `HYBRID_BUILD_RETRY_SECONDS` (default 30 s). The route waits at most
+`HYBRID_BUILD_WAIT_SECONDS` (default 1 s) for the first build and otherwise
+returns retryable `SEARCH_UNAVAILABLE` while the build continues. Missing
+signing key/model/Milvus/archive configuration returns a typed
+`SEARCH_UNAVAILABLE` while the legacy API keeps serving. Production v1 search
+also needs `ARCHIVE_GITHUB_TOKEN` for fresh public reads. Real-stack behaviour
+is verified by T26, not by these fake-only tests. Rollback is a code revert with
+no migration or stored data. See
+[T15 evidence](../execution-plans/hybrid-search/T15_EVIDENCE.md).
 
 ## Durable worker state (T17, merged)
 
