@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -138,12 +139,22 @@ def archive_router(settings, current, identity, hybrid):
         user, token = identity(request)
         language, license_value = filters(body.filters)
         try:
-            target = await asyncio.to_thread(hybrid.target)
+            target = await asyncio.wait_for(
+                asyncio.to_thread(hybrid.target),
+                timeout=settings.hybrid_build_wait_seconds,
+            )
+        except TimeoutError:
+            raise error(
+                503,
+                "SEARCH_UNAVAILABLE",
+                "Search is starting. Try again shortly.",
+                retryable=True,
+            ) from None
         except HybridUnavailable:
             raise error(
                 503, "SEARCH_UNAVAILABLE", "Hybrid search is not configured."
             ) from None
-        deadline = asyncio.get_running_loop().time() + settings.hybrid_search_budget
+        deadline = time.monotonic() + settings.hybrid_search_budget
         try:
             if body.cursor is None:
                 page = await target.pager.first_page(
@@ -156,17 +167,28 @@ def archive_router(settings, current, identity, hybrid):
                     license=license_value,
                 )
             else:
+
+                def later_page():
+                    revalidator = getattr(target, "revalidator", None)
+                    if revalidator is not None:
+                        revalidator.begin(deadline)
+                    try:
+                        return target.pager.next_page(
+                            account=user["github_id"],
+                            idea=body.idea,
+                            cursor=body.cursor,
+                            page_size=body.page_size,
+                            generation=target.generation,
+                            language=language,
+                            license=license_value,
+                        )
+                    finally:
+                        if revalidator is not None:
+                            revalidator.end()
+
                 page = await target.executor.run(
-                    lambda: target.pager.next_page(
-                        account=user["github_id"],
-                        idea=body.idea,
-                        cursor=body.cursor,
-                        page_size=body.page_size,
-                        generation=target.generation,
-                        language=language,
-                        license=license_value,
-                    ),
-                    timeout=deadline - asyncio.get_running_loop().time(),
+                    later_page,
+                    timeout=deadline - time.monotonic(),
                 )
         except CursorExpired:
             raise error(

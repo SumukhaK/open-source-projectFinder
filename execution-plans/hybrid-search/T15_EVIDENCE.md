@@ -44,6 +44,20 @@ Request body (extra fields are rejected):
   verified public/eligible repositories are kept. Reader or identity failures
   fail closed by dropping the card. Stored snapshot metadata is never reused as
   the visibility check.
+- Live-only rechecks first consult a bounded, absolute-expiry TTL cache keyed
+  by numeric repository ID (at most 15 minutes), so a warm later page performs
+  no HTTP. Misses are fetched with bounded concurrency and stop at the
+  remaining deadline minus a small margin; anything not verified by then is
+  dropped, so the page is short instead of a request timeout. Private,
+  archived or identity-mismatched metadata is never cached and is dropped by
+  T10.
+- Rechecks use the worker-only `ARCHIVE_GITHUB_TOKEN` reader. T10's archive
+  path already depends on that reader, and it explicitly refuses end-user
+  OAuth tokens; a per-user token would add per-user rate-limit coupling
+  without removing the worker credential dependency.
+- Every page repeats the first page's per-source `status`/`incomplete`/
+  `reason`/`retry_after` health. A later page never re-queries either source,
+  so this is stored first-page health, not a new probe.
 - Response items keep the existing card fields and add `sources`,
   `freshness` (`live`, `archive` or `live+archive`), `license`,
   `license_conflict`, `matched_section`, `snippet`, `rank` and `rrf_score`.
@@ -70,10 +84,13 @@ Request body (extra fields are rejected):
 - `archive_as_of` stays `null` and no last-success is invented: T17/T19 own
   real lifecycle data. `latest_run` is the latest recorded `archive_runs` row
   with its honest `completed` flag, not a claim of a successful refresh.
-- No filesystem path, token, exception text or secret is returned. On a
-  platform without the private POSIX archive filesystem, or when the
-  catalogue cannot be read, `state` is `unknown` and the numeric fields stay
-  `null`; the endpoint still returns `200`.
+- No filesystem path, token, exception text or secret is returned. Status
+  reads the catalogue through a read-only SQLite URI
+  (`file:<path>?mode=ro`, `uri=True`); it never constructs `ArchiveStore` and
+  therefore never creates, migrates, locks or repairs the catalogue. A missing
+  file, an unreadable file or an unexpected application ID/schema version
+  leaves `state` at `unknown` with null counts; the endpoint still returns
+  `200`. An initialized catalogue returns its counts on Windows and Linux.
 
 ### Lazy runtime
 
@@ -82,15 +99,22 @@ never at import or app boot:
 
 1. check `HYBRID_CURSOR_SIGNING_KEY` (at least 32 characters);
 2. load the pinned embedding model through the public `EmbeddingAdapter.load()`;
+   a successful adapter is retained across failed Milvus/archive attempts, so
+   an outage does not reload the model on every request;
 3. connect Milvus (the SDK is imported locally, after the key/model checks);
 4. open the private archive store and the bounded public archive reader;
 5. construct the T10 eligibility service, T13 search service, T14 pager and
    the revalidator.
 
 Any failure raises `HybridUnavailable`, which the route maps to
-`503 SEARCH_UNAVAILABLE`. The first build runs in a worker thread. Missing
-signing key, model, Milvus or archive reader never stops boot and never breaks
-the legacy `POST /projects/search` route.
+`503 SEARCH_UNAVAILABLE`. The route waits at most
+`HYBRID_BUILD_WAIT_SECONDS` (default 1 s) for the first build; if it is still
+running, the route returns retryable `503 SEARCH_UNAVAILABLE` while the build
+continues in its worker thread. A failed build is cached for
+`HYBRID_BUILD_RETRY_SECONDS` (default 30 s, 0 disables the backoff) and raises
+immediately during that window. Missing signing key, model, Milvus or archive
+reader never stops boot and never breaks the legacy `POST /projects/search`
+route.
 
 `backend/app/discovery.py` extracts the existing decrypted-credential helper as
 `credentials(store, cipher, current)`; the legacy discovery router and the v1
@@ -136,6 +160,53 @@ name; `archive_counts` distinguishes an empty catalogue from recorded runs;
 status never invents a last success and contains no path/error text; and the
 signing key is checked before the embedding model is loaded.
 
+## Review-fix record (2026-11-02)
+
+Four review findings were addressed on the same branch and PR:
+
+1. `GET /v1/archive/status` now reads the catalogue through
+   `sqlite3.connect("file:<path>?mode=ro", uri=True)` and never constructs
+   `ArchiveStore`. Missing/unreadable files and unexpected application
+   ID/schema versions stay `unknown` with null counts. A fresh path leaves no
+   file or parent directory behind; an initialized catalogue still returns
+   counts.
+2. The lazy runtime retains a successfully loaded `EmbeddingAdapter` across
+   failed builds, caches a failed build for `HYBRID_BUILD_RETRY_SECONDS`
+   (default 30 s), and the route waits at most `HYBRID_BUILD_WAIT_SECONDS`
+   (default 1 s) before returning retryable `503 SEARCH_UNAVAILABLE` while the
+   build continues.
+3. `FusedRevalidator` caches successful live-only visibility metadata by
+   numeric repository ID (absolute expiry, at most 15 minutes, bounded size;
+   T10's own cache is private and its TTL slides on reuse, so the revalidator
+   keeps a small absolute-expiry cache), fetches misses with bounded
+   concurrency, stops at the remaining deadline minus a small margin, and drops
+   anything unverified (short page). A repository that became private is
+   dropped and is not cached. The worker-only `ARCHIVE_GITHUB_TOKEN` reader
+   remains required for the documented T10 identity/archive reasons.
+4. Later pages explicitly repeat the first page's source health.
+
+| Step | Command | Result |
+| --- | --- | --- |
+| Review-fix RED | `python -m pytest backend/tests/test_archive_api.py backend/tests/test_hybrid_runtime.py backend/tests/test_fused_cursor.py backend/tests/test_hybrid_search.py -q` | 12 failed, 129 passed, exit 1: read-only status, model reuse/backoff, bounded build wait, warm/cold cache, concurrency and deadline assertions |
+| Review-fix GREEN focused | same command | 141 passed, exit 0 |
+| Affected existing tests | `python -m pytest backend/tests/test_archive_api.py backend/tests/test_hybrid_runtime.py backend/tests/test_discovery.py backend/tests/test_fused_cursor.py backend/tests/test_hybrid_search.py backend/tests/test_eligibility.py backend/tests/test_auth.py backend/tests/test_crashes.py backend/tests/test_body_limit.py -q` | 276 passed, exit 0 |
+| Full suite | `python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch --cov-report=term-missing --cov-report=json:reports/backend-coverage.json --junitxml=reports/backend-tests.xml -q` | 951 passed, 65 skipped, 1 warning, exit 0 |
+| Coverage gate | `python scripts/quality.py coverage reports/backend-coverage.json` | 93.4% combined, 91.1% branches, exit 0; unchanged 90/80 policy |
+| Ruff check | `python -m ruff check backend scripts` | All checks passed, exit 0 |
+| Ruff format | `python -m ruff format --check backend scripts` | 65 files already formatted, exit 0 |
+| Bandit | `python -m bandit -r backend/app -f json -o reports/bandit.json` | 0 findings, exit 0 |
+| Whitespace | `git diff --check` | exit 0 |
+| Secret inspection | changed-file scan for credential patterns and ignored secret files | no credential-like value or secret file staged |
+
+The review-fix tests cover: a fresh status path leaves no catalogue file and
+returns `unknown`; an initialized catalogue returns counts without migrating;
+missing and unexpected-schema catalogues are rejected; the model loads once
+across two failed builds and the backoff reuses it; a slow first build returns
+retryable `SEARCH_UNAVAILABLE` within the bound; a warm 20-card cache performs
+no HTTP; a cold slow fetch returns a short page before the deadline; concurrent
+fetches stay bounded; a repository that became private is dropped and not
+cached; and the cache expires at its absolute deadline.
+
 ## Limits and handoff
 
 - **Real-stack run not run (T26 owns it).** No Docker, Milvus, embedding
@@ -148,10 +219,11 @@ signing key is checked before the embedding model is loaded.
 - **No exact global total.** `total` is always `null`; source totals are never
   added.
 - **Status is honest but shallow.** `archive_as_of` stays `null` until a later
-  lifecycle task supplies it. On Windows the private POSIX catalogue cannot be
-  opened, so status reports `state: "unknown"`; on Linux an empty catalogue
-  reports `uninitialized` and a populated one `initialized`. `coverage` stays
-  `unknown` because T13 does not supply a curated/partial coverage fact.
+  lifecycle task supplies it. Status opens the catalogue read-only on Windows
+  and Linux, so an empty catalogue reports `uninitialized`, a populated one
+  `initialized`, and a missing/unreadable/wrong-schema catalogue `unknown`;
+  `coverage` stays `unknown` because T13 does not supply a curated/partial
+  coverage fact.
 - **Serving prerequisites.** Production v1 search needs the signing key, the
   cached pinned model, a reachable Milvus collection, the private archive
   catalogue and `ARCHIVE_GITHUB_TOKEN` for fresh public reads. Any missing

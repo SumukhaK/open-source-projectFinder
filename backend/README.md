@@ -443,22 +443,35 @@ chunk_id}` hits, live-only cards are freshly re-read through
 `ArchiveGitHubReader.fetch_metadata` and passed as `live`, and only freshly
 verified public/eligible repositories are served. A failed fresh read drops the
 card (fail closed); stored snapshot metadata is never reused as the check.
-`generation` is the pinned embedding manifest revision plus `rrf-v1` and must
-stay constant on every page; the account is the authenticated numeric
-`github_id`.
+Successful live-only reads are cached by numeric repository ID with an absolute
+expiry of at most 15 minutes and a bounded size, so a warm later page performs
+no HTTP. Cache misses are fetched with bounded concurrency and stop at the
+remaining deadline minus a small margin; anything unverified is dropped, so a
+slow source yields a short page instead of a timeout. Rechecks keep the
+worker-only `ARCHIVE_GITHUB_TOKEN` reader because T10's archive path already
+depends on it and it refuses end-user OAuth tokens. `generation` is the pinned
+embedding manifest revision plus `rrf-v1` and must stay constant on every page;
+the account is the authenticated numeric `github_id`.
 
 Cards keep the legacy fields and add `sources`, `freshness`, `license`,
 `license_conflict`, `matched_section`, `snippet`, `rank` and `rrf_score`; rank
 scores are not percentages. Pages include `next_cursor`, `has_more`,
 `total: null`, `degraded`, per-source health, `archive_as_of` and
-`ranking_version`. `ok`/`degraded`/`empty` are served; `incomplete`, `busy`,
-timeout and unavailable are typed retryable errors; invalid and expired cursors
-are typed client errors. `GET /v1/archive/status` returns only sanitized
-lifecycle facts (no paths, tokens or exception text) and never invents a last
-success.
+`ranking_version`. Later pages repeat the first page's per-source health
+because they never re-query either source. `ok`/`degraded`/`empty` are served;
+`incomplete`, `busy`, timeout and unavailable are typed retryable errors;
+invalid and expired cursors are typed client errors. `GET /v1/archive/status`
+returns only sanitized lifecycle facts (no paths, tokens or exception text) and
+never invents a last success. It reads the catalogue through a read-only SQLite
+URI and never constructs or migrates `ArchiveStore`; a missing, unreadable or
+wrong-schema catalogue reports `unknown` with null counts.
 
 `app.services.hybrid_runtime.HybridRuntime` builds the model, Milvus, archive
-store/reader and services on first use, never at import or boot. Missing
+store/reader and services on first use, never at import or boot. A successful
+embedding adapter is retained across failed builds, and a failed build is cached
+for `HYBRID_BUILD_RETRY_SECONDS` (default 30 s). The route waits at most
+`HYBRID_BUILD_WAIT_SECONDS` (default 1 s) for the first build and otherwise
+returns retryable `SEARCH_UNAVAILABLE` while the build continues. Missing
 signing key/model/Milvus/archive configuration returns a typed
 `SEARCH_UNAVAILABLE` while the legacy API keeps serving. Production v1 search
 also needs `ARCHIVE_GITHUB_TOKEN` for fresh public reads. Real-stack behaviour

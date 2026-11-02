@@ -131,10 +131,19 @@ class FakeService:
 
 
 class FakeRuntime:
-    def __init__(self, pager, *, generation=GENERATION, status=None, executor=None):
+    def __init__(
+        self,
+        pager,
+        *,
+        generation=GENERATION,
+        status=None,
+        executor=None,
+        revalidator=None,
+    ):
         self.pager = pager
         self.generation = generation
         self.executor = executor or BoundedExecutor(2, 4)
+        self.revalidator = revalidator
         self.status_data = status or {
             "state": "uninitialized",
             "coverage": "unknown",
@@ -146,6 +155,7 @@ class FakeRuntime:
             pager=self.pager,
             generation=self.generation,
             executor=self.executor,
+            revalidator=self.revalidator,
         )
 
     def status(self):
@@ -543,6 +553,74 @@ def test_later_page_revalidation_is_bounded_by_the_request_deadline(serve):
         assert second.status_code == 503
         assert second.json()["detail"]["code"] == "SEARCH_TIMEOUT"
         assert second.json()["detail"]["retryable"] is True
+
+
+def test_later_page_stops_at_the_deadline_and_serves_a_short_page(serve):
+    cards = [card(rank, rank) for rank in range(1, 21)]
+
+    class SlowReader:
+        def __init__(self):
+            self.calls = []
+
+        def fetch_metadata(self, repo_id, full_name):
+            self.calls.append(repo_id)
+            time.sleep(1)
+            return SimpleNamespace(
+                response=SimpleNamespace(body=json.dumps(metadata(repo_id)))
+            )
+
+    service = FakeService(result(cards))
+    revalidator = FusedRevalidator(FakeEligibility(set(range(1, 21))), SlowReader())
+    runtime = FakeRuntime(
+        pager(service, revalidate=revalidator), revalidator=revalidator
+    )
+    with serve(runtime, hybrid_search_budget=0.6) as (client, _):
+        first = client.post(
+            "/v1/projects/search",
+            headers=HEADERS,
+            json={"idea": IDEA, "page_size": 1},
+        )
+        assert first.status_code == 200
+        started = time.monotonic()
+        second = client.post(
+            "/v1/projects/search",
+            headers=HEADERS,
+            json={
+                "idea": IDEA,
+                "page_size": 20,
+                "cursor": first.json()["next_cursor"],
+            },
+        )
+        elapsed = time.monotonic() - started
+        assert second.status_code == 200
+        assert len(second.json()["items"]) < 19
+        assert elapsed < 0.6
+
+
+def test_a_slow_first_build_returns_retryable_unavailable_within_the_bound(serve):
+    class SlowRuntime:
+        def __init__(self):
+            self.calls = 0
+
+        def target(self):
+            self.calls += 1
+            time.sleep(1)
+            return SimpleNamespace(pager=None, generation=GENERATION, executor=None)
+
+        def status(self):
+            return {}
+
+    runtime = SlowRuntime()
+    with serve(runtime, hybrid_build_wait_seconds=0.1) as (client, _):
+        started = time.monotonic()
+        response = client.post(
+            "/v1/projects/search", headers=HEADERS, json={"idea": IDEA}
+        )
+        elapsed = time.monotonic() - started
+        assert response.status_code == 503
+        assert response.json()["detail"]["code"] == "SEARCH_UNAVAILABLE"
+        assert response.json()["detail"]["retryable"] is True
+        assert elapsed < 0.4
 
 
 def test_expired_cursor_restarts_the_search(serve):
