@@ -46,9 +46,12 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   const colors = getThemeColors(mode);
   const account = accountKey(user);
   const previousAccount = useRef(account);
-  const lastIdea = useRef('');
+  const listSeq = useRef(0);
+  const detailsSeq = useRef(0);
   const [tab, setTab] = useState<'Discover' | 'Favourites'>('Discover');
   const [idea, setIdea] = useState('');
+  const [activeIdea, setActiveIdea] = useState('');
+  const [fromCache, setFromCache] = useState(false);
   const [results, setResults] = useState<SearchResults | null>(null);
   const [favourites, setFavourites] = useState<Project[]>([]);
   const [error, setError] = useState('');
@@ -66,11 +69,18 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
     if (previousAccount.current !== account) {
       const previous = previousAccount.current;
       previousAccount.current = account;
+      listSeq.current += 1;
+      detailsSeq.current += 1;
       setResults(null);
       setFavourites([]);
       setSelected(null);
       setDetails(null);
+      setDetailsLoading(false);
+      setLoading(false);
+      setLoadingMore(false);
       setIdea('');
+      setActiveIdea('');
+      setFromCache(false);
       setError('');
       setFavouritesError('');
       void clearDiscoveryCache(previous);
@@ -81,7 +91,10 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
         loadCachedFavourites(account),
       ]);
       if (!active) return;
-      if (cachedResults) setResults(cachedResults.data);
+      if (cachedResults) {
+        setResults(cachedResults.data);
+        setFromCache(true);
+      }
       if (cachedFavourites) setFavourites(cachedFavourites.data);
       try {
         const data = await getFavourites(token);
@@ -120,36 +133,51 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       setError('Describe your idea');
       return;
     }
-    lastIdea.current = text;
+    const seq = ++listSeq.current;
+    setActiveIdea(text);
+    setFromCache(false);
     setLoading(true);
+    setLoadingMore(false);
     setError('');
     setResults(null);
     try {
       const data = await searchProjects(token, { idea: text, page: 1 });
+      if (seq !== listSeq.current) return;
       setResults(data);
       await saveCachedResults(account, data);
     } catch (failure) {
+      if (seq !== listSeq.current) return;
       const message = failureMessage(failure, 'Search failed. Please try again.');
       if (message) setError(message);
     } finally {
-      setLoading(false);
+      if (seq === listSeq.current) setLoading(false);
     }
   };
 
   const loadMore = async () => {
-    if (!results || loadingMore) return;
+    if (!results || !activeIdea || fromCache || loading || loadingMore) return;
+    const seq = ++listSeq.current;
     setLoadingMore(true);
     setError('');
     try {
-      const data = await searchProjects(token, { idea: lastIdea.current, page: results.page + 1 });
-      const combined = { ...data, items: [...results.items, ...data.items] };
+      const data = await searchProjects(token, { idea: activeIdea, page: results.page + 1 });
+      if (seq !== listSeq.current) return;
+      const items = [...results.items];
+      const seen = new Set(items.map(item => item.full_name));
+      for (const item of data.items) {
+        if (seen.has(item.full_name)) continue;
+        seen.add(item.full_name);
+        items.push(item);
+      }
+      const combined = { ...data, items };
       setResults(combined);
       await saveCachedResults(account, combined);
     } catch (failure) {
+      if (seq !== listSeq.current) return;
       const message = failureMessage(failure, 'Unable to load more results. Please try again.');
       if (message) setError(message);
     } finally {
-      setLoadingMore(false);
+      if (seq === listSeq.current) setLoadingMore(false);
     }
   };
 
@@ -183,18 +211,30 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   };
 
   const openDetails = async (project: Project) => {
+    const seq = ++detailsSeq.current;
     setSelected(project);
     setDetails(null);
     setDetailsError('');
     setDetailsLoading(true);
     try {
-      setDetails(await getProject(token, project.full_name));
+      const data = await getProject(token, project.full_name);
+      if (seq !== detailsSeq.current) return;
+      setDetails(data);
     } catch (failure) {
+      if (seq !== detailsSeq.current) return;
       const message = failureMessage(failure, 'Unable to load this project. Please try again.');
       if (message) setDetailsError(message);
     } finally {
-      setDetailsLoading(false);
+      if (seq === detailsSeq.current) setDetailsLoading(false);
     }
+  };
+
+  const closeDetails = () => {
+    detailsSeq.current += 1;
+    setSelected(null);
+    setDetails(null);
+    setDetailsError('');
+    setDetailsLoading(false);
   };
 
   const leave = async () => {
@@ -203,6 +243,9 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   };
 
   const canLoadMore = results !== null
+    && activeIdea !== ''
+    && !fromCache
+    && !loading
     && results.items.length > 0
     && results.items.length < results.total
     && results.page < discoveryConfig.maxPage;
@@ -234,7 +277,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
         error={detailsError}
         saved={isSaved(selected.full_name)}
         busy={favouriteBusy === selected.full_name}
-        onBack={() => { setSelected(null); setDetails(null); setDetailsError(''); }}
+        onBack={closeDetails}
         onToggle={() => void toggleFavourite(selected)}
       /> : <>
         <View style={styles.tabs}>
@@ -272,6 +315,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
           {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.error, { color: colors.text }]}>{error}</Text> : null}
           {results?.incomplete ? <Text style={[styles.notice, { color: colors.text }]}>Results may be partial. GitHub returned an incomplete set.</Text> : null}
           {results && results.items.length === 0 && !results.incomplete ? <Text style={[styles.notice, { color: colors.muted }]}>No projects matched your idea. Try different keywords.</Text> : null}
+          {fromCache && results && results.items.length < results.total ? <Text style={[styles.notice, { color: colors.muted }]}>Showing your last results. Search again to load more.</Text> : null}
           {results?.items.map(project => <ProjectCard
             key={project.full_name}
             project={project}

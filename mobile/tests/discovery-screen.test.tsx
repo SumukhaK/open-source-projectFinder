@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppProvider } from '../src/app/provider';
 import { DiscoveryScreen } from '../src/features/discovery/components/discovery-screen';
@@ -347,4 +347,65 @@ test('the favourites tab starts with an empty state', async () => {
   const screen = await open();
   await fireEvent.press(screen.getByRole('tab', { name: 'Favourites' }));
   expect(screen.getByText('No favourites yet.')).toBeTruthy();
+});
+
+test('a cached page without an idea offers no load more and explains why', async () => {
+  await saveCachedResults('123', results([project], 1, false, 5));
+  const screen = await open();
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  expect(screen.queryByText('Load more')).toBeNull();
+  expect(screen.getByText('Showing your last results. Search again to load more.')).toBeTruthy();
+  expect(api.searchProjects).not.toHaveBeenCalled();
+});
+
+test('a slow load-more response cannot overwrite a newer search', async () => {
+  let resolveMore!: (value: ReturnType<typeof results>) => void;
+  jest.mocked(api.searchProjects)
+    .mockResolvedValueOnce(results([project], 1, false, 2))
+    .mockReturnValueOnce(new Promise(resolve => { resolveMore = resolve; }))
+    .mockResolvedValueOnce(results([second], 1, false, 1));
+  const screen = await open();
+  await search(screen, 'first idea');
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  await fireEvent.press(screen.getByText('Load more'));
+  await waitFor(() => expect(screen.getByText('Loading more')).toBeTruthy());
+  await fireEvent.changeText(screen.getByLabelText('Project idea'), 'second idea');
+  await fireEvent.press(screen.getByText('Search projects'));
+  await waitFor(() => expect(screen.getByText('navigator')).toBeTruthy());
+  await act(async () => { resolveMore(results([project, second], 2, false, 2)); });
+  expect(screen.getByText('navigator')).toBeTruthy();
+  expect(screen.queryByText('compass')).toBeNull();
+});
+
+test('details opened later win when an earlier response resolves last', async () => {
+  jest.mocked(api.searchProjects).mockResolvedValue(results([project, second]));
+  let resolveA!: (value: typeof details) => void;
+  jest.mocked(api.getProject)
+    .mockReturnValueOnce(new Promise(resolve => { resolveA = resolve; }))
+    .mockResolvedValueOnce({ ...details, name: 'navigator', full_name: 'octocat/navigator', readme: 'Navigator readme' });
+  const screen = await open();
+  await search(screen);
+  await waitFor(() => expect(screen.getByText('navigator')).toBeTruthy());
+  await fireEvent.press(screen.getByLabelText('Open octocat/compass'));
+  await fireEvent.press(screen.getByLabelText('Go back'));
+  await fireEvent.press(screen.getByLabelText('Open octocat/navigator'));
+  await waitFor(() => expect(screen.getByText('Navigator readme')).toBeTruthy());
+  await act(async () => { resolveA({ ...details, readme: 'Compass readme' }); });
+  expect(screen.getByText('Navigator readme')).toBeTruthy();
+  expect(screen.queryByText('Compass readme')).toBeNull();
+});
+
+test('a repeated project across pages is shown once', async () => {
+  const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  jest.mocked(api.searchProjects)
+    .mockResolvedValueOnce(results([project], 1, false, 3))
+    .mockResolvedValueOnce(results([project, second], 2, false, 3));
+  const screen = await open();
+  await search(screen);
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  await fireEvent.press(screen.getByText('Load more'));
+  await waitFor(() => expect(screen.getByText('navigator')).toBeTruthy());
+  expect(screen.getAllByText('compass')).toHaveLength(1);
+  expect(consoleError.mock.calls.flat().join(' ')).not.toContain('same key');
+  consoleError.mockRestore();
 });
