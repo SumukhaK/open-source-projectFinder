@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { AccessibilityInfo } from 'react-native';
-import { AuthScreen } from '../src/features/auth/components/auth-screen';
+import { AuthScreen, AuthSessionView } from '../src/features/auth/components/auth-screen';
 import { AppProvider } from '../src/app/provider';
 import * as auth from '../src/features/auth/api/auth';
 import * as storage from '../src/features/auth/session-storage';
@@ -71,6 +71,34 @@ test('failed logout keeps the account until server revocation can be retried', a
   expect(storage.clearToken).not.toHaveBeenCalled();
   expect(screen.getByText('Signed in as @octocat')).toBeTruthy();
 });
+test('a signed-in render prop receives the session token and sign-out action', async () => {
+  jest.mocked(storage.readToken).mockResolvedValue('saved');
+  jest.mocked(auth.getUser).mockResolvedValue(user);
+  jest.mocked(auth.logout).mockResolvedValue(undefined);
+  const renderSignedIn = jest.fn((_session: AuthSessionView) => null);
+  await render(<AppProvider><AuthScreen renderSignedIn={renderSignedIn} /></AppProvider>);
+  await waitFor(() => expect(renderSignedIn).toHaveBeenCalled());
+  expect(renderSignedIn.mock.calls[0][0]).toEqual(expect.objectContaining({
+    token: 'saved', user, signingOut: false, accountError: '',
+  }));
+  const session = renderSignedIn.mock.calls[0][0];
+  session.signOut();
+  await waitFor(() => expect(auth.logout).toHaveBeenCalledWith('saved'));
+  expect(storage.clearToken).toHaveBeenCalled();
+});
+
+test('an expired session clears local auth without a server logout', async () => {
+  jest.mocked(storage.readToken).mockResolvedValue('saved');
+  jest.mocked(auth.getUser).mockResolvedValue(user);
+  const renderSignedIn = jest.fn((_session: AuthSessionView) => null);
+  const screen = await render(<AppProvider><AuthScreen renderSignedIn={renderSignedIn} /></AppProvider>);
+  await waitFor(() => expect(renderSignedIn).toHaveBeenCalled());
+  await renderSignedIn.mock.calls[0][0].onUnauthorized();
+  expect(storage.clearToken).toHaveBeenCalled();
+  expect(auth.logout).not.toHaveBeenCalled();
+  await waitFor(() => expect(screen.getByText('Continue with GitHub')).toBeTruthy());
+});
+
 test('secure storage failure revokes the new server session', async () => {
   jest.mocked(auth.signIn).mockResolvedValue({ token: 'new', expires_at: 9999999999, user });
   jest.mocked(storage.saveToken).mockRejectedValue(new Error('storage failed'));
