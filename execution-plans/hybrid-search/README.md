@@ -19,7 +19,7 @@ Start with [the copy-ready session prompt](OPENCODE_PROMPT.md), set a task ID an
 2. T03-T09: isolated catalogue, bounded GitHub reads, deterministic chunks, raw storage, Milvus adapter, crash-safe publication and one-repository vertical slice.
 3. T10-T15: source eligibility/public identity, GitHub adapter, repository RRF, concurrent hybrid service, fused cursors and authenticated versioned API.
 4. T16-T23: partitioned discovery, durable fenced runs, bounded backfill, content-aware weekly refresh, suppression/purge, backup, quarantined restore and host schedule preparation.
-5. T24-T26: migrate the mobile discovery foundation (once it is merged into main through its own reviewed PR; prerequisite P2 in [READINESS](READINESS.md#3-decision-gates)), one combined UI and real HTTP/Milvus integration.
+5. T24-T26: migrate the mobile discovery foundation (prerequisite P2 merged via PR #53 as `1a67d63`; see [READINESS](READINESS.md#3-decision-gates)), one combined UI and real HTTP/Milvus integration.
 6. T27-T29: human-judged relevance, measured capacity/fairness and rollout/recovery evidence.
 7. T30: upkeep — apply the deferred non-blocking improvements collected from every review, in small slices, after T29.
 
