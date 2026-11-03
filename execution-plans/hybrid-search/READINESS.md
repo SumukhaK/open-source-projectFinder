@@ -19,7 +19,7 @@ Inspected 2026-10-24 after `git fetch origin --prune`. The base is the current `
 | Handbook PR #11 | [PR #11](https://github.com/SumukhaK/open-source-projectFinder/pull/11) merged as `2e4a9ff353de7a137c49fff0c99bea1765a357a2` at 2026-10-24T10:01:57Z; reviewed head `5cba2a4b46315873790629ea55652c9dc64c3f79`; [CI 40084144348](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40084144348) passed | Merged; this task's base |
 | Search PR #10 | [PR #10](https://github.com/SumukhaK/open-source-projectFinder/pull/10) merged as `1e681ae5fe1bb309e793c225aa0513335d95ba15`; reviewed head `3b80dad4fefb6ee5e8008ffbbe9217b22b501e2e`; [CI 40083939979](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40083939979) passed | Merged; present in base |
 | Security PR #12 | [PR #12](https://github.com/SumukhaK/open-source-projectFinder/pull/12) merged as `be74b1a3b5f3a583787f1d40d62b627881bca005`; reviewed head `163e77deb6542d5adc128ed8a49dcf5d543d7388`; [CI 40083752223](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40083752223) passed | Merged; present in base |
-| Mobile discovery foundation | Re-derived from current main on `codex/mobile-discovery-foundation`; [PR #53](https://github.com/SumukhaK/open-source-projectFinder/pull/53) contains the mobile feature, tests and docs. Local evidence is recorded in [TRACKER](TRACKER.md#blockers-and-decisions). | **Awaiting review**; not merged. Blocks T24, T25, T26 until review and merge. |
+| Mobile discovery foundation | Re-derived from current main on `codex/mobile-discovery-foundation`; [PR #53](https://github.com/SumukhaK/open-source-projectFinder/pull/53) contains the mobile feature, tests and docs. Local evidence is recorded in [TRACKER](TRACKER.md#blockers-and-decisions). | **Merged** via PR #53, merged as `1a67d63` (2026-11-03), at reviewed head `3aa190b`. T24 is unblocked. |
 | Open PRs / other origin branches | `gh pr list --state open` returned none; `git ls-remote --heads origin` returned only `main` | Clean baseline |
 
 CI limitation: the merge commit `2e4a9ff` has no separate push-workflow run recorded. The exact reviewed PR #11 head `5cba2a4` passed [CI 40084144348](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40084144348). This record does not claim a separate main-push run.
@@ -67,7 +67,7 @@ Operational prerequisites that are not among the eight decisions:
 | ID | Prerequisite | Status | Blocking tasks |
 | --- | --- | --- | --- |
 | P1 | Dedicated, revocable operator-owned public-read worker GitHub credential | Created privately on the owner's laptop (2026-10-29) and used only for the T09 one-repository pilot; rotation/revocation ownership still to confirm | T04 real reads; T18; T19 |
-| P2 | Reviewed mobile discovery foundation merged into main | **Awaiting review** — [PR #53](https://github.com/SumukhaK/open-source-projectFinder/pull/53); not merged | T24, T25, T26 |
+| P2 | Reviewed mobile discovery foundation merged into main | **Delivered** — [PR #53](https://github.com/SumukhaK/open-source-projectFinder/pull/53) merged as `1a67d63` (2026-11-03) | T24, T25, T26 |
 | P3 | Docker/WSL2/CUDA/Milvus feasibility proven on the operator host | Unverified | T01 acceptance; T07/T13 real GPU claims |
 
 ## 4. Readiness matrix
@@ -86,7 +86,7 @@ T00 is the only task this PR advances. After T00 merges, T01 is the only task wh
 | D7 approved (2026-10-29) | T23 | Daily ~22:00 sweep and Sunday 03:30 refresh (Asia/Kolkata) with catch-up. |
 | D8 method approved (2026-10-29) | T27, T28, T29 | T27 measures the baseline; numeric thresholds need owner approval before the T28/T29 rollout recommendation. |
 | Blocked by P1 | T04 real reads; T18; T19 | Credential now exists (used for the T09 pilot); confirm rotation/revocation ownership before T18/T19. Test transport remains available. |
-| Blocked by P2 | T24, T25, T26 | The mobile discovery foundation is awaiting review in [PR #53](https://github.com/SumukhaK/open-source-projectFinder/pull/53); it is not merged. |
+| Formerly blocked by P2 | T24, T25, T26 | Cleared: the mobile discovery foundation was [PR #53](https://github.com/SumukhaK/open-source-projectFinder/pull/53), merged as `1a67d63` (2026-11-03). T25 and T26 still need their other prerequisites. |
 | Blocked by P3 | T01 acceptance; T07/T13 real GPU claims | Hardware/runtime is unverified; T01 owns the real evidence. |
 
 This matrix does not change any task status in [TRACKER](TRACKER.md). Only a trusted reviewer can accept T00, and only a merge unblocks T01.
@@ -122,7 +122,7 @@ Limitations:
 
 1. Approve or reject D1-D8 with the approved values and a dated evidence link in [REQUEST](REQUEST.md#request-and-decision-boundaries). A recommendation is not consent.
 2. Confirm ownership, rotation and revocation for the P1 worker credential before T04 real reads or T18/T19.
-3. Review the P2 mobile discovery foundation in [PR #53](https://github.com/SumukhaK/open-source-projectFinder/pull/53); it was re-derived from current main rather than copied from the local uncommitted WIP.
+3. Done: the P2 mobile discovery foundation was reviewed and merged as `1a67d63` (2026-11-03) ([PR #53](https://github.com/SumukhaK/open-source-projectFinder/pull/53)); it was re-derived from current main rather than copied from the local uncommitted WIP.
 4. Provide or approve the host/runtime access needed for T01 to prove Docker/WSL2/CUDA/Milvus, or explicitly approve a CPU-only fallback.
 5. Review this PR at its exact head and merge only after required checks pass. T01 must not start until T00 is merged.
 6. ~~Recheck or replace the `node-forge` exception before 2026-11-01.~~ Done: bumped to node-forge 1.4.2 and the exception removed.
