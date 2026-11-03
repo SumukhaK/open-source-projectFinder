@@ -28,11 +28,12 @@ Adapted from [Bulletproof React](https://github.com/alan2207/bulletproof-react/b
 
 - `src/app`: app entry and provider composition.
 - `src/features/auth`: login page, API flow and secure session storage.
+- `src/features/discovery`: authenticated idea search, project details, favourites and account-scoped local cache.
 - `src/features/branding/components`: preserved branding preview component.
 - `src/components`: shared vector mark and accessible animated loader.
 - `src/hooks`: platform accessibility hooks.
 - `src/lib`: theme state and preference resolution.
-- `src/config`: centralized branding and public authentication configuration.
+- `src/config`: centralized branding, public authentication and discovery configuration.
 - `assets/branding`: generated SVG masters and native PNG exports.
 - `scripts`: repeatable asset generation from shared geometry.
 
@@ -42,11 +43,13 @@ Shared code cannot import features or the app; features cannot import the app. C
 
 Saved System / Dark / Light appearance selection; adaptive Android and light/dark/tinted iOS icon assets; themed Android splash; minimal iOS launch background; and a shared Bracket Navigator loader with a pulsing needle, accessible loading status, and a static Reduce Motion fallback. The loader stops when unmounted. The sign-in page uses this loader while restoring, signing in or signing out.
 
+Discovery uses the merged legacy `POST /projects/search`, `GET /projects/{owner}/{name}` and favourites routes through one zod-validated transport module. Results show name, description, stars, language and licence; because the legacy item payload has no licence field, the UI says “Licence not reported” instead of inventing one. Search exposes loading, empty, incomplete (“results may be partial”), rate-limited (honouring `Retry-After`) and generic error states, with page-based load more. Details and favourites use the favourites routes; favourite changes are optimistic and roll back on failure. The last results and favourites are cached per GitHub account in AsyncStorage and cleared on sign-out or account switch. Raw idea text is never persisted. This feature does not call `/v1/projects/search`.
+
 Native splash uses the OS appearance at launch; a saved in-app override is applied after JavaScript restores preferences. There are no artificial launch delays. Native asset changes require rebuilding the app binary. Expo Go and web previews cannot validate release splash screens.
 
 ## Device checks still required
 
-Build release binaries for both platforms and check launcher masks, native splash behavior, theme changes, screen reader output, Reduce Motion, font scaling, and startup on devices. iOS compilation needs macOS or a configured cloud build; this repository does not contain signing credentials or store identifiers. Search and voice features are pending.
+Build release binaries for both platforms and check launcher masks, native splash behavior, theme changes, screen reader output, Reduce Motion, font scaling, and startup on devices. iOS compilation needs macOS or a configured cloud build; this repository does not contain signing credentials or store identifiers. Voice capture and hybrid `/v1` search are pending; authenticated live GitHub search has not been run on a device in this change.
 
 ## Dependency audit
 

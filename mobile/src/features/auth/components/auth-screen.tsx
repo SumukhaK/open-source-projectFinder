@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandLoader } from '../../../components/brand-loader';
@@ -9,7 +9,19 @@ import { useTheme } from '../../../lib/theme';
 import { ApiError, getUser, logout, signIn, User } from '../api/auth';
 import { clearToken, readToken, saveToken } from '../session-storage';
 
-export function AuthScreen({ children }: { children?: React.ReactNode }) {
+export type AuthSessionView = {
+  token: string;
+  user: User;
+  signOut: () => void;
+  signingOut: boolean;
+  accountError: string;
+  onUnauthorized: () => Promise<void>;
+};
+
+export function AuthScreen({ children, renderSignedIn }: {
+  children?: React.ReactNode;
+  renderSignedIn?: React.ComponentType<AuthSessionView>;
+}) {
   const { mode } = useTheme();
   const colors = getThemeColors(mode);
   const [ready, setReady] = useState(false);
@@ -17,7 +29,7 @@ export function AuthScreen({ children }: { children?: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const active = useRef(false);
+  const activeRef = useRef(false);
   useEffect(() => {
     let mounted = true;
     void (async () => {
@@ -37,9 +49,13 @@ export function AuthScreen({ children }: { children?: React.ReactNode }) {
     })();
     return () => { mounted = false; };
   }, []);
-  const authenticate = async () => {
-    if (active.current) return;
-    active.current = true; setBusy(true); setError('');
+  const expireSession = useCallback(async () => {
+    try { await clearToken(); }
+    finally { setToken(null); setUser(null); setError(''); }
+  }, []);
+  const authenticate = useCallback(async () => {
+    if (activeRef.current) return;
+    activeRef.current = true; setBusy(true); setError('');
     try {
       if (token) {
         try { await logout(token); } catch (failure) { if (!(failure instanceof ApiError && failure.status === 401)) throw failure; }
@@ -51,9 +67,14 @@ export function AuthScreen({ children }: { children?: React.ReactNode }) {
         setToken(session.token); setUser(session.user);
       }
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Sign-in failed. Try again.'); }
-    finally { active.current = false; setBusy(false); }
-  };
+    finally { activeRef.current = false; setBusy(false); }
+  }, [token]);
+  const signOut = useCallback(() => { void authenticate(); }, [authenticate]);
   if (!ready) return <View style={styles.loading}><BrandLoader mode={mode} label="Restoring your session" /></View>;
+  const SignedIn = renderSignedIn;
+  if (user && token && SignedIn) return <SignedIn
+    token={token} user={user} signOut={signOut} signingOut={busy} accountError={error} onUnauthorized={expireSession}
+  />;
   return <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]}>
     <ScrollView contentContainerStyle={styles.content}>
       <BrandMark mode={mode} size={112} />
