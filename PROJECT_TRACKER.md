@@ -8,6 +8,62 @@ Plan: retain useful search PR #10; fix inherited Python advisories and verify a 
 
 Dependency delivery complete: [PR #12](https://github.com/SumukhaK/open-source-projectFinder/pull/12) merged as be74b1a3b5f3a583787f1d40d62b627881bca005 after independent review of 163e77deb6542d5adc128ed8a49dcf5d543d7388 and passing [CI 40083752223](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/40083752223). The bounded-array regression failed with 1,001 issues before the scoped Zod upgrade and passes with one rejection afterward; actual Expo plugin/output/MCP schema compatibility tests pass. Verification: 32 backend/policy tests (93.7% combined coverage, 87.5% branches), 29 mobile unit tests plus the real-HTTP auth E2E, lint/type/format/Bandit, deterministic asset generation and Android/iOS/web exports passed. Python audit reports no known vulnerabilities; npm passes the unchanged policy with only the pre-existing node-forge exception. No new exceptions were added. Native-device and authenticated live-GitHub search checks remain outside this tooling change.
 
+## P2 mobile discovery foundation - 2026-11-03
+
+User request (verbatim):
+
+```text
+Deliver prerequisite P2 only: the mobile discovery foundation described in
+execution-plans/hybrid-search/READINESS.md ("Mobile discovery foundation", P2). This is NOT T24;
+do not call /v1 or change hybrid code. Follow AGENTS.md and execution-plans/hybrid-search/EXECUTION_GUIDE.md
+(tests first, Ponytail discipline, one PR, stop for review).
+
+Context (verify, don't assume):
+- Fetch origin/main (at or after 783288d) and create codex/mobile-discovery-foundation FROM it; record the base SHA.
+- Main's mobile app (Expo 57 / RN 0.86 / TypeScript / zod) has only auth and branding features. Follow
+  mobile/README.md structure rules: new code goes in src/features/discovery (+ src/config/discovery.ts);
+  shared code must not import features; compose at src/app; no feature-to-feature imports.
+- Backend contract to consume (already merged, unchanged): authenticated POST /projects/search
+  (idea 2-1000 chars, page 1-50, per_page 1-100, sort stars|forks|updated, order asc|desc; returns items,
+  total, incomplete, page, per_page, sort, order, source), GET /projects/{owner}/{name},
+  GET /favourites, PUT and DELETE /favourites/{owner}/{name}. Read backend/app/discovery.py for exact shapes.
+- An older uncommitted WIP may exist in the operator checkout on branch improved-search-endpoint
+  (mobile/src/features/discovery/, mobile/src/config/discovery.ts, mobile/tests/discovery*.tsx). You may use it
+  as reference only. Re-derive against current main, re-test everything, and do not copy unreviewed files blind.
+
+Build (minimum complete):
+- ONE discovery transport module (for example src/features/discovery/api/discovery.ts) that all search, details
+  and favourites calls go through, reusing the auth feature's session token and API error conventions, with
+  zod-validated responses and the existing request timeout. Keep it isolated so T24 can swap search to
+  /v1/projects/search by changing this module plus its types.
+- Search screen: idea input, submit, a results list (name, description, stars, language, licence),
+  "load more" by page, and explicit states for loading, empty, `incomplete` ("results may be partial",
+  never shown as "no matches"), rate-limited (honour Retry-After), unauthorised (back to sign-in) and generic
+  errors.
+- Details view and favourite toggle backed by the favourites routes.
+- Account-scoped local cache of the last results and favourites via the existing storage pattern. Cleared on
+  logout and account switch. Never persist raw ideas/query history beyond the current screen state.
+- Wire it into src/app behind sign-in. Do not rewrite auth or branding.
+
+Tests (RED first, jest + existing test setup): transport request/response parsing and zod rejection of bad
+payloads; search success/empty/incomplete/429/401/network error; pagination; favourite add/remove with
+optimistic rollback on failure; cache isolation per account and clearing on logout; no idea text written to
+storage. Then GREEN; run npm test (with coverage gate), npm run typecheck, npm run lint, npx expo-doctor,
+npx expo export --platform all, git diff --check and secret inspection. Do not lower coverage or lint gates
+or add audit exceptions.
+
+Do not: call /v1 or touch backend hybrid code (T24/T25); add a source/mode selector; ship worker credentials
+or GitHub tokens in app config; add paid services; claim device/OAuth runs you did not do (mark them blocked).
+
+Docs: update mobile/README.md architecture list, READINESS.md P2 row and TRACKER.md blockers to
+"Awaiting review" with PR link and evidence. Push one PR against main, wait for green CI, report the PR URL,
+full head SHA and verification/limits, and stop. Never merge, approve or write a review marker.
+```
+
+Plan: create `codex/mobile-discovery-foundation` from `783288dc6632ab0044bd49b130d023035cc96554`; write failing jest tests for the transport, search states, pagination, favourites rollback, cache isolation/clearing and idea non-persistence; implement `src/config/discovery.ts`, one zod-validated transport, account-scoped AsyncStorage cache, discovery screens, and an additive signed-in render hook in `AuthScreen`; compose the feature in `src/app`; then run mobile tests/coverage, typecheck, lint, Expo doctor/export, whitespace and secret checks; update README/READINESS/TRACKER and open one PR for review only.
+
+Status: **Awaiting review** in [PR #53](https://github.com/SumukhaK/open-source-projectFinder/pull/53). The merged legacy item payload has no licence field, so the UI shows “Licence not reported” rather than inventing a licence. No `/v1` call, backend hybrid change, source selector or credential was added. Device, simulator and live OAuth/GitHub-search checks remain blocked.
+
 ## Current state
 Core idea received on 2026-10-02. Project name: RepoRadar. Repository: SumukhaK/open-source-projectFinder (private initially). Confirmed stack: Python FastAPI, React mobile client, Milvus, GitHub Search API. Detailed brainstorming remains pending.
 
