@@ -91,9 +91,9 @@ const searchRequestSchema = z.object({
 });
 
 function apiError(response: Response): DiscoveryApiError {
-  const retryAfter = response.headers.get('Retry-After') ?? '60';
+  const retryAfter = response.headers.get('Retry-After');
   const message = response.status === 429
-    ? `Too many requests. Try again in ${retryAfter} seconds.`
+    ? `Too many requests. Try again in ${retryAfter ?? '60'} seconds.`
     : response.status === 401
       ? 'Your session expired. Sign in again.'
       : response.status === 404
@@ -102,7 +102,9 @@ function apiError(response: Response): DiscoveryApiError {
           ? 'Favourite limit reached. Remove a saved project first.'
           : response.status === 422
             ? 'Use a few specific project keywords.'
-            : 'GitHub is temporarily unavailable. Try again later.';
+            : response.status === 503 && retryAfter
+              ? `GitHub is rate limited. Try again in ${retryAfter} seconds.`
+              : 'GitHub is temporarily unavailable. Try again later.';
   return new DiscoveryApiError(message, response.status);
 }
 

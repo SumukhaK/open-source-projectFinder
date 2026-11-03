@@ -75,6 +75,21 @@ test('rate limits honour Retry-After and keep the status for the screen', async 
   expect(failure.message).toBe('Too many requests. Try again in 30 seconds.');
 });
 
+test('rate limits without Retry-After fall back to a one-minute wait', async () => {
+  jest.spyOn(global, 'fetch').mockResolvedValue(response(429) as Response);
+  await expect(searchProjects('session', { idea: 'task manager' })).rejects.toThrow(
+    'Too many requests. Try again in 60 seconds.',
+  );
+});
+
+test('a 503 with Retry-After is reported as a rate limit, not a generic outage', async () => {
+  jest.spyOn(global, 'fetch').mockResolvedValue(response(503, {}, { 'Retry-After': '45' }) as Response);
+  const failure = await searchProjects('session', { idea: 'task manager' }).catch(error => error);
+  expect(failure).toBeInstanceOf(DiscoveryApiError);
+  expect(failure.status).toBe(503);
+  expect(failure.message).toBe('GitHub is rate limited. Try again in 45 seconds.');
+});
+
 test('unauthorised responses keep the 401 status', async () => {
   jest.spyOn(global, 'fetch').mockResolvedValue(response(401) as Response);
   const failure = await searchProjects('session', { idea: 'task manager' }).catch(error => error);
