@@ -85,13 +85,16 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       setFavouritesError('');
       void clearDiscoveryCache(previous);
     }
+    // A search submitted while AsyncStorage is still resolving must win over
+    // the cached page; only restore when the sequence has not moved.
+    const restoreSeq = listSeq.current;
     void (async () => {
       const [cachedResults, cachedFavourites] = await Promise.all([
         loadCachedResults(account),
         loadCachedFavourites(account),
       ]);
       if (!active) return;
-      if (cachedResults) {
+      if (cachedResults && listSeq.current === restoreSeq) {
         setResults(cachedResults.data);
         setFromCache(true);
       }
@@ -141,7 +144,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
     setError('');
     setResults(null);
     try {
-      const data = await searchProjects(token, { idea: text, page: 1 });
+      const data = await searchProjects(token, { idea: text, pageSize: discoveryConfig.pageSize });
       if (seq !== listSeq.current) return;
       setResults(data);
       await saveCachedResults(account, data);
@@ -156,11 +159,17 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
 
   const loadMore = async () => {
     if (!results || !activeIdea || fromCache || loading || loadingMore) return;
+    const nextCursor = results.next_cursor;
+    if (!nextCursor) return;
     const seq = ++listSeq.current;
     setLoadingMore(true);
     setError('');
     try {
-      const data = await searchProjects(token, { idea: activeIdea, page: results.page + 1 });
+      const data = await searchProjects(token, {
+        idea: activeIdea,
+        pageSize: discoveryConfig.pageSize,
+        cursor: nextCursor,
+      });
       if (seq !== listSeq.current) return;
       const items = [...results.items];
       const seen = new Set(items.map(item => item.full_name));
@@ -174,6 +183,17 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       await saveCachedResults(account, combined);
     } catch (failure) {
       if (seq !== listSeq.current) return;
+      // An expired or invalid cursor cannot resume: drop it, keep the idea and
+      // let the user restart the search from the first page.
+      if (failure instanceof DiscoveryApiError && (failure.code === 'CURSOR_EXPIRED' || failure.code === 'CURSOR_INVALID')) {
+        setResults(current => current ? { ...current, next_cursor: null, has_more: false } : current);
+        setError(
+          failure.code === 'CURSOR_EXPIRED'
+            ? 'This search expired. Search again to see more results.'
+            : 'This search cannot continue. Search again to see more results.',
+        );
+        return;
+      }
       const message = failureMessage(failure, 'Unable to load more results. Please try again.');
       if (message) setError(message);
     } finally {
@@ -246,9 +266,8 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
     && activeIdea !== ''
     && !fromCache
     && !loading
-    && results.items.length > 0
-    && results.items.length < results.total
-    && results.page < discoveryConfig.maxPage;
+    && results.has_more
+    && results.next_cursor !== null;
 
   return <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]}>
     <View style={[styles.header, { borderColor: colors.border }]}>
@@ -311,11 +330,11 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
           >
             <Text style={[styles.searchText, { color: colors.onAccent }]}>Search projects</Text>
           </Pressable>
-          {loading ? <BrandLoader mode={mode} label="Searching GitHub" /> : null}
+          {loading ? <BrandLoader mode={mode} label="Searching projects" /> : null}
           {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.error, { color: colors.text }]}>{error}</Text> : null}
-          {results?.incomplete ? <Text style={[styles.notice, { color: colors.text }]}>Results may be partial. GitHub returned an incomplete set.</Text> : null}
-          {results && results.items.length === 0 && !results.incomplete ? <Text style={[styles.notice, { color: colors.muted }]}>No projects matched your idea. Try different keywords.</Text> : null}
-          {fromCache && results && results.items.length < results.total ? <Text style={[styles.notice, { color: colors.muted }]}>Showing your last results. Search again to load more.</Text> : null}
+          {results?.degraded ? <Text style={[styles.notice, { color: colors.text }]}>Some sources were unavailable. Results may be incomplete.</Text> : null}
+          {results && results.items.length === 0 && !results.degraded ? <Text style={[styles.notice, { color: colors.muted }]}>No projects matched your idea. Try different keywords.</Text> : null}
+          {fromCache && results?.has_more ? <Text style={[styles.notice, { color: colors.muted }]}>Showing your last results. Search again to load more.</Text> : null}
           {results?.items.map(project => <ProjectCard
             key={project.full_name}
             project={project}
