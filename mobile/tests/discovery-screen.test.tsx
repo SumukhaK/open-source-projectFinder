@@ -118,6 +118,17 @@ test('search renders name, description, stars, language and an honest licence pl
   expect(api.searchProjects).toHaveBeenCalledWith('session', { idea: 'task manager', pageSize: 20 });
 });
 
+test('the loading label says "Searching projects", not a source name', async () => {
+  let resolveSearch!: (value: api.SearchResults) => void;
+  jest.mocked(api.searchProjects).mockReturnValue(new Promise(resolve => { resolveSearch = resolve; }));
+  const screen = await open();
+  await search(screen);
+  await waitFor(() => expect(screen.getByLabelText('Searching projects')).toBeTruthy());
+  expect(screen.queryByText('Searching GitHub')).toBeNull();
+  await act(async () => { resolveSearch(results([item()])); });
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+});
+
 test('empty results are shown as no matches', async () => {
   jest.mocked(api.searchProjects).mockResolvedValue(results([]));
   const screen = await open();

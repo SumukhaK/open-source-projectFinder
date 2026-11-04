@@ -330,7 +330,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
           >
             <Text style={[styles.searchText, { color: colors.onAccent }]}>Search projects</Text>
           </Pressable>
-          {loading ? <BrandLoader mode={mode} label="Searching GitHub" /> : null}
+          {loading ? <BrandLoader mode={mode} label="Searching projects" /> : null}
           {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.error, { color: colors.text }]}>{error}</Text> : null}
           {results?.degraded ? <Text style={[styles.notice, { color: colors.text }]}>Some sources were unavailable. Results may be incomplete.</Text> : null}
           {results && results.items.length === 0 && !results.degraded ? <Text style={[styles.notice, { color: colors.muted }]}>No projects matched your idea. Try different keywords.</Text> : null}

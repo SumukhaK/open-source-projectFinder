@@ -34,7 +34,7 @@ Do not amend a PR after review simply to tick its own tracker row. The GitHub re
 | [ ] | [T21: Create consistent encrypted backup exports](tasks/T21-backup.md) | T20 | Not started | — | — | — |
 | [ ] | [T22: Restore into quarantine and reapply suppression](tasks/T22-restore.md) | T21 | Not started | — | — | — |
 | [ ] | [T23: Prepare weekly host scheduling and operator status](tasks/T23-host-schedule.md) | T19, T20, T22 | Not started | — | — | — |
-| [ ] | [T24: Migrate mobile transport and cache types to hybrid v1](tasks/T24-mobile-contract.md) | T00, T15 | Awaiting review | - | - | - |
+| [ ] | [T24: Migrate mobile transport and cache types to hybrid v1](tasks/T24-mobile-contract.md) | T00, T15 | Awaiting review | [PR #55](https://github.com/SumukhaK/open-source-projectFinder/pull/55) | - | - |
 | [ ] | [T25: Render one combined result list with truthful states](tasks/T25-mobile-results.md) | T24 | Not started | — | — | — |
 | [ ] | [T26: Verify the cross-layer hybrid path over real HTTP](tasks/T26-hybrid-integration.md) | T09, T15, T22, T25 | Not started | — | — | — |
 | [ ] | [T27: Evaluate relevance on a human-judged query set](tasks/T27-relevance-evaluation.md) | T26 | Not started | — | — | — |
