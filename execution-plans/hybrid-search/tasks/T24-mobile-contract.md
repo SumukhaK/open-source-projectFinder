@@ -1,6 +1,6 @@
 # T24: Migrate mobile transport and cache types to hybrid v1
 
-Status: Awaiting review. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged (`2a25207`, 2026-11-04) from [PR #55](https://github.com/SumukhaK/open-source-projectFinder/pull/55) at head `0a80c8e`, base `b0b9281d9128c28382f80407871ae22133bc604f`. Operator steps, rollback and migration evidence are in [T24 evidence](../T24_EVIDENCE.md); review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

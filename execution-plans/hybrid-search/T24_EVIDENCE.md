@@ -20,12 +20,12 @@ The backend **must** have:
 - **Milvus** reachable (empty or populated); `GET /v1/archive/status` does not prove Milvus reachability,
 - `ARCHIVE_GITHUB_TOKEN` (worker-only) configured.
 
-Otherwise every search returns `{"detail": {"code":"SEARCH_UNAVAILABLE", "message":"Search is starting or unavailable."}}` (503), and even hub finding will fail until the missing item is provisioned.
+Otherwise every search returns 503 `{"detail": {"code": "SEARCH_UNAVAILABLE", ...}}` and the app shows "Search is starting or unavailable. Try again shortly." until the missing item is provisioned.
 
 ### Verification steps
 
 1. Ensure the backend server is running with the v1 route registered.
-2. Call `GET /v1/archive/status` (authenticated) and confirm it returns the current `generation`, `status` and, if configured, `coverage`. Note: this does **not** prove Milvus is reachable.
+2. Call `GET /v1/archive/status` (authenticated) and confirm it returns `state`, `search_configured`, `generation` and the catalogue counts. Note: this does **not** prove Milvus is reachable.
 3. Issue one authenticated search: `POST /v1/projects/search` with body `{ "idea": "dotnet", "page_size": 20 }`; assert 200 and that the response contains `next_cursor` (or `null`), `has_more`, `total: null`, `degraded`, and `sources` (per-source health). If 503 `SEARCH_UNAVAILABLE`, supply the missing runtime conditions and repeat until the route works.
 4. Test cursor paging: `POST /v1/projects/search` with body `{ "idea": "dotnet", "page_size": 20, "cursor": "<from previous>" }` to confirm subsequent pages until `has_more: false`.
 
@@ -46,4 +46,4 @@ On `main`, revert **this PR's squash-merge commit** by its SHA (not `git revert 
 
 ## Migration evidence
 
-The test `a search started before the cache restore wins over the cached page` (in `mobile/tests/discovery-screen.test.tsx`) proves that a legacy snapshot is dropped while favourites survive. The test sets up a pending cache load, starts a fresh search, then resolves the cache with a different item — the fresh search result wins and the stale cached item never appears; favourites are loaded from a separate cache key and are unaffected.
+The test `a legacy results snapshot is dropped without touching favourites` (in `mobile/tests/discovery-cache.test.ts`) proves that a legacy page-based snapshot fails the v2 schema and is removed while the favourites cache survives. The U13 restore race is covered separately by `a search started before the cache restore wins over the cached page` (in `mobile/tests/discovery-screen.test.tsx`).
