@@ -86,7 +86,7 @@ T00 is the only task this PR advances. After T00 merges, T01 is the only task wh
 | D7 approved (2026-10-29) | T23 | Daily ~22:00 sweep and Sunday 03:30 refresh (Asia/Kolkata) with catch-up. |
 | D8 method approved (2026-10-29) | T27, T28, T29 | T27 measures the baseline; numeric thresholds need owner approval before the T28/T29 rollout recommendation. |
 | Blocked by P1 | T04 real reads; T18; T19 | Credential now exists (used for the T09 pilot); confirm rotation/revocation ownership before T18/T19. Test transport remains available. |
-| Formerly blocked by P2 | T24, T25, T26 | Cleared: the mobile discovery foundation was [PR #53](https://github.com/SumukhaK/open-source-projectFinder/pull/53), merged as `1a67d63` (2026-11-03). T25 and T26 still need their other prerequisites. |
+| Formerly blocked by P2 | T24, T25, T26 | Cleared: the mobile discovery foundation was [PR #53](https://github.com/SumukhaK/open-source-projectFinder/pull/53), merged as `1a67d63` (2026-11-03). T24 and T25 are merged; T26 still needs T22. |
 | Blocked by P3 | T01 acceptance; T07/T13 real GPU claims | Hardware/runtime is unverified; T01 owns the real evidence. |
 
 This matrix does not change any task status in [TRACKER](TRACKER.md). Only a trusted reviewer can accept T00, and only a merge unblocks T01.
