@@ -536,3 +536,141 @@ test('a repeated project across pages is shown once', async () => {
   expect(consoleError.mock.calls.flat().join(' ')).not.toContain('same key');
   consoleError.mockRestore();
 });
+
+// T25: one combined list with truthful states.
+const githubFailed = { status: 'failed', incomplete: true, reason: 'timeout', retry_after: null };
+const archiveFailed = { status: 'failed', incomplete: true, reason: 'unavailable', retry_after: null, coverage: 'unknown' };
+
+test('GitHub-only, archive-only and common cards render in one list without a source selector', async () => {
+  jest.mocked(api.searchProjects).mockResolvedValue(results([
+    item({ id: 1, full_name: 'octocat/live', name: 'live', freshness: 'live', sources: ['github'] }),
+    item({ id: 2, full_name: 'octocat/stored', name: 'stored', freshness: 'archive', sources: ['archive'], snippet: 'Stored README excerpt' }),
+    item({ id: 3, full_name: 'octocat/both', name: 'both', freshness: 'live+archive', sources: ['github', 'archive'] }),
+  ]));
+  const screen = await open();
+  await search(screen);
+  await waitFor(() => expect(screen.getByText('both')).toBeTruthy());
+  expect(screen.getByText('live')).toBeTruthy();
+  expect(screen.getByText('stored')).toBeTruthy();
+  expect(screen.getByText('Source: Live')).toBeTruthy();
+  expect(screen.getByText('Source: Archive')).toBeTruthy();
+  expect(screen.getByText('Source: Live + archive')).toBeTruthy();
+  expect(screen.queryByText(/%/)).toBeNull();
+  expect(screen.queryByRole('tab', { name: /archive|github/i })).toBeNull();
+});
+
+test('a partial search with results names the missing source', async () => {
+  jest.mocked(api.searchProjects).mockResolvedValue(results([item()], null, {
+    degraded: true,
+    sources: { github: sourceOk, archive: archiveFailed },
+  }));
+  const screen = await open();
+  await search(screen);
+  await waitFor(() => expect(screen.getByText('Some sources were unavailable. Results may be incomplete.')).toBeTruthy());
+  expect(screen.getByText('The project archive did not respond, so only live GitHub results are shown.')).toBeTruthy();
+  expect(screen.queryByText('No projects matched your idea. Try different keywords.')).toBeNull();
+});
+
+test('a partial search with zero results never claims no matches and offers a retry', async () => {
+  jest.mocked(api.searchProjects)
+    .mockResolvedValueOnce(results([], null, { degraded: true, sources: { github: githubFailed, archive: archiveOk } }))
+    .mockResolvedValueOnce(results([item()]));
+  const screen = await open();
+  await search(screen);
+  await waitFor(() => expect(screen.getByText('No results could be confirmed because a source was unavailable.')).toBeTruthy());
+  expect(screen.getByText('Live GitHub search did not respond, so only archive results are shown.')).toBeTruthy();
+  expect(screen.queryByText('No projects matched your idea. Try different keywords.')).toBeNull();
+  await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  expect(jest.mocked(api.searchProjects).mock.calls[1][1]).toEqual({ idea: 'task manager', pageSize: 20 });
+});
+
+test('only a complete healthy empty search says no matches', async () => {
+  jest.mocked(api.searchProjects).mockResolvedValue(results([], null, {
+    sources: { github: sourceOk, archive: { ...archiveOk, status: 'incomplete', incomplete: true } },
+  }));
+  const screen = await open();
+  await search(screen);
+  await waitFor(() => expect(screen.getByText('No results could be confirmed because a source was unavailable.')).toBeTruthy());
+  expect(screen.queryByText('No projects matched your idea. Try different keywords.')).toBeNull();
+});
+
+test('a failed search offers a retry with the same idea', async () => {
+  jest.mocked(api.searchProjects)
+    .mockRejectedValueOnce(new api.DiscoveryApiError('Search is busy. Try again shortly.', 503, 'SEARCH_BUSY', true))
+    .mockResolvedValueOnce(results([item()]));
+  const screen = await open();
+  await search(screen);
+  await waitFor(() => expect(screen.getByText('Search is busy. Try again shortly.')).toBeTruthy());
+  await fireEvent.changeText(screen.getByLabelText('Project idea'), 'edited but not submitted');
+  await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  expect(jest.mocked(api.searchProjects).mock.calls[1][1]).toEqual({ idea: 'task manager', pageSize: 20 });
+});
+
+test('cached results always carry a stale banner, even without more pages', async () => {
+  await cache.saveCachedResults('123', results([item()]));
+  const screen = await open();
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  expect(screen.getByText('Showing your last results. Search again for fresh results.')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+});
+
+test('pull to refresh starts a new hybrid search for the current idea', async () => {
+  jest.mocked(api.searchProjects)
+    .mockResolvedValueOnce(results([item()], 'first-cursor'))
+    .mockResolvedValueOnce(results([searchSecond]));
+  const screen = await open();
+  await search(screen);
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  const list = screen.getByTestId('discovery-list');
+  await act(async () => { await list.props.refreshControl.props.onRefresh(); });
+  await waitFor(() => expect(screen.getByText('navigator')).toBeTruthy());
+  expect(screen.queryByText('compass')).toBeNull();
+  expect(jest.mocked(api.searchProjects).mock.calls[1][1]).toEqual({ idea: 'task manager', pageSize: 20 });
+});
+
+test('pull to refresh is not offered without a live idea or outside Home results', async () => {
+  await cache.saveCachedResults('123', results([item()]));
+  const screen = await open();
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  expect(screen.getByTestId('discovery-list').props.refreshControl).toBeUndefined();
+  await fireEvent.press(screen.getByRole('tab', { name: 'Favourites' }));
+  expect(screen.getByTestId('discovery-list').props.refreshControl).toBeUndefined();
+});
+
+test('a search that resolves after sign-out is not written back to the cache', async () => {
+  let resolve: (value: api.SearchResults) => void = () => undefined;
+  jest.mocked(api.searchProjects).mockImplementation(() => new Promise(done => { resolve = done; }));
+  const onSignOut = jest.fn();
+  const screen = await open({ onSignOut });
+  await search(screen);
+  await fireEvent.press(screen.getByText('Sign out'));
+  await waitFor(() => expect(onSignOut).toHaveBeenCalled());
+  await act(async () => { resolve(results([item()])); });
+  expect(await cache.loadCachedResults('123')).toBeNull();
+});
+
+test('a favourite saved after sign-out is not written back to the cache', async () => {
+  let resolve: (value: api.Project) => void = () => undefined;
+  jest.mocked(api.saveFavourite).mockImplementation(() => new Promise(done => { resolve = done; }));
+  const onSignOut = jest.fn();
+  const screen = await open({ onSignOut });
+  await search(screen);
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  await fireEvent.press(screen.getByLabelText('Save octocat/compass to favourites'));
+  await fireEvent.press(screen.getByText('Sign out'));
+  await waitFor(() => expect(onSignOut).toHaveBeenCalled());
+  await act(async () => { resolve(project); });
+  expect(await cache.loadCachedFavourites('123')).toBeNull();
+});
+
+test('a search that resolves after unmount is not written to the cache', async () => {
+  let resolve: (value: api.SearchResults) => void = () => undefined;
+  jest.mocked(api.searchProjects).mockImplementation(() => new Promise(done => { resolve = done; }));
+  const screen = await open();
+  await search(screen);
+  await act(async () => { screen.unmount(); });
+  await act(async () => { resolve(results([item()])); });
+  expect(await cache.loadCachedResults('123')).toBeNull();
+});

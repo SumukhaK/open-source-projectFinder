@@ -1,6 +1,6 @@
 # T25: Render one combined result list with truthful states
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review ([evidence](../T25_EVIDENCE.md)). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

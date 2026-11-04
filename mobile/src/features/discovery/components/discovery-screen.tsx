@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandLoader } from '../../../components/brand-loader';
 import { BrandMark } from '../../../components/brand-mark';
@@ -18,6 +18,7 @@ import {
   saveFavourite,
   searchProjects,
   SearchResults,
+  SourceHealth,
 } from '../api/discovery';
 import {
   clearDiscoveryCache,
@@ -41,6 +42,21 @@ type Props = {
 
 const accountKey = (user: DiscoveryUser) => String(user.github_id ?? user.login);
 
+const healthy = (source: SourceHealth) => source.status === 'ok' && !source.incomplete;
+
+// One bounded line naming which source is missing; never raw backend reasons.
+function sourceDetail(results: SearchResults): string | null {
+  const github = healthy(results.sources.github);
+  const archive = healthy(results.sources.archive);
+  if (github && !archive) return 'The project archive did not respond, so only live GitHub results are shown.';
+  if (!github && archive) return 'Live GitHub search did not respond, so only archive results are shown.';
+  if (!github && !archive) return 'Neither live GitHub search nor the project archive responded fully.';
+  return null;
+}
+
+const completeSearch = (results: SearchResults) =>
+  !results.degraded && healthy(results.sources.github) && healthy(results.sources.archive);
+
 export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountError, onUnauthorized }: Props) {
   const { mode } = useTheme();
   const colors = getThemeColors(mode);
@@ -48,6 +64,8 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   const previousAccount = useRef(account);
   const listSeq = useRef(0);
   const detailsSeq = useRef(0);
+  // Bumped on sign-out and unmount so late responses never write the cache.
+  const sessionSeq = useRef(0);
   const [tab, setTab] = useState<'Discover' | 'Favourites'>('Discover');
   const [idea, setIdea] = useState('');
   const [activeIdea, setActiveIdea] = useState('');
@@ -55,6 +73,8 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   const [results, setResults] = useState<SearchResults | null>(null);
   const [favourites, setFavourites] = useState<Project[]>([]);
   const [error, setError] = useState('');
+  const [searchFailed, setSearchFailed] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [favouritesError, setFavouritesError] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -117,6 +137,12 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
     return () => { active = false; };
   }, [account, token, onUnauthorized]);
 
+  useEffect(() => () => {
+    sessionSeq.current += 1;
+    listSeq.current += 1;
+    detailsSeq.current += 1;
+  }, []);
+
   const failureMessage = (failure: unknown, fallback: string): string | null => {
     if (failure instanceof DiscoveryApiError) {
       if (failure.status === 401) {
@@ -130,38 +156,57 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
     return fallback;
   };
 
+  const runSearch = async (text: string, { refresh = false } = {}) => {
+    const seq = ++listSeq.current;
+    const session = sessionSeq.current;
+    setActiveIdea(text);
+    setFromCache(false);
+    setLoading(true);
+    setRefreshing(refresh);
+    setLoadingMore(false);
+    setError('');
+    setSearchFailed(false);
+    if (!refresh) setResults(null);
+    try {
+      const data = await searchProjects(token, { idea: text, pageSize: discoveryConfig.pageSize });
+      if (seq !== listSeq.current || session !== sessionSeq.current) return;
+      setResults(data);
+      await saveCachedResults(account, data);
+    } catch (failure) {
+      if (seq !== listSeq.current || session !== sessionSeq.current) return;
+      const message = failureMessage(failure, 'Search failed. Please try again.');
+      if (message) {
+        setError(message);
+        setSearchFailed(true);
+      }
+    } finally {
+      if (seq === listSeq.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  };
+
   const submit = async () => {
     const text = idea.trim();
     if (text.length < discoveryConfig.minIdeaLength || text.length > discoveryConfig.maxIdeaLength) {
       setError('Describe your idea');
+      setSearchFailed(false);
       return;
     }
-    const seq = ++listSeq.current;
-    setActiveIdea(text);
-    setFromCache(false);
-    setLoading(true);
-    setLoadingMore(false);
-    setError('');
-    setResults(null);
-    try {
-      const data = await searchProjects(token, { idea: text, pageSize: discoveryConfig.pageSize });
-      if (seq !== listSeq.current) return;
-      setResults(data);
-      await saveCachedResults(account, data);
-    } catch (failure) {
-      if (seq !== listSeq.current) return;
-      const message = failureMessage(failure, 'Search failed. Please try again.');
-      if (message) setError(message);
-    } finally {
-      if (seq === listSeq.current) setLoading(false);
-    }
+    await runSearch(text);
   };
+
+  // Retry and pull-to-refresh repeat the last submitted idea, not unsent edits.
+  const retry = () => { if (activeIdea) void runSearch(activeIdea); };
+  const refresh = () => { if (activeIdea) void runSearch(activeIdea, { refresh: true }); };
 
   const loadMore = async () => {
     if (!results || !activeIdea || fromCache || loading || loadingMore) return;
     const nextCursor = results.next_cursor;
     if (!nextCursor) return;
     const seq = ++listSeq.current;
+    const session = sessionSeq.current;
     setLoadingMore(true);
     setError('');
     try {
@@ -170,7 +215,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
         pageSize: discoveryConfig.pageSize,
         cursor: nextCursor,
       });
-      if (seq !== listSeq.current) return;
+      if (seq !== listSeq.current || session !== sessionSeq.current) return;
       const items = [...results.items];
       const seen = new Set(items.map(item => item.full_name));
       for (const item of data.items) {
@@ -210,14 +255,17 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
     const next = saved
       ? previous.filter(item => item.full_name !== project.full_name)
       : [project, ...previous];
+    const session = sessionSeq.current;
     setFavouriteBusy(project.full_name);
     setFavouritesError('');
     setFavourites(next);
     try {
       if (saved) await removeFavourite(token, project.full_name);
       else await saveFavourite(token, project.full_name);
+      if (session !== sessionSeq.current) return;
       await saveCachedFavourites(account, next);
     } catch (failure) {
+      if (session !== sessionSeq.current) return;
       setFavourites(previous);
       if (failure instanceof DiscoveryApiError && failure.status === 401) {
         void clearDiscoveryCache(account);
@@ -258,6 +306,9 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   };
 
   const leave = async () => {
+    sessionSeq.current += 1;
+    listSeq.current += 1;
+    detailsSeq.current += 1;
     await clearDiscoveryCache(account);
     onSignOut();
   };
@@ -268,6 +319,11 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
     && !loading
     && results.has_more
     && results.next_cursor !== null;
+  const homeResults = tab === 'Discover' && !selected;
+  const canRefresh = homeResults && activeIdea !== '' && !loadingMore;
+  const detail = results ? sourceDetail(results) : null;
+  const confirmedEmpty = results !== null && results.items.length === 0 && completeSearch(results);
+  const unconfirmedEmpty = results !== null && results.items.length === 0 && !completeSearch(results);
 
   return <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]}>
     <View style={[styles.header, { borderColor: colors.border }]}>
@@ -286,7 +342,14 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
         <Text style={{ color: colors.text }}>{signingOut ? 'Signing out' : 'Sign out'}</Text>
       </Pressable>
     </View>
-    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      testID="discovery-list"
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      refreshControl={canRefresh
+        ? <RefreshControl refreshing={refreshing} onRefresh={refresh} accessibilityLabel="Refresh results" />
+        : undefined}
+    >
       {accountError ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.error, { color: colors.text }]}>{accountError}</Text> : null}
       {favouritesError ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.error, { color: colors.text }]}>{favouritesError}</Text> : null}
       {selected ? <ProjectDetailsView
@@ -332,9 +395,21 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
           </Pressable>
           {loading ? <BrandLoader mode={mode} label="Searching projects" /> : null}
           {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.error, { color: colors.text }]}>{error}</Text> : null}
-          {results?.degraded ? <Text style={[styles.notice, { color: colors.text }]}>Some sources were unavailable. Results may be incomplete.</Text> : null}
-          {results && results.items.length === 0 && !results.degraded ? <Text style={[styles.notice, { color: colors.muted }]}>No projects matched your idea. Try different keywords.</Text> : null}
-          {fromCache && results?.has_more ? <Text style={[styles.notice, { color: colors.muted }]}>Showing your last results. Search again to load more.</Text> : null}
+          {fromCache && results ? <Text style={[styles.notice, { color: colors.muted }]}>{results.has_more
+            ? 'Showing your last results. Search again to load more.'
+            : 'Showing your last results. Search again for fresh results.'}</Text> : null}
+          {results && results.items.length > 0 && !completeSearch(results) ? <Text accessibilityRole="alert" style={[styles.notice, { color: colors.text }]}>Some sources were unavailable. Results may be incomplete.</Text> : null}
+          {unconfirmedEmpty ? <Text accessibilityRole="alert" style={[styles.notice, { color: colors.text }]}>No results could be confirmed because a source was unavailable.</Text> : null}
+          {detail ? <Text style={[styles.notice, { color: colors.muted }]}>{detail}</Text> : null}
+          {confirmedEmpty ? <Text style={[styles.notice, { color: colors.muted }]}>No projects matched your idea. Try different keywords.</Text> : null}
+          {(searchFailed || (unconfirmedEmpty && !fromCache)) && activeIdea && !loading ? <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
+            onPress={retry}
+            style={[styles.more, { borderColor: colors.border }]}
+          >
+            <Text style={{ color: colors.text }}>Try again</Text>
+          </Pressable> : null}
           {results?.items.map(project => <ProjectCard
             key={project.full_name}
             project={project}
