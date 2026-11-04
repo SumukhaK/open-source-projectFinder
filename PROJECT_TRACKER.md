@@ -105,7 +105,7 @@ feel free to create a remote git repo with the name "open-source-projectFinder" 
 | 2 | Text idea submission and GitHub search baseline | Backend complete; mobile pending | Backend keyword search, details and favourites merged (#9, #10, plus fixes below); mobile discovery UI unmerged |
 | 3 | Periodic ingestion, embeddings and Milvus index | In progress: T01-T09, T16 and T17 merged; T18-T23 planned | Repeatable ingestion, deduplication, updates and retrieval checks |
 | 4 | Hybrid retrieval, ranking and AI similarity explanations | In progress: T10-T15 merged; T27 planned | Agreed relevance evaluation, provenance and failure handling |
-| 5 | Mobile text discovery flow | Planned (blocked on unmerged mobile foundation; T24-T26) | Client tests and end-to-end submission/results verification |
+| 5 | Mobile text discovery flow | In progress: P2 foundation and T24 v1 contract merged; T25-T26 planned | Client tests and end-to-end submission/results verification |
 | 6 | Voice submission and transcription | Planned | Voice-to-search flow and privacy/error behavior verification |
 | 7 | Scale validation and deployment readiness | Planned | Agreed performance, reliability and deployment checks |
 
