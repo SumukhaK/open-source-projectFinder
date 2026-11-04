@@ -471,10 +471,15 @@ store/reader and services on first use, never at import or boot. A successful
 embedding adapter is retained across failed builds, and a failed build is cached
 for `HYBRID_BUILD_RETRY_SECONDS` (default 30 s). The route waits at most
 `HYBRID_BUILD_WAIT_SECONDS` (default 1 s) for the first build and otherwise
-returns retryable `SEARCH_UNAVAILABLE` while the build continues. Missing
-signing key/model/Milvus/archive configuration returns a typed
-`SEARCH_UNAVAILABLE` while the legacy API keeps serving. Production v1 search
-also needs `ARCHIVE_GITHUB_TOKEN` for fresh public reads. Real-stack behaviour
+returns retryable `SEARCH_UNAVAILABLE` while the build continues. A missing
+signing key or archive reader (`ARCHIVE_GITHUB_TOKEN`, catalogue) returns a
+typed `SEARCH_UNAVAILABLE` while the legacy API keeps serving. If only the model
+or Milvus is unavailable, the runtime serves a live-only target instead: live
+GitHub results with the archive source reported `failed`/`unavailable` and the
+page marked `degraded`. That target is reused for `HYBRID_BUILD_RETRY_SECONDS`;
+then one request retries the full stack while others keep the live-only target,
+and a recovered Milvus switches to full hybrid search (open cursors from the
+live-only target then expire, so the client restarts the search). Real-stack behaviour
 is verified by T26, not by these fake-only tests. Rollback is a code revert with
 no migration or stored data. See
 [T15 evidence](../execution-plans/hybrid-search/T15_EVIDENCE.md).

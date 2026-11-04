@@ -359,23 +359,22 @@ def test_runtime_checks_the_signing_key_before_loading_the_model(monkeypatch):
         runtime.target()
 
 
-def test_runtime_loads_the_model_once_across_failed_builds(monkeypatch):
+class FakeStore:
+    def connect(self):
+        raise AssertionError("live-only searches never open the catalogue")
+
+
+class FakeArchiveReader:
+    def __init__(self, settings=None):
+        self.settings = settings
+
+
+def runtime_with(monkeypatch, *, load, connect, clock=None, retry=30):
     settings = Settings(
         _env_file=None,
         hybrid_cursor_signing_key="k" * 40,
-        hybrid_build_retry_seconds=30,
+        hybrid_build_retry_seconds=retry,
     )
-    loads = []
-    connects = []
-
-    def load():
-        loads.append(1)
-        return SimpleNamespace(manifest=SimpleNamespace(revision="a" * 40))
-
-    def connect(cls, settings, manifest):
-        connects.append(1)
-        raise MilvusUnavailable("milvus is down")
-
     monkeypatch.setattr(
         "app.services.hybrid_runtime.EmbeddingAdapter.load",
         classmethod(lambda cls: load()),
@@ -384,49 +383,184 @@ def test_runtime_loads_the_model_once_across_failed_builds(monkeypatch):
         "app.integrations.milvus.MilvusAdapter.connect",
         classmethod(connect),
     )
-    runtime = HybridRuntime(settings, provider=None)
+    monkeypatch.setattr(
+        "app.services.hybrid_runtime.ArchiveGitHubReader", FakeArchiveReader
+    )
+    monkeypatch.setattr(
+        "app.services.hybrid_runtime.ModelManifest.load",
+        classmethod(lambda cls: SimpleNamespace(revision="m" * 40)),
+    )
+    runtime = HybridRuntime(
+        settings,
+        provider=None,
+        now=(lambda: clock[0]) if clock is not None else None,
+    )
+    monkeypatch.setattr(runtime, "_archive_store", lambda: FakeStore())
+    return runtime
 
-    for _ in range(2):
-        with pytest.raises(HybridUnavailable):
-            runtime.target()
 
+def loaded_model(loads):
+    def load():
+        loads.append(1)
+        return SimpleNamespace(manifest=SimpleNamespace(revision="a" * 40))
+
+    return load
+
+
+def milvus_down(connects):
+    def connect(cls, settings, manifest):
+        connects.append(1)
+        raise MilvusUnavailable("milvus is down")
+
+    return connect
+
+
+def test_runtime_serves_live_only_when_milvus_is_down(monkeypatch):
+    loads, connects = [], []
+    runtime = runtime_with(
+        monkeypatch, load=loaded_model(loads), connect=milvus_down(connects)
+    )
+
+    target = runtime.target()
+
+    assert target.archive_online is False
+    assert target.generation == f"{'a' * 40}:rrf-v1"
+    assert target.revalidator is not None
+    assert len(loads) == 1 and len(connects) == 1
+
+
+def test_runtime_serves_live_only_when_the_model_cannot_load(monkeypatch):
+    from app.services.embeddings import EmbeddingError
+
+    def load():
+        raise EmbeddingError("model files are missing")
+
+    def connect(cls, settings, manifest):
+        raise AssertionError("Milvus is not contacted without a model")
+
+    runtime = runtime_with(monkeypatch, load=load, connect=connect)
+
+    target = runtime.target()
+
+    assert target.archive_online is False
+    # The manifest still names the pinned revision even without weights.
+    assert target.generation == f"{'m' * 40}:rrf-v1"
+
+
+def test_live_only_target_reports_the_archive_as_failed(monkeypatch):
+    import asyncio
+
+    from app.services.hybrid_runtime import ArchiveOffline, _OfflineArchive
+
+    offline = _OfflineArchive()
+    with pytest.raises(ArchiveOffline):
+        offline.embed(["idea"], kind="query")
+    with pytest.raises(ArchiveOffline):
+        offline.search([0.0], limit=10, filters=None)
+
+    runtime = runtime_with(monkeypatch, load=loaded_model([]), connect=milvus_down([]))
+    target = runtime.target()
+    service = target.pager.service
+
+    async def archive_only():
+        live = asyncio.get_running_loop().create_future()
+        live.set_result(None)
+        deadline = asyncio.get_running_loop().time() + 5
+        return await service._archive("task manager", None, deadline, live)
+
+    outcome = asyncio.run(archive_only())
+    assert outcome.status == "failed"
+    assert outcome.reason == "unavailable"
+    service.close()
+    target.executor.close()
+
+
+def test_runtime_reuses_the_live_only_target_until_the_backoff_ends(monkeypatch):
+    clock = [0.0]
+    loads, connects = [], []
+    runtime = runtime_with(
+        monkeypatch,
+        load=loaded_model(loads),
+        connect=milvus_down(connects),
+        clock=clock,
+    )
+
+    first = runtime.target()
+    clock[0] = 10.0
+    assert runtime.target() is first
+    assert len(connects) == 1
+
+    clock[0] = 31.0
+    second = runtime.target()
+    assert second is not first
+    assert second.archive_online is False
+    assert len(connects) == 2
+    # The model is loaded once and reused across retries.
     assert len(loads) == 1
+    # Both builds share one executor, so swapping targets strands no threads.
+    assert second.executor is first.executor
+
+
+def test_runtime_switches_to_the_full_stack_when_milvus_recovers(monkeypatch):
+    clock = [0.0]
+    state = {"up": False}
+    vectors = SimpleNamespace(close=lambda: None)
+
+    def connect(cls, settings, manifest):
+        if not state["up"]:
+            raise MilvusUnavailable("milvus is down")
+        return vectors
+
+    runtime = runtime_with(
+        monkeypatch, load=loaded_model([]), connect=connect, clock=clock
+    )
+    assert runtime.target().archive_online is False
+
+    state["up"] = True
+    clock[0] = 31.0
+    full = runtime.target()
+
+    assert full.archive_online is True
+    assert full.pager.service.vectors is vectors
+    clock[0] = 1000.0
+    assert runtime.target() is full
+
+
+def test_runtime_keeps_serving_live_only_while_another_request_rebuilds(monkeypatch):
+    clock = [0.0]
+    connects = []
+    runtime = runtime_with(
+        monkeypatch,
+        load=loaded_model([]),
+        connect=milvus_down(connects),
+        clock=clock,
+    )
+    first = runtime.target()
+    clock[0] = 31.0
+
+    runtime._build_lock.acquire()
+    try:
+        assert runtime.target() is first
+    finally:
+        runtime._build_lock.release()
     assert len(connects) == 1
 
 
-def test_runtime_retries_after_the_failure_backoff_and_reuses_the_model(monkeypatch):
-    clock = [0.0]
-    settings = Settings(
-        _env_file=None,
-        hybrid_cursor_signing_key="k" * 40,
-        hybrid_build_retry_seconds=30,
-    )
+def test_runtime_still_refuses_without_the_archive_reader(monkeypatch):
+    from app.integrations.archive_github import ArchiveCredentialError
+
+    def no_reader(settings=None):
+        raise ArchiveCredentialError("worker token missing")
+
     loads = []
-    connects = []
-
-    def load():
-        loads.append(1)
-        return SimpleNamespace(manifest=SimpleNamespace(revision="a" * 40))
-
-    def connect(cls, settings, manifest):
-        connects.append(1)
-        raise MilvusUnavailable("milvus is down")
-
-    monkeypatch.setattr(
-        "app.services.hybrid_runtime.EmbeddingAdapter.load",
-        classmethod(lambda cls: load()),
+    runtime = runtime_with(
+        monkeypatch, load=loaded_model(loads), connect=milvus_down([])
     )
-    monkeypatch.setattr(
-        "app.integrations.milvus.MilvusAdapter.connect",
-        classmethod(connect),
-    )
-    runtime = HybridRuntime(settings, provider=None, now=lambda: clock[0])
+    monkeypatch.setattr("app.services.hybrid_runtime.ArchiveGitHubReader", no_reader)
 
     with pytest.raises(HybridUnavailable):
         runtime.target()
-    clock[0] = 31.0
+    # A configuration failure is cached; no model load is attempted.
     with pytest.raises(HybridUnavailable):
         runtime.target()
-
-    assert len(loads) == 1
-    assert len(connects) == 2
+    assert loads == []

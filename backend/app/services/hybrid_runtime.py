@@ -1,8 +1,10 @@
 """Lazy hybrid serving stack and the T10 later-page revalidation adapter.
 
 Nothing here connects to Milvus, loads the embedding model or opens the archive
-catalogue at import time. A missing or broken optional component makes the v1
-route return a typed "unavailable" error while the legacy API keeps serving.
+catalogue at import time. A missing signing key or archive reader makes the v1
+route return a typed "unavailable" error while the legacy API keeps serving. A
+model or Milvus outage instead serves live GitHub results with the archive
+source reported as failed, and the full stack is retried after the backoff.
 """
 
 from __future__ import annotations
@@ -39,12 +41,34 @@ class HybridUnavailable(RuntimeError):
     """A required serving component is missing; the v1 route cannot search."""
 
 
+class ArchiveOffline(RuntimeError):
+    """The model or Milvus could not be prepared for this build."""
+
+
+class _OfflineArchive:
+    """Stand-in for the model and vector store while either is unavailable.
+
+    The hybrid service maps any failure here to an archive source of
+    ``failed``/``unavailable``, so the live GitHub source still serves.
+    """
+
+    def embed(self, texts, *, kind):
+        raise ArchiveOffline("archive search is offline")
+
+    def search(self, vector, *, limit, filters):
+        raise ArchiveOffline("archive search is offline")
+
+    def close(self):
+        return None
+
+
 @dataclass(frozen=True)
 class HybridTarget:
     pager: HybridPager
     generation: str
     executor: BoundedExecutor
     revalidator: FusedRevalidator | None = None
+    archive_online: bool = True
 
 
 class FusedRevalidator:
@@ -250,6 +274,9 @@ class HybridRuntime:
         self._store = None
         self._embeddings = None
         self._target = None
+        self._fallback = None
+        self._fallback_until = 0.0
+        self._executor = None
         self._failure_until = 0.0
         self._now = now or time.monotonic
 
@@ -257,13 +284,25 @@ class HybridRuntime:
         with self._lock:
             if self._target is not None:
                 return self._target
-            if self._now() < self._failure_until:
+            fallback = self._fallback
+            if fallback is not None and self._now() < self._fallback_until:
+                return fallback
+            if fallback is None and self._now() < self._failure_until:
                 raise HybridUnavailable("hybrid search is unavailable")
-        with self._build_lock:
+        if fallback is not None:
+            # Keep serving live-only results while one request retries the
+            # full stack instead of queueing everyone behind a slow connect.
+            if not self._build_lock.acquire(blocking=False):
+                return fallback
+        else:
+            self._build_lock.acquire()
+        try:
             with self._lock:
                 if self._target is not None:
                     return self._target
-                if self._now() < self._failure_until:
+                if self._fallback is not None and self._fallback is not fallback:
+                    return self._fallback
+                if self._fallback is None and self._now() < self._failure_until:
                     raise HybridUnavailable("hybrid search is unavailable")
             try:
                 target = self._build()
@@ -282,9 +321,18 @@ class HybridRuntime:
                 )
                 raise HybridUnavailable("hybrid search is unavailable") from None
             with self._lock:
-                self._target = target
+                if target.archive_online:
+                    self._target = target
+                    self._fallback = None
+                else:
+                    self._fallback = target
+                    self._fallback_until = (
+                        self._now() + self.settings.hybrid_build_retry_seconds
+                    )
                 self._failure_until = 0.0
                 return target
+        finally:
+            self._build_lock.release()
 
     def status(self):
         """Sanitized lifecycle facts; no paths, exception text or fake success."""
@@ -332,6 +380,7 @@ class HybridRuntime:
 
     def _remember_failure(self):
         with self._lock:
+            self._fallback = None
             self._failure_until = self._now() + self.settings.hybrid_build_retry_seconds
 
     def _archive_store(self):
@@ -355,29 +404,69 @@ class HybridRuntime:
                 self._embeddings = embeddings
             return self._embeddings
 
+    def _shared_executor(self):
+        # One executor for every build, so swapping a live-only target for the
+        # full stack never strands worker threads.
+        with self._lock:
+            if self._executor is None:
+                self._executor = BoundedExecutor(
+                    self.settings.hybrid_search_max_workers,
+                    self.settings.hybrid_search_max_outstanding,
+                )
+            return self._executor
+
+    def _archive_components(self):
+        """Return ``(embeddings, vectors, revision)`` or raise ArchiveOffline."""
+        try:
+            embeddings = self._load_embeddings()
+        except HybridUnavailable:
+            raise ArchiveOffline("model") from None
+        manifest = embeddings.manifest
+        try:
+            # Imported here so app boot never imports the Milvus SDK.
+            from app.integrations.milvus import (
+                MilvusAdapter,
+                MilvusContractError,
+                MilvusUnavailable,
+            )
+        except ImportError:
+            raise ArchiveOffline("milvus") from None
+        try:
+            vectors = MilvusAdapter.connect(self.settings, manifest)
+        except (MilvusContractError, MilvusUnavailable):
+            raise ArchiveOffline("milvus") from None
+        return embeddings, vectors, manifest.revision
+
+    def _manifest_revision(self):
+        with self._lock:
+            if self._embeddings is not None:
+                return self._embeddings.manifest.revision
+        try:
+            return ModelManifest.load().revision
+        except EmbeddingError:
+            return "unavailable"
+
     def _build(self):
         key = self.settings.hybrid_cursor_signing_key.get_secret_value()
         if len(key) < 32:
             raise HybridUnavailable("hybrid search is not configured")
-        embeddings = self._load_embeddings()
-        manifest = embeddings.manifest
-        # Imported here so app boot never imports the Milvus SDK.
-        from app.integrations.milvus import (
-            MilvusAdapter,
-            MilvusContractError,
-            MilvusUnavailable,
-        )
-
-        try:
-            vectors = MilvusAdapter.connect(self.settings, manifest)
-        except (MilvusContractError, MilvusUnavailable):
-            raise HybridUnavailable("hybrid search is unavailable") from None
         try:
             store = self._archive_store()
             reader = ArchiveGitHubReader(settings=self.settings)
         except (ArchiveGitHubError, OSError, RuntimeError):
-            vectors.close()
             raise HybridUnavailable("hybrid search is unavailable") from None
+        try:
+            embeddings, vectors, revision = self._archive_components()
+            archive_online = True
+        except ArchiveOffline as offline:
+            logger.info(
+                json.dumps(
+                    {"event": "hybrid_archive_offline", "component": str(offline)}
+                )
+            )
+            embeddings = vectors = _OfflineArchive()
+            revision = self._manifest_revision()
+            archive_online = False
         eligibility = EligibilityService(store.connect, reader, self.settings)
         revalidator = FusedRevalidator(eligibility, reader, settings=self.settings)
         service = HybridSearchService(
@@ -386,6 +475,7 @@ class HybridRuntime:
             embeddings,
             vectors,
             eligibility,
+            executor=self._shared_executor(),
         )
         pager = HybridPager(
             service,
@@ -394,7 +484,8 @@ class HybridRuntime:
         )
         return HybridTarget(
             pager=pager,
-            generation=f"{manifest.revision}:{RANKING_VERSION}",
+            generation=f"{revision}:{RANKING_VERSION}",
             executor=service.executor,
             revalidator=revalidator,
+            archive_online=archive_online,
         )
