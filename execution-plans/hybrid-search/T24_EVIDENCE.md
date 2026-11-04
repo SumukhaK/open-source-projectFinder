@@ -15,12 +15,11 @@ The mobile discovery transport is now bound to `/v1/projects/search` with strict
 The backend **must** have:
 
 - `HYBRID_CURSOR_SIGNING_KEY` configured with ≥ 32 random characters (stored in an ignored `.env` by the operator),
-- **EmbeddingAdapter** loads the pinned **E5** model (offline, validated at startup),
-- **FusedRevalidator** performs live rechecks (it does not load the embedding model),
-- **Milvus** reachable (empty or populated); `GET /v1/archive/status` does not prove Milvus reachability,
-- `ARCHIVE_GITHUB_TOKEN` (worker-only) configured.
+- `ARCHIVE_GITHUB_TOKEN` (worker-only) configured, because `FusedRevalidator` uses it for the live rechecks on later pages.
 
-Otherwise every search returns 503 `{"detail": {"code": "SEARCH_UNAVAILABLE", ...}}` and the app shows "Search is starting or unavailable. Try again shortly." until the missing item is provisioned.
+Without either, every search returns 503 `{"detail": {"code": "SEARCH_UNAVAILABLE", ...}}` and the app shows "Search is starting or unavailable. Try again shortly." until the missing item is provisioned.
+
+For full hybrid results the backend also needs the pinned **E5** model (loaded by `EmbeddingAdapter`) and a reachable **Milvus**. Since the U14 fix, a missing model or an unreachable Milvus no longer fails search: the app gets live GitHub results with the "Some sources were unavailable" notice, and the backend retries the full stack every `HYBRID_BUILD_RETRY_SECONDS`. `GET /v1/archive/status` does not prove Milvus reachability.
 
 ### Verification steps
 
