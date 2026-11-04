@@ -5,7 +5,7 @@ export const discoveryConfig = {
   timeoutMs: authConfig.timeoutMs,
   minIdeaLength: 2,
   maxIdeaLength: 1000,
-  maxPage: 50,
   pageSize: 20,
+  maxPageSize: 50,
   cachePrefix: 'reporadar.discovery',
 };

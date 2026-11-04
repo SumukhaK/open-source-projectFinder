@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppProvider } from '../src/app/provider';
 import { DiscoveryScreen } from '../src/features/discovery/components/discovery-screen';
 import * as api from '../src/features/discovery/api/discovery';
-import { loadCachedResults, saveCachedResults } from '../src/features/discovery/cache';
+import * as cache from '../src/features/discovery/cache';
 
 jest.mock('../src/features/discovery/api/discovery', () => ({
   ...jest.requireActual('../src/features/discovery/api/discovery'),
@@ -26,13 +26,7 @@ const project: api.Project = {
   language: 'Python',
   url: 'https://github.com/octocat/compass',
 };
-const second = {
-  ...project,
-  id: 2,
-  name: 'navigator',
-  full_name: 'octocat/navigator',
-  description: 'Plan journeys',
-};
+
 const details = {
   ...project,
   languages: { Python: 90 },
@@ -41,15 +35,41 @@ const details = {
   readme_truncated: false,
   contributors: [{ login: 'maintainer', avatar_url: '', contributions: 8 }],
 };
-const results = (items: typeof project[], page = 1, incomplete = false, total = items.length) => ({
+const sourceOk = { status: 'ok', incomplete: false, reason: null, retry_after: null };
+const archiveOk = { ...sourceOk, coverage: 'unknown' };
+const item = (overrides: Partial<api.SearchItem> = {}): api.SearchItem => ({
+  ...project,
+  sources: ['github'],
+  license: null,
+  license_conflict: false,
+  matched_section: null,
+  snippet: null,
+  freshness: 'live',
+  rank: 1,
+  rrf_score: 0.01,
+  ...overrides,
+});
+const searchSecond = item({
+  id: 2,
+  name: 'navigator',
+  full_name: 'octocat/navigator',
+  description: 'Plan journeys',
+});
+const results = (
+  items: api.SearchItem[],
+  next: string | null = null,
+  overrides: Partial<api.SearchResults> = {},
+): api.SearchResults => ({
   items,
-  total,
-  incomplete,
-  page,
-  per_page: 20,
-  sort: 'relevance',
-  order: 'desc',
-  source: 'github_keywords',
+  next_cursor: next,
+  has_more: next !== null,
+  total: null,
+  degraded: false,
+  sources: { github: sourceOk, archive: archiveOk },
+  archive_as_of: null,
+  ranking_version: 'rrf-v1',
+  generation: `${'a'.repeat(40)}:rrf-v1`,
+  ...overrides,
 });
 const user = { github_id: 123, login: 'octocat', avatar_url: '' };
 
@@ -77,11 +97,13 @@ beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
   jest.mocked(api.getFavourites).mockResolvedValue({ items: [] });
-  jest.mocked(api.searchProjects).mockResolvedValue(results([project]));
+  jest.mocked(api.searchProjects).mockResolvedValue(results([item()]));
   jest.mocked(api.getProject).mockResolvedValue(details);
   jest.mocked(api.saveFavourite).mockResolvedValue(project);
   jest.mocked(api.removeFavourite).mockResolvedValue(undefined);
 });
+
+afterEach(() => jest.restoreAllMocks());
 
 test('search renders name, description, stars, language and an honest licence placeholder', async () => {
   const screen = await open();
@@ -92,7 +114,8 @@ test('search renders name, description, stars, language and an honest licence pl
   expect(screen.getByText('42 stars')).toBeTruthy();
   expect(screen.getByText('Python')).toBeTruthy();
   expect(screen.getByText('Licence not reported')).toBeTruthy();
-  expect(api.searchProjects).toHaveBeenCalledWith('session', { idea: 'task manager', page: 1 });
+  expect(screen.getByText('Source: Live')).toBeTruthy();
+  expect(api.searchProjects).toHaveBeenCalledWith('session', { idea: 'task manager', pageSize: 20 });
 });
 
 test('empty results are shown as no matches', async () => {
@@ -102,12 +125,28 @@ test('empty results are shown as no matches', async () => {
   await waitFor(() => expect(screen.getByText('No projects matched your idea. Try different keywords.')).toBeTruthy());
 });
 
-test('incomplete results say they may be partial and never claim no matches', async () => {
-  jest.mocked(api.searchProjects).mockResolvedValue(results([], 1, true, 0));
+test.each([
+  ['SEARCH_INCOMPLETE', 503, 'Results may be partial. Try again in a moment.'],
+  ['SEARCH_BUSY', 503, 'Search is busy. Try again shortly.'],
+  ['SEARCH_TIMEOUT', 503, 'Search timed out. Try again.'],
+  ['SEARCH_UNAVAILABLE', 503, 'Search is starting or unavailable. Try again shortly.'],
+])('%s shows its own state and never claims no matches', async (code, status, message) => {
+  jest.mocked(api.searchProjects).mockRejectedValue(new api.DiscoveryApiError(message, status, code, true));
   const screen = await open();
   await search(screen);
-  await waitFor(() => expect(screen.getByText('Results may be partial. GitHub returned an incomplete set.')).toBeTruthy());
+  await waitFor(() => expect(screen.getByText(message)).toBeTruthy());
   expect(screen.queryByText('No projects matched your idea. Try different keywords.')).toBeNull();
+});
+
+test('a degraded search says results may be incomplete', async () => {
+  jest.mocked(api.searchProjects).mockResolvedValue(results([item()], null, {
+    degraded: true,
+    sources: { github: { status: 'failed', incomplete: true, reason: 'timeout', retry_after: null }, archive: archiveOk },
+  }));
+  const screen = await open();
+  await search(screen);
+  await waitFor(() => expect(screen.getByText('Some sources were unavailable. Results may be incomplete.')).toBeTruthy());
+  expect(screen.getByText('compass')).toBeTruthy();
 });
 
 test('rate limiting shows the Retry-After message', async () => {
@@ -132,17 +171,46 @@ test('network failures show a retryable connection message', async () => {
   await waitFor(() => expect(screen.getByText('Unable to connect. Check your connection and try again.')).toBeTruthy());
 });
 
-test('load more appends the next page', async () => {
+test('load more sends the cursor and appends the next page', async () => {
   jest.mocked(api.searchProjects)
-    .mockResolvedValueOnce(results([project], 1, false, 2))
-    .mockResolvedValueOnce(results([second], 2, false, 2));
+    .mockResolvedValueOnce(results([item()], 'cursor-2'))
+    .mockResolvedValueOnce(results([searchSecond], null));
   const screen = await open();
   await search(screen);
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
   await fireEvent.press(screen.getByText('Load more'));
   await waitFor(() => expect(screen.getByText('navigator')).toBeTruthy());
   expect(screen.getByText('compass')).toBeTruthy();
-  expect(api.searchProjects).toHaveBeenLastCalledWith('session', { idea: 'task manager', page: 2 });
+  expect(api.searchProjects).toHaveBeenLastCalledWith('session', { idea: 'task manager', pageSize: 20, cursor: 'cursor-2' });
+});
+
+test('load more disappears when has_more is false', async () => {
+  jest.mocked(api.searchProjects)
+    .mockResolvedValueOnce(results([item()], 'cursor-2'))
+    .mockResolvedValueOnce(results([searchSecond], null));
+  const screen = await open();
+  await search(screen);
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  await fireEvent.press(screen.getByText('Load more'));
+  await waitFor(() => expect(screen.getByText('navigator')).toBeTruthy());
+  expect(screen.queryByText('Load more')).toBeNull();
+});
+
+test('an expired cursor clears the cursor, keeps the idea and asks for a fresh search', async () => {
+  jest.mocked(api.searchProjects)
+    .mockResolvedValueOnce(results([item()], 'stale-cursor'))
+    .mockRejectedValueOnce(new api.DiscoveryApiError('This search expired. Start a new search.', 410, 'CURSOR_EXPIRED'))
+    .mockResolvedValueOnce(results([searchSecond], null));
+  const screen = await open();
+  await search(screen, 'first idea');
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  await fireEvent.press(screen.getByText('Load more'));
+  await waitFor(() => expect(screen.getByText('This search expired. Search again to see more results.')).toBeTruthy());
+  expect(screen.queryByText('Load more')).toBeNull();
+  expect(screen.getByLabelText('Project idea').props.value).toBe('first idea');
+  await fireEvent.press(screen.getByText('Search projects'));
+  await waitFor(() => expect(screen.getByText('navigator')).toBeTruthy());
+  expect(api.searchProjects).toHaveBeenLastCalledWith('session', { idea: 'first idea', pageSize: 20 });
 });
 
 test('details open from a result and the favourite toggle saves optimistically', async () => {
@@ -188,25 +256,30 @@ test('a failed remove restores the favourite in the list', async () => {
 });
 
 test('the last cached results load before a new search', async () => {
-  await saveCachedResults('123', results([project]));
+  await cache.saveCachedResults('123', results([item()]));
   const screen = await open();
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
   expect(api.searchProjects).not.toHaveBeenCalled();
 });
 
-test('search results are cached per account without persisting the raw idea', async () => {
+test('search results are cached per account without persisting the raw idea or cursor', async () => {
   const idea = 'secret quantum banana idea';
+  jest.mocked(api.searchProjects).mockResolvedValue(results([item()], 'secret-cursor'));
   const screen = await open();
   await search(screen, idea);
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
-  await waitFor(async () => expect((await loadCachedResults('123'))?.data.items[0].name).toBe('compass'));
+  await waitFor(async () => expect((await cache.loadCachedResults('123'))?.data.items[0].name).toBe('compass'));
   const keys = await AsyncStorage.getAllKeys();
   const entries = await AsyncStorage.multiGet(keys);
-  for (const [, value] of entries) expect(value ?? '').not.toContain(idea);
+  for (const [, value] of entries) {
+    expect(value ?? '').not.toContain(idea);
+    expect(value ?? '').not.toContain('secret-cursor');
+  }
+  expect((await cache.loadCachedResults('123'))?.data.next_cursor).toBeNull();
 });
 
 test('switching accounts clears the previous account cache and state', async () => {
-  await saveCachedResults('123', results([project]));
+  await cache.saveCachedResults('123', results([item()]));
   const screen = await open();
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
   screen.rerender(
@@ -221,18 +294,18 @@ test('switching accounts clears the previous account cache and state', async () 
       />
     </AppProvider>,
   );
-  await waitFor(async () => expect(await loadCachedResults('123')).toBeNull());
+  await waitFor(async () => expect(await cache.loadCachedResults('123')).toBeNull());
   await waitFor(() => expect(screen.queryByText('compass')).toBeNull());
 });
 
 test('signing out clears the account cache before leaving', async () => {
   const onSignOut = jest.fn();
-  await saveCachedResults('123', results([project]));
+  await cache.saveCachedResults('123', results([item()]));
   const screen = await open({ onSignOut });
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
   await fireEvent.press(screen.getByText('Sign out'));
   await waitFor(() => expect(onSignOut).toHaveBeenCalled());
-  await waitFor(async () => expect(await loadCachedResults('123')).toBeNull());
+  await waitFor(async () => expect(await cache.loadCachedResults('123')).toBeNull());
 });
 
 test('a too-short idea is rejected before any request', async () => {
@@ -266,7 +339,7 @@ test('an unauthorised favourites refresh returns the user to sign-in', async () 
 
 test('load more failures keep the first page and show a retry message', async () => {
   jest.mocked(api.searchProjects)
-    .mockResolvedValueOnce(results([project], 1, false, 2))
+    .mockResolvedValueOnce(results([item()], 'cursor-2'))
     .mockRejectedValueOnce(new Error('offline'));
   const screen = await open();
   await search(screen);
@@ -319,12 +392,43 @@ test('details show a provided licence and omit empty sections', async () => {
 });
 
 test('cards show honest fallbacks for missing language and licence', async () => {
-  jest.mocked(api.searchProjects).mockResolvedValue(results([{ ...project, description: '', language: null }]));
+  jest.mocked(api.searchProjects).mockResolvedValue(results([item({ description: '', language: null })]));
   const screen = await open();
   await search(screen);
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
   expect(screen.getByText('Language not reported')).toBeTruthy();
   expect(screen.getByText('Licence not reported')).toBeTruthy();
+});
+
+test('a licence conflict shows the live licence and hides the archive snippet', async () => {
+  jest.mocked(api.searchProjects).mockResolvedValue(results([item({
+    license: 'MIT',
+    license_conflict: true,
+    sources: ['github', 'archive'],
+    freshness: 'live+archive',
+    snippet: 'Archive excerpt that must not be shown',
+  })]));
+  const screen = await open();
+  await search(screen);
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  expect(screen.getByText('Licence MIT')).toBeTruthy();
+  expect(screen.queryByText('Archive excerpt that must not be shown')).toBeNull();
+});
+
+test('archive cards show their excerpt, licence and source label', async () => {
+  jest.mocked(api.searchProjects).mockResolvedValue(results([item({
+    sources: ['archive'],
+    freshness: 'archive',
+    license: 'Apache-2.0',
+    snippet: 'Feature excerpt from the archive',
+    matched_section: 'Features',
+  })]));
+  const screen = await open();
+  await search(screen);
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  expect(screen.getByText('Feature excerpt from the archive')).toBeTruthy();
+  expect(screen.getByText('Licence Apache-2.0')).toBeTruthy();
+  expect(screen.getByText('Source: Archive')).toBeTruthy();
 });
 
 test('signing-out and account errors are visible', async () => {
@@ -350,7 +454,7 @@ test('the favourites tab starts with an empty state', async () => {
 });
 
 test('a cached page without an idea offers no load more and explains why', async () => {
-  await saveCachedResults('123', results([project], 1, false, 5));
+  await cache.saveCachedResults('123', results([item()], 'stored-cursor'));
   const screen = await open();
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
   expect(screen.queryByText('Load more')).toBeNull();
@@ -358,12 +462,24 @@ test('a cached page without an idea offers no load more and explains why', async
   expect(api.searchProjects).not.toHaveBeenCalled();
 });
 
+test('a search started before the cache restore wins over the cached page', async () => {
+  let resolveCache!: (value: { data: api.SearchResults; savedAt: number }) => void;
+  jest.spyOn(cache, 'loadCachedResults').mockReturnValueOnce(new Promise(resolve => { resolveCache = resolve; }));
+  jest.mocked(api.searchProjects).mockResolvedValue(results([searchSecond]));
+  const screen = await open();
+  await search(screen, 'fresh idea');
+  await waitFor(() => expect(screen.getByText('navigator')).toBeTruthy());
+  await act(async () => { resolveCache({ data: results([item()]), savedAt: Date.now() }); });
+  expect(screen.getByText('navigator')).toBeTruthy();
+  expect(screen.queryByText('compass')).toBeNull();
+});
+
 test('a slow load-more response cannot overwrite a newer search', async () => {
   let resolveMore!: (value: ReturnType<typeof results>) => void;
   jest.mocked(api.searchProjects)
-    .mockResolvedValueOnce(results([project], 1, false, 2))
+    .mockResolvedValueOnce(results([item()], 'cursor-2'))
     .mockReturnValueOnce(new Promise(resolve => { resolveMore = resolve; }))
-    .mockResolvedValueOnce(results([second], 1, false, 1));
+    .mockResolvedValueOnce(results([searchSecond], null));
   const screen = await open();
   await search(screen, 'first idea');
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
@@ -372,13 +488,13 @@ test('a slow load-more response cannot overwrite a newer search', async () => {
   await fireEvent.changeText(screen.getByLabelText('Project idea'), 'second idea');
   await fireEvent.press(screen.getByText('Search projects'));
   await waitFor(() => expect(screen.getByText('navigator')).toBeTruthy());
-  await act(async () => { resolveMore(results([project, second], 2, false, 2)); });
+  await act(async () => { resolveMore(results([item(), searchSecond], null)); });
   expect(screen.getByText('navigator')).toBeTruthy();
   expect(screen.queryByText('compass')).toBeNull();
 });
 
 test('details opened later win when an earlier response resolves last', async () => {
-  jest.mocked(api.searchProjects).mockResolvedValue(results([project, second]));
+  jest.mocked(api.searchProjects).mockResolvedValue(results([item(), searchSecond]));
   let resolveA!: (value: typeof details) => void;
   jest.mocked(api.getProject)
     .mockReturnValueOnce(new Promise(resolve => { resolveA = resolve; }))
@@ -398,8 +514,8 @@ test('details opened later win when an earlier response resolves last', async ()
 test('a repeated project across pages is shown once', async () => {
   const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   jest.mocked(api.searchProjects)
-    .mockResolvedValueOnce(results([project], 1, false, 3))
-    .mockResolvedValueOnce(results([project, second], 2, false, 3));
+    .mockResolvedValueOnce(results([item()], 'cursor-2'))
+    .mockResolvedValueOnce(results([item(), searchSecond], null));
   const screen = await open();
   await search(screen);
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
