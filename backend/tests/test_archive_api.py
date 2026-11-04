@@ -655,7 +655,13 @@ def test_tampered_and_cross_account_cursors_are_rejected(serve):
             json={"idea": IDEA, "page_size": 1},
         )
         cursor = first.json()["next_cursor"]
-        tampered = cursor[:-1] + ("A" if cursor[-1] != "A" else "B")
+        # Change a middle base64url character: the last character can carry
+        # only padding bits, so editing it may decode to the same bytes.
+        index = len(cursor) // 2
+        while not cursor[index].isalnum():
+            index += 1
+        swap = "A" if cursor[index] != "A" else "B"
+        tampered = cursor[:index] + swap + cursor[index + 1 :]
         rejected = client.post(
             "/v1/projects/search",
             headers=HEADERS,
