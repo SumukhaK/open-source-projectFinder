@@ -393,7 +393,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
           >
             <Text style={[styles.searchText, { color: colors.onAccent }]}>Search projects</Text>
           </Pressable>
-          {loading ? <BrandLoader mode={mode} label="Searching projects" /> : null}
+          {loading && !refreshing ? <BrandLoader mode={mode} label="Searching projects" /> : null}
           {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.error, { color: colors.text }]}>{error}</Text> : null}
           {fromCache && results ? <Text style={[styles.notice, { color: colors.muted }]}>{results.has_more
             ? 'Showing your last results. Search again to load more.'

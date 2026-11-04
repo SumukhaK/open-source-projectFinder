@@ -630,6 +630,23 @@ test('pull to refresh starts a new hybrid search for the current idea', async ()
   expect(jest.mocked(api.searchProjects).mock.calls[1][1]).toEqual({ idea: 'task manager', pageSize: 20 });
 });
 
+test('pull to refresh keeps the current list and shows only the refresh spinner', async () => {
+  let resolve: (value: api.SearchResults) => void = () => undefined;
+  jest.mocked(api.searchProjects)
+    .mockResolvedValueOnce(results([item()]))
+    .mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  const screen = await open();
+  await search(screen);
+  await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  await act(async () => { void screen.getByTestId('discovery-list').props.refreshControl.props.onRefresh(); });
+  expect(screen.getByTestId('discovery-list').props.refreshControl.props.refreshing).toBe(true);
+  expect(screen.getByText('compass')).toBeTruthy();
+  expect(screen.queryByLabelText('Searching projects')).toBeNull();
+  await act(async () => { resolve(results([searchSecond])); });
+  await waitFor(() => expect(screen.getByText('navigator')).toBeTruthy());
+  expect(screen.getByTestId('discovery-list').props.refreshControl.props.refreshing).toBe(false);
+});
+
 test('pull to refresh is not offered without a live idea or outside Home results', async () => {
   await cache.saveCachedResults('123', results([item()]));
   const screen = await open();

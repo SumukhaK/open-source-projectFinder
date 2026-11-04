@@ -9,7 +9,7 @@ Base: `origin/main` after the U14 runtime fix (PR #57). Production change: `mobi
 - Only a complete search (not degraded, both sources `ok` and not incomplete) with zero items says "No projects matched your idea. Try different keywords."
 - A failed search offers **Try again** with the same idea. Cursor expiry keeps the T24 behaviour (cursor dropped, idea kept, "search again").
 - Cached results always carry a stale banner: "Showing your last results. Search again to load more." when more pages existed, otherwise "Search again for fresh results."
-- Pull to refresh starts a new hybrid search for the current idea. It is offered only on Home results with a live idea, not on Favourites, not while details are open and not during load-more. The current list stays visible while refreshing. The UI never triggers corpus ingestion.
+- Pull to refresh starts a new hybrid search for the current idea. It is offered only on Home results with a live idea, not on Favourites, not while details are open and not during load-more. The current list stays visible while refreshing, with only the pull-to-refresh spinner (no second loader). The UI never triggers corpus ingestion.
 - Sign-out and unmount bump a session sequence, so a search or favourite response that arrives later cannot write the results cache or roll back state for the next account.
 
 ## Operator steps and rollback
@@ -19,7 +19,7 @@ No operator step: the build talks to the same `/v1/projects/search` route and th
 ## Local verification
 
 - RED: 9 of the new screen tests failed against main's screen (missing source detail, retry, refresh, stale banner without more pages, post-sign-out and post-unmount cache writes).
-- GREEN: 51 screen tests pass; full mobile suite 110 passed / 1 skipped. Coverage 95.47% statements, 87.42% branches, 95.08% functions, 99.58% lines (gates in `.ci/quality-policy.json` held).
+- GREEN: 52 screen tests pass; full mobile suite 111 passed / 1 skipped. Coverage 95.47% statements, 87.47% branches, 95.08% functions, 99.58% lines (gates in `.ci/quality-policy.json` held).
 - `npm run typecheck` and `npm run lint` clean (zero warnings); `npx expo export --platform all` passed; `git diff --check` clean; changed-file secret scan found only fixture names.
 
 ## Limits
