@@ -28,7 +28,7 @@ Adapted from [Bulletproof React](https://github.com/alan2207/bulletproof-react/b
 
 - `src/app`: app entry and provider composition.
 - `src/features/auth`: login page, API flow and secure session storage.
-- `src/features/discovery`: authenticated idea search, project details, favourites and account-scoped local cache.
+- `src/features/discovery`: authenticated idea search, project details, favourites and account-scoped local cache. The signed-in screen has a Home/Profile bottom bar: Home holds search and results; Profile holds the account, favourites, settings (appearance) and about/privacy.
 - `src/features/branding/components`: preserved branding preview component.
 - `src/components`: shared vector mark and accessible animated loader.
 - `src/hooks`: platform accessibility hooks.
