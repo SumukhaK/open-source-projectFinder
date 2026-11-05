@@ -1,5 +1,20 @@
 # V1a — backend transcription evidence
 
+## One authorized manual M4A run — 2026-11-06
+
+Tested head: `c8111f559dc24fb601721d338e4fd68f176a393a`. The owner supplied a saved synthetic-voice AAC/M4A clip and authorized one real Deepgram call. The run used the existing authenticated `/v1/voice/transcribe` route with `Content-Type: audio/m4a`, the server key from the owner's ignored `.env`, and the real provider integration (no fake transport for Deepgram). No retries or second calls were made.
+
+| Measurement | Observed |
+| --- | --- |
+| Upload-to-transcript latency (saved clip) | 2288.67 ms |
+| Bytes | 89330 |
+| Provider audio duration | 4.744 s |
+| Non-empty transcript returned | true |
+
+Timing used a monotonic clock immediately around the upload request to the app through a local ASGI client, including authentication, route processing and the real outbound provider round trip. It excludes mobile capture/finalization and a device-to-server network hop. It is **not release-to-transcript latency**; that measurement belongs to V1b on device. This is one sample, not a latency distribution or performance guarantee.
+
+Only the four measurements above were output. Neither transcript text nor key was printed or saved; the original clip was read in place and not copied into this checkout. A temporary auth-only database supplied an ephemeral app session and was cleaned up afterward. No production code changed for the run. The manual-run blocker below is historical and is now resolved for saved-clip verification; device checks remain pending.
+
 ## Review follow-up — 2026-11-06
 
 Validated implementation head: `48349a8e0277925e80fa41be2d219e617526c329` (the evidence-only commit follows it). This section supersedes the original WAV-only contract below.
