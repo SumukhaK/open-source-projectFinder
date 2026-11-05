@@ -5,7 +5,7 @@ Status (2026-11-05): plan and UX agreed; all decisions approved; no task started
 | Accepted | Task | Requires merged / approved | Status | PR / base SHA | Reviewed head / review / CI evidence | Merged main SHA / date |
 | --- | --- | --- | --- | --- | --- | --- |
 | [ ] | [P3: Home/Profile navigation and settings](tasks/P3-home-profile.md) | T25; UX1 | Not started | — | — | — |
-| [ ] | [V0: LLM provider profiles and eval harness](tasks/V0-llm-profiles.md) | T15; VD2 | Not started | — | — | — |
+| [ ] | [V0: LLM provider profiles and eval harness](tasks/V0-llm-profiles.md) | T15; VD2 | Awaiting review | PR pending; base `dc4ea0a7de50bb9762cf0ac35160c08677374419` | 29 new tests (24 client + 5 eval); full backend+scripts suite 985 passed / 65 skipped; coverage 93.4% combined / 90.5% branches; ruff and bandit clean; hand Ollama eval row below | — |
 | [ ] | [V1: Hold-to-talk voice input](tasks/V1-voice-input.md) | P3; VD1, VD3 | Not started | — | — | — |
 | [ ] | [V2: Grounded result summary](tasks/V2-grounded-summary.md) | V0 | Not started | — | — | — |
 | [ ] | [V3: Spoken summary and voice-output setting](tasks/V3-voice-output.md) | V1, V2; VD4 | Not started | — | — | — |
@@ -28,8 +28,10 @@ Record one row per profile run. A profile becomes the default only when it meets
 
 | Date | Profile / provider / model | Prompt version | Grounding | Faithfulness | First word / total (p50, p95) | Tidied vs raw query | Default? |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-11-05 | ollama/ollama/qwen2.5:7b-instruct | query_tidy_v1+summary_grounded_v1 | 100% | 100% | 1109/5391 ms (p95 1438/6109) | 2/2 shorter | no |
 
 ## History
 
 - 2026-11-05 - Plan agreed in the owner's project thread (architecture review, LLM decision and switching rules). VD1-VD3 approved, VD4 pending. VD5 approved the same day (existing shared Cloudflare token, owner-rotated). No code yet.
 - 2026-11-05 - UX decisions UX1-UX5 approved (owner delegated them); VD4 approved as "on for voice searches only". Added P3 (Home/Profile navigation and settings) before V1; V1-V3 now carry the UX details.
+- 2026-11-05 - V0: Not started -> Awaiting review. LLM profiles in central config, one OpenAI-compatible client, versioned prompts, startup probe, eval harness and tests, based on `dc4ea0a7de50bb9762cf0ac35160c08677374419`. Hand-run Ollama eval recorded above; the eval used the built-in 2-query sample set because the T27 query set does not exist yet.

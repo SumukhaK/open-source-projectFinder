@@ -1,8 +1,16 @@
+import re
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Content-format bounds; changes require a new archive chunker version.
@@ -45,6 +53,68 @@ MILVUS_TEXT_BYTES = {
     "section": 512,
     "snippet": 2048,
 }
+
+
+class LlmProfile(BaseModel):
+    """One OpenAI-compatible model profile; no code path names a model."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    provider: Literal["ollama", "workers_ai"]
+    base_url: str = Field(min_length=1, max_length=500)
+    model: str = Field(min_length=1, max_length=200)
+    # Environment variable that holds the server-side key; None means no key.
+    api_key_env: str | None = Field(default=None, min_length=1, max_length=100)
+    connect_timeout: float = Field(default=5, gt=0, le=30)
+    first_token_timeout: float = Field(default=10, gt=0, le=60)
+    total_timeout: float = Field(default=30, gt=0, le=120)
+    max_output_tokens: int = Field(default=512, ge=1, le=8192)
+    temperature: float = Field(default=0.2, ge=0, le=2)
+    context_limit: int = Field(default=8192, ge=512, le=200000)
+    streaming: bool = True
+
+    @field_validator("base_url")
+    @classmethod
+    def http_base_url(cls, value):
+        parsed = urlsplit(value.replace("{account_id}", "account"))
+        if (
+            parsed.scheme not in ("http", "https")
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("LLM base URL must be an http(s) URL")
+        return value.rstrip("/")
+
+    @model_validator(mode="after")
+    def ordered_timeouts(self):
+        if self.first_token_timeout > self.total_timeout:
+            raise ValueError("LLM first-token timeout must not exceed total timeout")
+        return self
+
+
+def _default_llm_profiles():
+    return {
+        "ollama": LlmProfile(
+            provider="ollama",
+            base_url="http://127.0.0.1:11434/v1",
+            model="qwen2.5:7b-instruct",
+            connect_timeout=10,
+            # A cold local model load can take a minute on the shared GPU.
+            first_token_timeout=60,
+            total_timeout=120,
+        ),
+        "workers_ai": LlmProfile(
+            provider="workers_ai",
+            base_url=(
+                "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1"
+            ),
+            model="@cf/mistral/mistral-7b-instruct-v0.1",
+            api_key_env="WORKERS_AI_API_TOKEN",
+        ),
+    }
 
 
 class Settings(BaseSettings):
@@ -127,6 +197,11 @@ class Settings(BaseSettings):
     max_github_search_response: int = Field(default=1048576, ge=1024, le=2097152)
     max_readme_chars: int = Field(default=60000, ge=1000)
     max_favourites: int = Field(default=500, ge=1)
+    # V0 LLM summaries are opt-in: an empty active profile disables them.
+    llm_active_profile: str = ""
+    llm_profiles: dict[str, LlmProfile] = Field(default_factory=_default_llm_profiles)
+    workers_ai_account_id: str = ""
+    workers_ai_api_token: SecretStr = Field(default=SecretStr(""), repr=False)
 
     @field_validator("milvus_uri")
     @classmethod
@@ -225,4 +300,20 @@ class Settings(BaseSettings):
     def bounded_hybrid_archive_limits(self):
         if self.hybrid_archive_initial_limit > self.hybrid_archive_max_limit:
             raise ValueError("Hybrid archive initial limit must not exceed max limit")
+        return self
+
+    @field_validator("llm_profiles")
+    @classmethod
+    def bounded_llm_profiles(cls, value):
+        if not value:
+            raise ValueError("At least one LLM profile is required")
+        for name in value:
+            if not re.fullmatch(r"[a-z][a-z0-9_]{0,31}", name):
+                raise ValueError("LLM profile names must be lowercase identifiers")
+        return value
+
+    @model_validator(mode="after")
+    def known_active_llm_profile(self):
+        if self.llm_active_profile and self.llm_active_profile not in self.llm_profiles:
+            raise ValueError("LLM_ACTIVE_PROFILE must name an active LLM profile")
         return self

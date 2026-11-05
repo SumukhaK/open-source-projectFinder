@@ -5,6 +5,7 @@ import json
 import logging
 import secrets
 import time
+from contextlib import asynccontextmanager
 from urllib.parse import urlencode
 
 from cryptography.fernet import Fernet
@@ -20,6 +21,11 @@ from app.core.config import Settings
 from app.core.store import Store, digest
 from app.discovery import credentials, discovery_router
 from app.integrations.github import GitHubProvider, ProviderError
+from app.integrations.llm import (
+    LlmConfigurationError,
+    build_client,
+    probe_profile,
+)
 from app.services.hybrid_runtime import HybridRuntime
 
 
@@ -78,9 +84,35 @@ class BodyLimit:
         return await self.app(scope, replay, send)
 
 
-def create_app(settings=None, transport=None, sleep=time.sleep, *, hybrid=None):
+def create_app(
+    settings=None, transport=None, sleep=time.sleep, *, hybrid=None, llm=None
+):
     settings = settings or Settings()
-    app = FastAPI(title="RepoRadar API")
+
+    @asynccontextmanager
+    async def lifespan(app):
+        app.state.llm_available = False
+        client = llm
+        if client is None and settings.llm_active_profile:
+            try:
+                client = build_client(settings)
+            except LlmConfigurationError as error:
+                logging.getLogger("reporadar.llm").error(
+                    json.dumps(
+                        {
+                            "event": "llm_unavailable",
+                            "profile": settings.llm_active_profile,
+                            "error": type(error).__name__,
+                        }
+                    )
+                )
+        if client is not None:
+            app.state.llm_available = await probe_profile(
+                client, client.profile_name, client.model
+            )
+        yield
+
+    app = FastAPI(title="RepoRadar API", lifespan=lifespan)
     store = Store(settings.database_path)
     app.state.settings, app.state.store = settings, store
     provider = GitHubProvider(

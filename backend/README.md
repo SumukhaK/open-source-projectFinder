@@ -66,6 +66,20 @@ All backend settings live in `app/core/config.py`. `DATABASE_PATH` defaults to i
 
 Authentication can run locally without credentials for health checks; login then returns 503. An invalid configured encryption key fails startup. No production credentials or fake provider are included. The GitHub simulator exists only under tests.
 
+## LLM profiles (V0, awaiting review)
+
+Summaries are opt-in. `LLM_ACTIVE_PROFILE` selects one profile from the map in `app/core/config.py`; an empty value keeps summaries off. Each profile carries its provider, base URL, model, key reference, connect/first-token/total timeouts, max output tokens, temperature, context limit and streaming flag. The default `ollama` profile expects a local Ollama server; the `workers_ai` profile reads `WORKERS_AI_ACCOUNT_ID` and `WORKERS_AI_API_TOKEN` from the ignored `backend/.env`. No model name appears outside the central config.
+
+`app/integrations/llm.py` is one OpenAI-compatible async client for both providers with streaming, deadlines and typed errors. At startup it makes one tiny call; a failure logs `llm_unavailable` with the profile, model and error type and sets `app.state.llm_available` to false, leaving search untouched. Versioned prompts live in `app/prompts/`, and `summary_is_grounded` rejects repositories outside the supplied list. Logs carry profile, model, counts and durations only, never idea text.
+
+Run the eval harness against a configured profile (the default set is an offline sample):
+
+```sh
+python scripts/llm_eval.py --profile ollama --limit 3
+```
+
+It prints one labelled tracker row with grounding, licence fidelity, first-word/total time and tidied-versus-raw quality. V0 adds no route or user-facing change; CI uses a fake transport and needs no key.
+
 ## Archive catalogue (T03, merged)
 
 `app/core/archive_store.py` provides an opt-in catalogue, independent of auth. It is not constructed by the app factory and creates no database during ordinary API startup. It uses only standard-library `sqlite3`; no ORM or new dependency is installed. `ARCHIVE_DATABASE_PATH` and `ARCHIVE_CONTENT_PATH` must be separate from auth, including auth/archive journal sidecars and hardlink aliases. `ARCHIVE_BUSY_TIMEOUT_MS` defaults to 5000 (1-30000 allowed).
