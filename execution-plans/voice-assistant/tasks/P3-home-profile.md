@@ -1,6 +1,6 @@
 # P3: Home/Profile navigation and settings
 
-Status: Awaiting review. Implementation, verification and visual-check limits are recorded in [evidence](../P3_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged 2026-11-05 in [PR #62](https://github.com/SumukhaK/open-source-projectFinder/pull/62) (`4ea0659`). Implementation, verification and visual-check limits are recorded in [evidence](../P3_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
