@@ -18,7 +18,7 @@ Status (2026-11-05): plan agreed; no task started. Owner: the implementer record
 | VD2 | LLM provider path | **Approved 2026-11-05** | No frontier model. Ollama locally, small then larger; then Cloudflare Workers AI open models up to about 30B (Qwen or Mistral class). One OpenAI-compatible client; switch by settings profile and evals only. |
 | VD3 | Interaction and transport | **Approved 2026-11-05** | Hold-to-talk. HTTPS clip upload first; WebSocket streaming only if V1 latency needs it; no WebRTC for now. |
 | VD4 | Voice output default | **Pending owner** | Whether spoken summaries are on or off by default (the list always shows). Needed before V3. |
-| VD5 | Workers AI account and key ownership | **Pending owner** | Which Cloudflare account and who rotates or revokes its key. Needed before the first Workers AI profile run, not before V0. |
+| VD5 | Workers AI account and key ownership | **Approved 2026-11-05** | The owner's existing Cloudflare account and token, shared with another of the owner's projects; the owner rotates and revokes it (rotating breaks both projects, so update both `.env` files together). Stored only in the laptop's ignored `backend/.env` as `WORKERS_AI_ACCOUNT_ID` and `WORKERS_AI_API_TOKEN`. The token needs the Workers AI permission. |
 
 ## Model profile evaluations
 
@@ -29,4 +29,4 @@ Record one row per profile run. A profile becomes the default only when it meets
 
 ## History
 
-- 2026-11-05 - Plan agreed in the owner's project thread (architecture review, LLM decision and switching rules). VD1-VD3 approved, VD4-VD5 pending. No code yet.
+- 2026-11-05 - Plan agreed in the owner's project thread (architecture review, LLM decision and switching rules). VD1-VD3 approved, VD4 pending. VD5 approved the same day (existing shared Cloudflare token, owner-rotated). No code yet.
