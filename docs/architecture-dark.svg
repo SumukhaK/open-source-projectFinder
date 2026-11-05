@@ -1,49 +1,60 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="920" height="610" viewBox="0 0 920 610" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="620" viewBox="0 0 1080 620" role="img" aria-labelledby="title desc">
 <title id="title">RepoRadar planned architecture</title>
-<desc id="desc">The mobile app sends text or voice ideas to FastAPI and idea processing. Hybrid search retrieves from Milvus and GitHub Search API, returning explained repository matches to the app. A periodic worker normalizes and embeds public GitHub repository content into Milvus.</desc>
-<rect width="920" height="610" fill="#0D1117"/>
+<desc id="desc">The mobile app sends a text or hold-to-talk voice idea to the FastAPI backend. Planned: the backend sends audio to Deepgram for speech to text and uses an LLM step, on Ollama and later Cloudflare Workers AI, to tidy the query and write a grounded summary that Deepgram can speak back. Hybrid search queries the live GitHub Search API and the 365-day Milvus archive in parallel and returns one merged list. A separate ingestion worker reads permissively licensed public repositories pushed in the last 365 days, prepares README and metadata chunks, embeds them with the E5 model and publishes them to Milvus.</desc>
+<rect width="1080" height="620" fill="#0D1117"/>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#8B949E"/></marker></defs>
 <g fill="none" stroke="#8B949E" stroke-width="1.7" stroke-linejoin="round" marker-end="url(#arrow)">
-<path d="M230 114 V162"/>
-<path d="M230 226 V274"/>
-<path d="M230 338 V386"/>
-<path d="M230 450 V498"/>
-<path d="M710 114 V162"/>
-<path d="M710 226 V274"/>
-<path d="M710 338 V386"/>
-<path d="M370 418 H570"/>
-<path d="M370 434 H470 V530 H570"/>
-<path d="M90 530 H40 V82 H90"/>
+<path d="M200 126 V180" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<path d="M200 256 V310"/>
+<path d="M200 386 V440"/>
+<path d="M340 208 H400" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<path d="M340 236 H366 V348 H400" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<path d="M340 370 H382 V478 H400"/>
+<path d="M880 126 V180"/>
+<path d="M880 256 V310"/>
+<path d="M880 386 V478 H680"/>
 </g>
-<rect x="90" y="50" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
-<text x="230" y="77" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Mobile app</text>
-<text x="230" y="98" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Text or voice idea</text>
-<rect x="90" y="162" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
-<text x="230" y="189" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">FastAPI backend</text>
-<text x="230" y="210" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">API requests</text>
-<rect x="90" y="274" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
-<text x="230" y="301" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Idea processing</text>
-<text x="230" y="322" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Interpretation and transcription</text>
-<rect x="90" y="386" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
-<text x="230" y="413" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Hybrid search</text>
-<text x="230" y="434" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Retrieval and ranking</text>
-<rect x="90" y="498" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
-<text x="230" y="525" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Repository matches</text>
-<text x="230" y="546" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Similarity explanations</text>
-<rect x="570" y="50" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
-<text x="710" y="77" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Public GitHub repos</text>
-<text x="710" y="98" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Repository corpus</text>
-<rect x="570" y="162" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
-<text x="710" y="189" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Ingestion worker</text>
-<text x="710" y="210" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Periodic updates</text>
-<rect x="570" y="274" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
-<text x="710" y="301" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Embeddings</text>
-<text x="710" y="322" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Normalize and embed content</text>
-<rect x="570" y="386" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
-<text x="710" y="413" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Milvus</text>
-<text x="710" y="434" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Semantic vector index</text>
-<rect x="570" y="498" width="280" height="64" rx="8" fill="#161B22" stroke="#30363D"/>
-<text x="710" y="525" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">GitHub Search API</text>
-<text x="710" y="546" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Live repository search</text>
-<text x="460" y="590" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Planned architecture · Mobile branding is implemented; search services are pending</text>
+<rect x="60" y="50" width="280" height="76" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="200" y="76" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Mobile app</text>
+<text x="200" y="97" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Text or hold-to-talk voice idea</text>
+<text x="200" y="115" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Result list, optional voice reply</text>
+<rect x="60" y="180" width="280" height="76" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="200" y="206" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">FastAPI backend</text>
+<text x="200" y="227" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Auth, sessions, central config</text>
+<text x="200" y="245" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Voice and summary routes planned</text>
+<rect x="400" y="180" width="280" height="76" rx="8" fill="#161B22" stroke="#8B949E" stroke-dasharray="6 4"/>
+<text x="540" y="206" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Deepgram speech</text>
+<text x="540" y="227" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Speech to text, text to speech</text>
+<text x="540" y="245" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Key stays on the backend</text>
+<rect x="60" y="310" width="280" height="76" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="200" y="336" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Hybrid search</text>
+<text x="200" y="357" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Live and archive in parallel</text>
+<text x="200" y="375" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Merged, deduplicated list</text>
+<rect x="400" y="310" width="280" height="76" rx="8" fill="#161B22" stroke="#8B949E" stroke-dasharray="6 4"/>
+<text x="540" y="336" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">LLM step</text>
+<text x="540" y="357" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Tidy query, grounded summary</text>
+<text x="540" y="375" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Ollama, then Workers AI profiles</text>
+<rect x="60" y="440" width="280" height="76" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="200" y="474" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">GitHub Search API</text>
+<text x="200" y="495" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Live public repositories</text>
+<rect x="400" y="440" width="280" height="76" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="540" y="466" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Milvus archive</text>
+<text x="540" y="487" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">365-day vectors</text>
+<text x="540" y="505" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">SQLite catalogue</text>
+<rect x="740" y="50" width="280" height="76" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="880" y="76" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Public GitHub repositories</text>
+<text x="880" y="97" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Permissive licences only</text>
+<text x="880" y="115" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Pushed in the last 365 days</text>
+<rect x="740" y="180" width="280" height="76" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="880" y="206" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Ingestion worker</text>
+<text x="880" y="227" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Capped backfill, weekly refresh</text>
+<text x="880" y="245" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Privacy and licence sweeps</text>
+<rect x="740" y="310" width="280" height="76" rx="8" fill="#161B22" stroke="#30363D"/>
+<text x="880" y="336" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Content and embeddings</text>
+<text x="880" y="357" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">README and metadata chunks</text>
+<text x="880" y="375" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">E5 model on CPU</text>
+<rect x="60" y="566" width="36" height="20" rx="4" fill="#161B22" stroke="#30363D"/>
+<text x="106" y="581" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Implemented or in progress</text>
+<rect x="330" y="566" width="36" height="20" rx="4" fill="#161B22" stroke="#8B949E" stroke-dasharray="6 4"/>
+<text x="376" y="581" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Planned (voice assistant plan V1-V3)</text>
 </svg>
