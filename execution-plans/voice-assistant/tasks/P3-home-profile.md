@@ -1,6 +1,6 @@
 # P3: Home/Profile navigation and settings
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review. Implementation, verification and visual-check limits are recorded in [evidence](../P3_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
