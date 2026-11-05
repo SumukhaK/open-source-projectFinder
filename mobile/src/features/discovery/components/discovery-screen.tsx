@@ -67,7 +67,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   const detailsSeq = useRef(0);
   // Bumped on sign-out and unmount so late responses never write the cache.
   const sessionSeq = useRef(0);
-  const [tab, setTab] = useState<'Discover' | 'Favourites'>('Discover');
+  const [tab, setTab] = useState<'Home' | 'Profile'>('Home');
   const [idea, setIdea] = useState('');
   const [activeIdea, setActiveIdea] = useState('');
   const [fromCache, setFromCache] = useState(false);
@@ -320,7 +320,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
     && !loading
     && results.has_more
     && results.next_cursor !== null;
-  const homeResults = tab === 'Discover' && !selected;
+  const homeResults = tab === 'Home' && !selected;
   const canRefresh = homeResults && activeIdea !== '' && !loadingMore;
   const detail = results ? sourceDetail(results) : null;
   const confirmedEmpty = results !== null && results.items.length === 0 && completeSearch(results);
@@ -330,8 +330,8 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
     <View style={[styles.header, { borderColor: colors.border }]}>
       <BrandMark mode={mode} size={38} />
       <View style={styles.headerText}>
-        <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Discover projects</Text>
-        <Text style={[styles.meta, { color: colors.muted }]}>@{user.login}</Text>
+        <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>{tab === 'Home' ? 'Discover projects' : 'Profile'}</Text>
+        {tab === 'Home' ? <Text style={[styles.meta, { color: colors.muted }]}>@{user.login}</Text> : null}
       </View>
     </View>
     <ScrollView
@@ -354,7 +354,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
         onBack={closeDetails}
         onToggle={() => void toggleFavourite(selected)}
       /> : <>
-        {tab === 'Discover' ? <>
+        {tab === 'Home' ? <>
           <TextInput
             accessibilityLabel="Project idea"
             placeholder="Describe your idea"
@@ -411,7 +411,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
         </> : <>
           {user.avatar_url ? <Image source={{ uri: user.avatar_url }} accessibilityLabel={`GitHub avatar for ${user.login}`} style={{ width: 64, height: 64, borderRadius: 32 }} /> : null}
           <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>@{user.login}</Text>
-          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Favourites</Text>
+          <Text accessibilityRole="header" style={[styles.sectionHeading, { color: colors.text }]}>Favourites</Text>
           {favourites.length === 0 ? <Text style={[styles.notice, { color: colors.muted }]}>No favourites yet.</Text> : null}
           {favourites.map(project => <ProjectCard
             key={project.full_name}
@@ -421,10 +421,10 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
             onOpen={() => void openDetails(project)}
             onToggle={() => void toggleFavourite(project)}
           />)}
-          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Settings</Text>
-          <Text style={{ color: colors.text }}>Appearance</Text>
+          <Text accessibilityRole="header" style={[styles.sectionHeading, { color: colors.text }]}>Settings</Text>
+          <Text style={[styles.settingLabel, { color: colors.muted }]}>Appearance</Text>
           <AppearanceControls />
-          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>About and privacy</Text>
+          <Text accessibilityRole="header" style={[styles.sectionHeading, { color: colors.text }]}>About and privacy</Text>
           <Text style={[styles.notice, { color: colors.muted }]}>Your device stores your sign-in session, appearance preference and account-specific cached results and favourites. Signing out clears your account cache. Your idea goes to the backend to search GitHub and the project archive; it is not saved in the results cache. Favourites are saved to your backend account.</Text>
           <Pressable accessibilityRole="button" accessibilityState={{ disabled: signingOut }} disabled={signingOut} onPress={() => void leave()} style={[styles.more, { borderColor: colors.border }]}>
             <Text style={{ color: colors.text }}>{signingOut ? 'Signing out' : 'Sign out'}</Text>
@@ -433,8 +433,8 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       </>}
     </ScrollView>
     <View style={[styles.tabs, { padding: 20, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
-      {(['Discover', 'Favourites'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name === 'Discover' ? 'Home' : 'Profile'} accessibilityState={{ selected: tab === name }} onPress={() => { closeDetails(); setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
-        <Text style={{ color: tab === name ? colors.onAccent : colors.text }}>{name === 'Discover' ? 'Home' : 'Profile'}</Text>
+      {(['Home', 'Profile'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name} accessibilityState={{ selected: tab === name }} onPress={() => { closeDetails(); setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
+        <Text style={{ color: tab === name ? colors.onAccent : colors.text }}>{name}</Text>
       </Pressable>)}
     </View>
   </SafeAreaView>;
@@ -445,7 +445,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   headerText: { flex: 1 },
   title: { fontSize: 22, lineHeight: 28, fontWeight: '700' },
-  signOut: { minHeight: 44, paddingHorizontal: 12, borderWidth: 1, borderRadius: 12, justifyContent: 'center' },
+  sectionHeading: { fontSize: 17, lineHeight: 24, fontWeight: '600', marginTop: 8 },
+  settingLabel: { fontSize: 14, lineHeight: 20, fontWeight: '500', paddingLeft: 8 },
   content: { padding: 20, gap: 14, width: '100%', maxWidth: 720, alignSelf: 'center' },
   tabs: { flexDirection: 'row', gap: 10 },
   tab: { flex: 1, minHeight: 46, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },

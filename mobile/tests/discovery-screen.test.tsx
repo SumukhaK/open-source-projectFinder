@@ -73,6 +73,23 @@ const results = (
 });
 const user = { github_id: 123, login: 'octocat', avatar_url: '' };
 
+test('header follows Home and Profile selection', async () => {
+  const screen = await open();
+  expect(screen.getByRole('header', { name: 'Discover projects' })).toBeTruthy();
+  await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
+  expect(screen.getByRole('header', { name: 'Profile' })).toBeTruthy();
+  expect(screen.queryByRole('header', { name: 'Discover projects' })).toBeNull();
+  await fireEvent.press(screen.getByRole('tab', { name: 'Home' }));
+  expect(screen.getByRole('header', { name: 'Discover projects' })).toBeTruthy();
+  expect(screen.queryByRole('header', { name: 'Profile' })).toBeNull();
+});
+
+test('Profile shows the username exactly once', async () => {
+  const screen = await open();
+  await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
+  expect(screen.getAllByText('@octocat')).toHaveLength(1);
+});
+
 test('Home and Profile expose selected tabs and settings without a second search action', async () => {
   const screen = await open();
   expect(screen.getByRole('tab', { name: 'Home' }).props.accessibilityState.selected).toBe(true);
