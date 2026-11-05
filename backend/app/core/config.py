@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     github_client_id: str = ""
     github_client_secret: str = ""
+    deepgram_api_key: SecretStr = Field(default=SecretStr(""), repr=False)
+    deepgram_model: str = "nova-3"
+    voice_max_bytes: int = Field(default=4 * 1024 * 1024, ge=44, le=4 * 1024 * 1024)
+    voice_max_compressed_bytes: int = Field(default=1024 * 1024, ge=1, le=1024 * 1024)
+    voice_max_seconds: float = Field(default=30, gt=0, le=30)
+    voice_timeout: float = Field(default=15, gt=0, le=30)
+    voice_max_concurrent: int = Field(default=2, ge=1, le=4)
     github_callback_url: str = "http://localhost:8000/auth/github/callback"
     token_encryption_key: str = ""
     database_path: str = "./data/auth.sqlite3"
