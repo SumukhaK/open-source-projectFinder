@@ -1604,6 +1604,6 @@ Agreed after review in the project thread:
 - The list comes from the existing hybrid search route; the LLM only tidies the query and summarises the listed results, with a grounding check.
 - Deepgram for speech to text and text to speech, called only from the backend (supersedes the earlier native-speech, no-paid-keys item).
 - LLM: no frontier model; Ollama locally (small, then larger), then Cloudflare Workers AI open models up to about 30B. Owner: "keep things configurabale and switching shouldnt cause any surprises" — settings profiles, versioned prompts, startup validation, labelled replies and switching only through evals.
-- Pending owner: spoken-summary default (VD4) and Workers AI account/key ownership (VD5).
+- VD4 and VD5 approved the same day: spoken summaries on for voice searches only; the owner's existing Cloudflare token as `WORKERS_AI_ACCOUNT_ID`/`WORKERS_AI_API_TOKEN` in the laptop's ignored `backend/.env`. The owner delegated UI/UX decisions ("whatever u recommend is fine by me"): Home/Profile bottom bar first (P3), Profile › Voice toggle, visible mic button, in-context explanations ([docs/VOICE_UX.md](docs/VOICE_UX.md)).
 
 Recorded in [docs/VOICE_ASSISTANT_ARCHITECTURE.md](docs/VOICE_ASSISTANT_ARCHITECTURE.md), [execution-plans/voice-assistant](execution-plans/voice-assistant/README.md), README, REQUIREMENTS, SCOPE and the architecture diagrams. The hybrid archive plan is unchanged; T18 Phase B still awaits the owner's approval.

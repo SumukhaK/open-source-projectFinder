@@ -21,7 +21,7 @@
 - Corpus selection and whether to index metadata, README content, documentation, or source code.
 - Ingestion cadence, scale targets, retention, storage beyond vectors, and GitHub API budget.
 - Similarity criteria, ranking, result explanations, latency targets, and measurable relevance evaluation.
-- Accessibility and deployment requirements, and the default for spoken summaries (VD4). Voice privacy and retention are confirmed below; GitHub-only authentication is confirmed below.
+- Accessibility and deployment requirements,  Voice privacy and retention are confirmed below; GitHub-only authentication is confirmed below.
 
 This document records initial requirements, not a finalized implementation contract. No multi-agent architecture is currently required.
 
@@ -32,6 +32,7 @@ This document records initial requirements, not a finalized implementation contr
 - Spoken summaries use Deepgram text to speech when voice output is on; the list shows either way.
 - LLMs are switchable settings profiles behind one OpenAI-compatible client: Ollama locally, then Cloudflare Workers AI open models up to about 30B. No frontier model. A profile becomes the default only after the shared eval set.
 - No audio, transcript, idea or summary is stored or logged. Provider keys stay on the backend. Microphone permission and a Deepgram processing notice are required, with a full text-only path.
+- UX: a Home/Profile bottom bar with settings on Profile; "Read summaries aloud" in Profile › Voice, on for voice searches only, never while a screen reader runs; a visible mic button; a one-time voice explainer before the microphone prompt and a "How voice works" page ([docs/VOICE_UX.md](docs/VOICE_UX.md)).
 - Design: [docs/VOICE_ASSISTANT_ARCHITECTURE.md](docs/VOICE_ASSISTANT_ARCHITECTURE.md). Tasks: [execution-plans/voice-assistant](execution-plans/voice-assistant/README.md).
 
 ## Confirmed visual requirements

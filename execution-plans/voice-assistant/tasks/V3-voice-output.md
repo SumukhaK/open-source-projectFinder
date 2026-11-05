@@ -31,7 +31,7 @@ AND WAIT FOR REVIEW. Do not self-accept, merge or start the next task.
 
 ## Work and boundaries
 
-When voice output is on, stream the validated summary through Deepgram text to speech from the backend and play it on the phone as it arrives. Add a voice-output setting on the profile screen with the VD4 default. Stop playback on a new search, sign-out, background or leaving Home. Never speak an unvalidated summary.
+When voice output is on, stream the validated summary through Deepgram text to speech from the backend and play it on the phone as it arrives. Add "Read summaries aloud" to Profile › Voice, default on for voice searches only (VD4); typed searches never speak on their own. Add the summary card's speaker/Stop button so any summary can be heard once, and the one-time tip "Turn this off in Profile › Voice". Never auto-speak while a screen reader runs, and respect silent mode (see [voice UX](../../../docs/VOICE_UX.md)). Stop playback on a new search, sign-out, background or leaving Home. Never speak an unvalidated summary.
 
 ## Tests and verification before acceptance
 

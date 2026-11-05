@@ -1,11 +1,12 @@
 # Voice assistant execution plan
 
-Agreed with the owner on 2026-11-05. **Proposed implementation, not shipped functionality.** Design: [docs/VOICE_ASSISTANT_ARCHITECTURE.md](../../docs/VOICE_ASSISTANT_ARCHITECTURE.md). Progress and decisions: [TRACKER](TRACKER.md).
+Agreed with the owner on 2026-11-05. **Proposed implementation, not shipped functionality.** Design: [docs/VOICE_ASSISTANT_ARCHITECTURE.md](../../docs/VOICE_ASSISTANT_ARCHITECTURE.md) and [docs/VOICE_UX.md](../../docs/VOICE_UX.md). Progress and decisions: [TRACKER](TRACKER.md).
 
 Every task follows the hybrid plan's [EXECUTION_GUIDE](../hybrid-search/EXECUTION_GUIDE.md) and [REVIEW_CHECKLIST](../hybrid-search/REVIEW_CHECKLIST.md): a fresh main-based branch, tests first (RED then GREEN), one PR, exact-head review, and merge before a dependent task starts.
 
 ## Order
 
+0. **P3** Home/Profile bottom bar and settings home (the original Home/Profile design), before any voice UI. See [voice UX](../../docs/VOICE_UX.md).
 1. **V0** LLM provider profiles, one OpenAI-compatible client and the eval harness. No user-facing change.
 2. **V1** Voice in: hold to talk, HTTPS clip upload, Deepgram speech to text, editable transcript, consent. Measures latency.
 3. **V2** Grounded summary of the result list (and optional query tidy-up), streamed as text.

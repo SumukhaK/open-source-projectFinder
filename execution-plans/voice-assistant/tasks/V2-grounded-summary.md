@@ -31,7 +31,7 @@ AND WAIT FOR REVIEW. Do not self-accept, merge or start the next task.
 
 ## Work and boundaries
 
-Add an authenticated route that takes the current search's first-page result identities (not free text from the client) and streams a short summary from the active LLM profile, using only each repository's name, description and licence. Validate the finished summary: any repository name not in the list rejects it, and a rejected, failed or late summary returns "no summary" rather than an error. Optionally tidy a voice transcript into a short query before search, behind a setting, and keep it only if V0 evals show it beats the raw transcript. Show the summary as a card above the list on Home; the list renders first and never waits for it.
+Add an authenticated route that takes the current search's first-page result identities (not free text from the client) and streams a short summary from the active LLM profile, using only each repository's name, description and licence. Validate the finished summary: any repository name not in the list rejects it, and a rejected, failed or late summary returns "no summary" rather than an error. Optionally tidy a voice transcript into a short query before search, behind a setting, and keep it only if V0 evals show it beats the raw transcript. Show the summary as a card above the list on Home with an "AI" tag and "Based only on the results below"; a failed or missing summary hides the card. The list renders first and never waits for it (see [voice UX](../../../docs/VOICE_UX.md) step 5).
 
 ## Tests and verification before acceptance
 

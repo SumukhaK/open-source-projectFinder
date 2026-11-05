@@ -5,10 +5,10 @@ Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 | Control | Value |
 | --- | --- |
 | Branch to create from latest origin/main | `codex/voice-v1-voice-input` |
-| Prerequisites | T25 merged; VD1 and VD3 approved |
+| Prerequisites | P3 merged; VD1 and VD3 approved |
 | Intended scope | a backend `/v1/voice/transcribe` route and Deepgram client, the mobile Home search action, consent and permission handling, tests and docs |
 
-Read first: [voice architecture](../../../docs/VOICE_ASSISTANT_ARCHITECTURE.md), [plan rules](../README.md), the hybrid [EXECUTION_GUIDE](../../hybrid-search/EXECUTION_GUIDE.md) and the current code, tests and configuration.
+Read first: [voice UX](../../../docs/VOICE_UX.md) (journey steps 1-4, 6-7), [voice architecture](../../../docs/VOICE_ASSISTANT_ARCHITECTURE.md), [plan rules](../README.md), the hybrid [EXECUTION_GUIDE](../../hybrid-search/EXECUTION_GUIDE.md) and the current code, tests and configuration.
 
 ## Copy-ready execution prompt
 
@@ -31,7 +31,7 @@ AND WAIT FOR REVIEW. Do not self-accept, merge or start the next task.
 
 ## Work and boundaries
 
-Hold the search button to record; release to upload the clip over HTTPS to an authenticated `/v1/voice/transcribe` route with bounded size and duration. The backend forwards the clip to Deepgram's pre-recorded API with the server-side key and returns the transcript, without storing the audio or transcript. The app shows the transcript as editable text, then the user runs the existing hybrid search. Ask for microphone permission, show a one-time notice that audio is processed by Deepgram, and keep the full text path when the user declines or Deepgram fails. Handle release before permission, app backgrounding, sign-out and unmount during recording or upload. Log only durations and sizes. Measure release-to-transcript latency.
+Hold the search button to record; release to upload the clip over HTTPS to an authenticated `/v1/voice/transcribe` route with bounded size and duration. The backend forwards the clip to Deepgram's pre-recorded API with the server-side key and returns the transcript, without storing the audio or transcript. The app shows the transcript as editable text, then the user runs the existing hybrid search. Ask for microphone permission, show a one-time notice that audio is processed by Deepgram, and keep the full text path when the user declines or Deepgram fails. Handle release before permission, app backgrounding, sign-out and unmount during recording or upload. Log only durations and sizes. Measure release-to-transcript latency. UX: a mic button inside the idea box with the first-use hint; the one-time "Search by voice" sheet before the system prompt (Continue / Not now); haptic, pulsing ring, timer, slide to cancel and a 30-second limit; the "We heard" label with search starting at once; the denied-permission sheet with "Open phone settings"; a Profile › Voice screen with the microphone status row and the "How voice works" page. The consent flag is stored per account and cleared on sign-out.
 
 ## Tests and verification before acceptance
 
