@@ -1,6 +1,6 @@
 # V1a — backend transcription evidence
 
-Date: 2026-11-06. Status: Awaiting review; not accepted or merged.
+Date: 2026-11-06. Status: Awaiting review on [PR #65](https://github.com/SumukhaK/open-source-projectFinder/pull/65); not accepted or merged.
 Branch: `codex/voice-v1a-transcribe`. Base: `662735b5e0b024e54fdbd0352ae0c80eaf226813`.
 
 ## Scope and prerequisite checks
