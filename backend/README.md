@@ -14,7 +14,7 @@ FastAPI GitHub signup/login, persistent rate limits, encrypted provider credenti
 
 ### V1a voice transcription (backend only)
 
-`POST /v1/voice/transcribe` uses the existing app bearer session. Set the server-only `DEEPGRAM_API_KEY` in the ignored backend `.env`; an empty key returns `503 VOICE_UNAVAILABLE` with `retryable: true`. No key is shipped to mobile. The endpoint does not search or use an LLM. Mobile recording/UI is V1b, after V1a merges.
+`POST /v1/voice/transcribe` uses the existing app bearer session. Set the server-only `DEEPGRAM_API_KEY` in the ignored backend `.env`; an empty key returns `503 VOICE_UNAVAILABLE` with `retryable: true`. No key is shipped to mobile. The endpoint does not search or use an LLM. Mobile recording/UI is V1b (not yet built); it should record AAC/M4A.
 
 Send the recording as the raw request body over the deployment's HTTPS endpoint, not multipart, JSON, a URL or base64. Accepted types: `audio/wav`, `audio/mp4`, `audio/m4a`, `audio/aac`. Expo's AAC/M4A bytes are forwarded unchanged with their content type and capped at 1 MiB (`VOICE_MAX_COMPRESSED_BYTES`). Compressed duration must be a finite positive number in Deepgram's `metadata.duration`; over 30.5 seconds is `413 VOICE_TOO_LONG` (30-second recording limit plus 0.5-second tolerance). Missing/invalid metadata fails closed. This duration check happens **after provider processing**, so rejected overlong compressed audio can incur provider usage.
 

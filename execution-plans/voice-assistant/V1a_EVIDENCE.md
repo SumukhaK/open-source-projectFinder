@@ -1,5 +1,7 @@
 # V1a — backend transcription evidence
 
+Outcome: merged 2026-11-05 as [PR #65](https://github.com/SumukhaK/open-source-projectFinder/pull/65) (`f4f4bf3c6b25bd819d932ef106765017012bc877`) after trusted review of head `1a9209d` and green CI. Sections below are kept as recorded.
+
 ## One authorized manual M4A run — 2026-11-06
 
 Tested head: `c8111f559dc24fb601721d338e4fd68f176a393a`. The owner supplied a saved synthetic-voice AAC/M4A clip and authorized one real Deepgram call. The run used the existing authenticated `/v1/voice/transcribe` route with `Content-Type: audio/m4a`, the server key from the owner's ignored `.env`, and the real provider integration (no fake transport for Deepgram). No retries or second calls were made.
