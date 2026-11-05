@@ -2,7 +2,7 @@
 
 Turn a project idea into a search for existing open-source implementations.
 
-RepoRadar is a planned AI-driven discovery service with a React-based mobile client and a Python FastAPI backend. Users describe an idea by text or voice; the backend combines semantic retrieval from Milvus with GitHub public repository search to find similar projects.
+RepoRadar is a planned AI-driven discovery service with a React-based mobile client and a Python FastAPI backend. Users describe an idea by text or by holding to talk; the backend combines semantic retrieval from Milvus with GitHub public repository search to find similar projects, and (planned) a small LLM summarises the results, which can be read aloud.
 
 ## Planned architecture
 
@@ -11,7 +11,7 @@ RepoRadar is a planned AI-driven discovery service with a React-based mobile cli
 
 [Editable Mermaid source](docs/architecture.mmd) · [Diagram styling](docs/DIAGRAMS.md)
 
-The backend and ingestion worker share integration code and one central backend configuration module. Provider choices, corpus boundaries, ingestion cadence, and ranking strategy remain open.
+The backend and ingestion worker share integration code and one central backend configuration module. Dashed boxes are planned by the [voice assistant plan](execution-plans/voice-assistant/README.md); see [voice assistant architecture](docs/VOICE_ASSISTANT_ARCHITECTURE.md).
 
 ## Implemented authentication
 
@@ -35,7 +35,8 @@ GitHub credentials stay encrypted on the backend; the app uses a separate revoca
 | Archive GitHub reads | HTTPX with a dedicated worker token, bounded streaming and conditional requests | T04 merged; not yet called by a worker |
 | Content preparation | `markdown-it-py` 4.2.0 (AST read only, never rendered) and the pinned E5 tokenizer | T05 merged; at most 8 chunks of ≤400 content / ≤512 final tokens |
 | Local runtime | WSL2 (Ubuntu) + Docker Desktop on Windows; NVIDIA driver 617.42 for the GPU profile | Used for Milvus and the embedding smoke checks |
-| Language model, voice transcription | Pending | Select after requirements |
+| Speech to text, text to speech | Deepgram, called only from the backend | Approved 2026-11-05 (VD1); not implemented |
+| Language model | OpenAI-compatible client over switchable profiles: Ollama locally, then Cloudflare Workers AI open models up to about 30B; no frontier model | Approved 2026-11-05 (VD2); not implemented |
 | Tests | Unit and integration tests with TDD | pytest, Jest / React Native Testing Library |
 
 ## Repository layout
@@ -60,6 +61,7 @@ infra/
 docs/              # Detailed design documents
 execution-plans/
   hybrid-search/   # Hybrid search handbook, task prompts, tracker and evidence
+  voice-assistant/ # Voice and LLM summary plan, task prompts and tracker
 scripts/           # Quality gates, reviewed merge, Milvus probe, embedding smoke check
 AGENTS.md          # Engineering workflow
 REQUIREMENTS.md    # Technical requirements
@@ -87,6 +89,10 @@ See [technical requirements](REQUIREMENTS.md), [plain-language scope](SCOPE.md),
 The free-tool pipeline runs pytest/Jest with coverage gates, Ruff/ESLint/TypeScript, Bandit and TypeScript security rules, dependency auditing, redacted full-history secret scans and platform bundle exports. A reviewed merge must match the exact reviewed commit and have successful CI. No manually configured scanner keys or paid services. See [quality pipeline, local commands and limitations](docs/QUALITY_PIPELINE.md).
 
 Sanitized local crash events and a mobile retry screen are implemented; production crash aggregation and deployment remain planned. One narrow, expiring dependency audit exception remains (deepmerge 4.3.1, low severity, build/test tooling only, expires 2026-12-31); node-forge was updated to the patched 1.4.2.
+
+## Planned voice assistant
+
+The user holds to talk, the backend transcribes the clip with Deepgram, and the editable transcript runs the existing hybrid search. The result list shows first. A small LLM then writes a summary of only those results, and Deepgram can read it aloud if voice output is on. The LLM never changes the list, and any voice or LLM failure falls back to plain text search. Models are settings profiles (Ollama first, then Workers AI) and change only after evals. See the [architecture](docs/VOICE_ASSISTANT_ARCHITECTURE.md) and the [plan and tracker](execution-plans/voice-assistant/README.md) (V0-V4, not started).
 
 ## Planned hybrid search implementation
 

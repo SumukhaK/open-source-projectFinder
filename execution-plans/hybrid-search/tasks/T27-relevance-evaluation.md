@@ -44,6 +44,8 @@ RED: hand-computed metric examples, ties/empty pools and invalid/missing judgmen
 
 Use real focused commands from [the guide](../EXECUTION_GUIDE.md#verification-commands) and existing suite paths found during discovery. Record baseline and RED/GREEN command, date/platform, exit code and assertions in the PR. Run affected existing tests, lint/type/format and required CI; document unavailable integration evidence as blocked. `git diff --check` and secret inspection are required before staging/push.
 
+Reuse note (2026-11-05): the [voice plan](../../voice-assistant/README.md) reuses this human-judged query set for LLM profile evals (V0/V2), so keep it free of personal data and stable across versions.
+
 ## What counts as acceptable
 
 At least50 reviewed labels and a fair frozen baseline comparison exist. Recall is explicitly judged-pool recall, not global GitHub recall. Improvements/latency tradeoffs and failure examples meet recorded acceptance thresholds or remain blocked.

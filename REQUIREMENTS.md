@@ -17,13 +17,22 @@
 
 ## Decisions still required
 - React Native with Expo selected and implemented for the branding foundation; supported release OS versions remain to be specified.
-- AI, embedding, and speech providers; hosting and budget constraints.
+- Hosting and budget constraints. Embeddings (E5, local), speech (Deepgram) and LLM (Ollama, then Workers AI) providers are decided; see the voice requirements below.
 - Corpus selection and whether to index metadata, README content, documentation, or source code.
 - Ingestion cadence, scale targets, retention, storage beyond vectors, and GitHub API budget.
 - Similarity criteria, ranking, result explanations, latency targets, and measurable relevance evaluation.
-- Voice and text privacy, retention, accessibility and deployment requirements. GitHub-only authentication is confirmed below.
+- Accessibility and deployment requirements, and the default for spoken summaries (VD4). Voice privacy and retention are confirmed below; GitHub-only authentication is confirmed below.
 
 This document records initial requirements, not a finalized implementation contract. No multi-agent architecture is currently required.
+
+## Voice assistant (agreed 2026-11-05)
+
+- Hold-to-talk voice input: the clip is uploaded over HTTPS to the backend, transcribed by Deepgram and shown as an editable transcript before search. WebSocket streaming only if measured latency needs it; no WebRTC.
+- The result list always comes from the hybrid search route and appears first. An LLM may tidy the query and writes a summary of only the listed results; a summary naming any other repository is rejected. Voice, LLM or TTS failures fall back to text search.
+- Spoken summaries use Deepgram text to speech when voice output is on; the list shows either way.
+- LLMs are switchable settings profiles behind one OpenAI-compatible client: Ollama locally, then Cloudflare Workers AI open models up to about 30B. No frontier model. A profile becomes the default only after the shared eval set.
+- No audio, transcript, idea or summary is stored or logged. Provider keys stay on the backend. Microphone permission and a Deepgram processing notice are required, with a full text-only path.
+- Design: [docs/VOICE_ASSISTANT_ARCHITECTURE.md](docs/VOICE_ASSISTANT_ARCHITECTURE.md). Tasks: [execution-plans/voice-assistant](execution-plans/voice-assistant/README.md).
 
 ## Confirmed visual requirements
 

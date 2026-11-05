@@ -1,6 +1,6 @@
 # RepoRadar: Project Scope
 
-RepoRadar will help people discover whether an open-source project already addresses their idea. A person describes what they want to build by typing or speaking into a mobile app. The service searches public GitHub projects and returns similar repositories.
+RepoRadar will help people discover whether an open-source project already addresses their idea. A person describes what they want to build by typing or by holding a button and speaking into a mobile app. The service searches public GitHub projects and returns a list of similar repositories, with a short summary of that list that can be read aloud (planned).
 
 It will combine a periodically refreshed collection of repository information with GitHub search. This aims to find projects with related purposes even when their names use different words.
 

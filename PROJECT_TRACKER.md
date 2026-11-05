@@ -106,7 +106,7 @@ feel free to create a remote git repo with the name "open-source-projectFinder" 
 | 3 | Periodic ingestion, embeddings and Milvus index | In progress: T01-T09, T16 and T17 merged; T18-T23 planned | Repeatable ingestion, deduplication, updates and retrieval checks |
 | 4 | Hybrid retrieval, ranking and AI similarity explanations | In progress: T10-T15 merged; T27 planned | Agreed relevance evaluation, provenance and failure handling |
 | 5 | Mobile text discovery flow | In progress: P2 foundation, T24 v1 contract and T25 combined results merged; T26 planned | Client tests and end-to-end submission/results verification |
-| 6 | Voice submission and transcription | Planned | Voice-to-search flow and privacy/error behavior verification |
+| 6 | Voice assistant: hold-to-talk input, grounded LLM summary, spoken reply | Planned: plan agreed 2026-11-05 ([voice tracker](execution-plans/voice-assistant/TRACKER.md), V0-V4) | Voice-to-search flow, grounding evals, privacy/error behaviour and device checks |
 | 7 | Scale validation and deployment readiness | Planned | Agreed performance, reliability and deployment checks |
 
 These phases are provisional. The mobile foundation and authentication now have installed dependencies and application code. React Native with Expo is now selected for the mobile branding foundation. Future feature entries must record branches, PRs, test results and documentation changes.
@@ -209,7 +209,7 @@ User confirmed: live GitHub search first, Milvus ingestion/semantic search next.
 
 - [x] Backend: authenticated public-only search/details, per-user persisted favourites, validation/rate limiting and bounded provider reads; failing tests first.
 - [ ] Mobile: Home/Profile navigation, search composer/results/empty/error states, favourites and details; tests first, safe README presentation.
-- [ ] Voice: native speech recognition, hold/release/permission races/background cleanup; editable transcript, no audio persistence or paid transcription keys.
+- [ ] Voice: ~~native speech recognition, no paid transcription keys~~ superseded on 2026-11-05 by the [voice assistant plan](execution-plans/voice-assistant/README.md) (Deepgram via the backend, with consent). Still required: hold/release/permission races, background cleanup, editable transcript, no audio persistence.
 - [ ] Design verification: actual mobile-sized light/dark browser previews, safe areas, 48-point controls, spacing/type hierarchy, accessible labels; native device limitations recorded.
 - [ ] Delivery: full quality gates, self-review and feature PR merges.
 
@@ -1594,3 +1594,16 @@ Owner request (verbatim): "if its good merge and update the tracker and give me 
   - new U10: cursor/digest key domain separation;
   - new verify-closed row: T15 wires the T10 revalidator.
 - Next: T15 (authenticated versioned hybrid search API), which T14 unblocks.
+
+## Voice assistant plan - 2026-11-05
+
+Owner request (verbatim): "user uses their voice to tell us what they are looking for and we have STT, speech to text on our backend that trnslate it into text and streams tokens to LLM which searches github api and our db at the same time and then uses TTS, text to speech to convert it into voice response and a list of data to the user, if user has turned off voice output on their app, list is there on UI anyways, voice will just give sumary of search results in voice while list shows the results found. i have free 200$ credit in deepgram so i was planning on using it for the project"
+
+Agreed after review in the project thread:
+- Hold-to-talk with an HTTPS clip upload first; WebSocket streaming only if latency needs it; no WebRTC. No voice code existed before, so nothing migrates.
+- The list comes from the existing hybrid search route; the LLM only tidies the query and summarises the listed results, with a grounding check.
+- Deepgram for speech to text and text to speech, called only from the backend (supersedes the earlier native-speech, no-paid-keys item).
+- LLM: no frontier model; Ollama locally (small, then larger), then Cloudflare Workers AI open models up to about 30B. Owner: "keep things configurabale and switching shouldnt cause any surprises" — settings profiles, versioned prompts, startup validation, labelled replies and switching only through evals.
+- Pending owner: spoken-summary default (VD4) and Workers AI account/key ownership (VD5).
+
+Recorded in [docs/VOICE_ASSISTANT_ARCHITECTURE.md](docs/VOICE_ASSISTANT_ARCHITECTURE.md), [execution-plans/voice-assistant](execution-plans/voice-assistant/README.md), README, REQUIREMENTS, SCOPE and the architecture diagrams. The hybrid archive plan is unchanged; T18 Phase B still awaits the owner's approval.
