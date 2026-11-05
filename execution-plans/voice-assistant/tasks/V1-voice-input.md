@@ -1,23 +1,30 @@
 # V1: Hold-to-talk voice input
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: split into V1a (backend, Awaiting review) and V1b (mobile, not started), approved by the owner on 2026-11-06. [V1a verification evidence](../V1a_EVIDENCE.md); review/merge evidence belongs in [TRACKER](../TRACKER.md).
+
+## Approved execution split
+
+- **V1a**: `codex/voice-v1a-transcribe`, from current `origin/main`; backend only. Authenticated `/v1/voice/transcribe`, Deepgram HTTP client with fake-provider tests, empty `DEEPGRAM_API_KEY` example and central `SecretStr`, bounded size/duration, typed retryable provider errors, content-free latency logging, no stored/logged audio or transcripts, backend README and evidence. Raise one PR and stop for review.
+- **V1b**: `codex/voice-v1b-mobile`, from `origin/main` **after V1a merges**. Recording lifecycle and all mobile UX below: mic, consent/permission/denial, hold/slide-cancel/30-second limit, editable “We heard” transcript and existing search, Profile Voice/help, account-scoped consent cleared on sign-out, race/background/unmount tests. Raise its own PR and stop. No V1b work belongs in V1a.
+
+V1a base: `662735b5e0b024e54fdbd0352ae0c80eaf226813`. Plan: (1) RED route/provider boundary tests; (2) minimum backend implementation and GREEN; (3) full backend checks, evidence and PR. Real provider latency remains unverified unless actually measured. The original combined journey below remains the product specification, not permission to start V1b early.
 
 | Control | Value |
 | --- | --- |
-| Branch to create from latest origin/main | `codex/voice-v1-voice-input` |
-| Prerequisites | P3 merged; VD1 and VD3 approved |
-| Intended scope | a backend `/v1/voice/transcribe` route and Deepgram client, the mobile Home search action, consent and permission handling, tests and docs |
+| Branch to create from latest origin/main | V1a: `codex/voice-v1a-transcribe`; V1b: `codex/voice-v1b-mobile` |
+| Prerequisites | V1a: P3 merged, VD1 and VD3 approved; V1b: V1a merged |
+| Intended scope | V1a backend route/client/tests/docs; V1b mobile recording/UI/tests/docs |
 
 Read first: [voice UX](../../../docs/VOICE_UX.md) (journey steps 1-4, 6-7), [voice architecture](../../../docs/VOICE_ASSISTANT_ARCHITECTURE.md), [plan rules](../README.md), the hybrid [EXECUTION_GUIDE](../../hybrid-search/EXECUTION_GUIDE.md) and the current code, tests and configuration.
 
-## Copy-ready execution prompt
+## Execution prompt (select one approved slice)
 
 ```text
-Execute V1 only. Follow AGENTS.md, execution-plans/hybrid-search/EXECUTION_GUIDE.md
+Execute only the owner-selected V1a or V1b slice above. Follow AGENTS.md, execution-plans/hybrid-search/EXECUTION_GUIDE.md
 and execution-plans/voice-assistant/README.md. Verify the listed prerequisites are
 MERGED into main and the listed decisions are approved; stop if missing. Read
 current code/tests before editing. Fetch origin main and create branch
-codex/voice-v1-voice-input FROM origin/main; record base SHA.
+the selected slice's branch FROM origin/main; record base SHA. V1b starts only after V1a merges.
 Minimum complete, human-readable code, existing patterns and standard library
 first, no speculative abstractions or unrelated changes. Write and RUN failing
 tests FIRST (RED), implement the minimum (GREEN), then refactor and run affected

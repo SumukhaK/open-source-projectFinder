@@ -12,6 +12,20 @@ FastAPI GitHub signup/login, persistent rate limits, encrypted provider credenti
 
 ## Setup
 
+### V1a voice transcription (backend only)
+
+`POST /v1/voice/transcribe` uses the existing app bearer session. Set the server-only `DEEPGRAM_API_KEY` in the ignored backend `.env`; an empty key returns `503 VOICE_UNAVAILABLE` with `retryable: true`. No key is shipped to mobile. The endpoint does not search or use an LLM. Mobile recording/UI is V1b, after V1a merges.
+
+Send the recording as the raw request body with `Content-Type: audio/wav` over the deployment's HTTPS endpoint, not multipart, JSON, a URL or base64. The initial contract is uncompressed 16-bit PCM WAV, one or two channels, 8–48 kHz, at most 30 seconds inclusive and 4 MiB. Prefer mono 16 kHz (about 960 kB for 30 seconds). V1b must produce this format; AAC/M4A/WebM are deliberately rejected rather than trusting a client-provided duration. Python's WAV reader checks the frame count and actual available PCM bytes; only those frames are rebuilt and sent, excluding arbitrary metadata and extra data. No decoder dependency or temporary upload file is needed.
+
+Success returns `{"transcript":"…","duration_seconds":1.0,"latency_ms":120.0}`. Transcript length is 2–1000 characters after trimming and must still be shown/editable before the existing search starts. Latency measures server upload/validation/provider time, **not** release-to-transcript device latency. Errors use `detail: {code, message, retryable}`: authentication 401; invalid WAV 400; size/duration 413; unsupported media 415; no usable speech 422; rate limit 429 (with Retry-After); unavailable/busy/provider failure 503; deadline 504. Provider messages and credentials never pass through. Text search remains independent.
+
+Limits live in central settings: `VOICE_MAX_BYTES` (default/cap 4194304), `VOICE_MAX_SECONDS` (default/cap 30), `VOICE_TIMEOUT` (15 seconds, maximum 30, covers upload plus provider), `VOICE_MAX_CONCURRENT` (2 per API process, cap 4), and `DEEPGRAM_MODEL` (`nova-3`). Voice shares the existing discovery IP throttle, with a separate voice concurrency bound; multi-process deployments multiply that bound. There are no automatic retries or redirects. Provider JSON is bounded to 64 KiB and compressed provider responses are refused. Deepgram is called at a fixed HTTPS origin with `mip_opt_out=true`.
+
+Audio/transcripts exist only in request memory and are not written to the catalogue, auth DB, cache, files or application logs. Voice logs contain only bytes, duration and latency. Keep request/response-body capture disabled in proxies/APM as well. [Deepgram's data policy](https://developers.deepgram.com/trust-security/your-data) documents retention opt-out and remaining usage metadata; see the [pre-recorded API contract](https://developers.deepgram.com/reference/speech-to-text/listen-pre-recorded). Opt-out can affect provider pricing. No billing/account settings are changed by this code.
+
+All automated voice tests use fake HTTP and an explicitly empty default key, independent of environment secrets. Provider/device acceptance limits are recorded in [V1a evidence](../execution-plans/voice-assistant/V1a_EVIDENCE.md). Rollback: revert V1a and remove its environment settings; no migration or stored audio needs cleanup.
+
 Use Python 3.11. From this directory:
 
 ```sh
