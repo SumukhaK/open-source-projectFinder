@@ -1,5 +1,16 @@
 # V1a — backend transcription evidence
 
+## Review follow-up — 2026-11-06
+
+Validated implementation head: `48349a8e0277925e80fa41be2d219e617526c329` (the evidence-only commit follows it). This section supersedes the original WAV-only contract below.
+
+- Accept `audio/mp4`, `audio/m4a`, `audio/aac` unchanged with their content type. `VOICE_MAX_COMPRESSED_BYTES` defaults/caps at 1 MiB, checked before any provider call. WAV validation remains unchanged.
+- Compressed duration comes from finite positive numeric `metadata.duration`; reject over 30.5 seconds as `VOICE_TOO_LONG`, allowing 0.5 seconds tolerance around the configured 30-second maximum. Missing/invalid metadata fails closed. This check occurs after provider processing and cannot prevent provider usage for rejected overlong clips. Logs contain measurements, never transcript text.
+- Added a direct regression asserting the default test app's transport refuses a provider request. The first version crossed pytest's BaseException through ASGI and caused a test-lifespan error; the corrected test exercises the transport directly. Behavioral RED: **11 failed / 34 passed**, all compressed cases rejected with the previous 415. GREEN: **45 voice tests passed**.
+- Full backend/scripts suite, same command and Windows runtime as below: **1001 passed / 65 skipped**, 66.11 seconds. Unchanged coverage gate passes at **93.4% combined / 90.5% branches**. Ruff check, Ruff format check, Bandit and `git diff --check` pass. Existing TestClient deprecation warning remains.
+- History moved to oldest-first with no extra blank line. Approval date retained as **2026-11-06, Asia/Kolkata**, the date supplied for the approval turn; no alternate approval date has been provided. README explicitly distinguishes server-only `latency_ms` from release-to-transcript timing.
+- **Manual run BLOCKED, not performed this round:** owner identified `E:/OpenSourceProjectFinder/backend/.env`; key presence was checked without displaying its value. A short spoken `.m4a` clip/path has not been provided. No transcript or release-to-transcript measurement is claimed. A saved clip alone permits upload-to-transcript measurement; genuine release latency requires a recording-stop timestamp from the same timed session. The one authorized manual call remains outstanding.
+
 Date: 2026-11-06. Status: Awaiting review on [PR #65](https://github.com/SumukhaK/open-source-projectFinder/pull/65); not accepted or merged.
 Branch: `codex/voice-v1a-transcribe`. Base: `662735b5e0b024e54fdbd0352ae0c80eaf226813`.
 
