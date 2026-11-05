@@ -73,6 +73,21 @@ const results = (
 });
 const user = { github_id: 123, login: 'octocat', avatar_url: '' };
 
+test('Home and Profile expose selected tabs and settings without a second search action', async () => {
+  const screen = await open();
+  expect(screen.getByRole('tab', { name: 'Home' }).props.accessibilityState.selected).toBe(true);
+  expect(screen.queryByText('Sign out')).toBeNull();
+  await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
+  expect(screen.getByRole('tab', { name: 'Profile' }).props.accessibilityState.selected).toBe(true);
+  expect(screen.getByText('Settings')).toBeTruthy();
+  expect(screen.getByText('About and privacy')).toBeTruthy();
+  expect(screen.getByLabelText('Dark appearance')).toBeTruthy();
+  expect(screen.getByText('Sign out')).toBeTruthy();
+  expect(screen.queryByLabelText('Project idea')).toBeNull();
+  await fireEvent.press(screen.getByRole('tab', { name: 'Home' }));
+  expect(screen.getByLabelText('Project idea')).toBeTruthy();
+});
+
 const open = (overrides: Partial<React.ComponentProps<typeof DiscoveryScreen>> = {}) =>
   render(
     <AppProvider>
@@ -256,7 +271,7 @@ test('a failed remove restores the favourite in the list', async () => {
   jest.mocked(api.removeFavourite).mockReturnValue(new Promise((_, reject) => { rejectRemove = reject; }));
   const screen = await open();
   await waitFor(() => expect(api.getFavourites).toHaveBeenCalled());
-  await fireEvent.press(screen.getByRole('tab', { name: 'Favourites' }));
+  await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
   await fireEvent.press(screen.getByLabelText('Remove octocat/compass from favourites'));
   await waitFor(() => expect(screen.queryByText('compass')).toBeNull());
@@ -314,6 +329,7 @@ test('signing out clears the account cache before leaving', async () => {
   await cache.saveCachedResults('123', results([item()]));
   const screen = await open({ onSignOut });
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+  await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
   await fireEvent.press(screen.getByText('Sign out'));
   await waitFor(() => expect(onSignOut).toHaveBeenCalled());
   await waitFor(async () => expect(await cache.loadCachedResults('123')).toBeNull());
@@ -444,6 +460,7 @@ test('archive cards show their excerpt, licence and source label', async () => {
 
 test('signing-out and account errors are visible', async () => {
   const screen = await open({ signingOut: true, accountError: 'Your session expired.' });
+  await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
   expect(screen.getByText('Signing out')).toBeTruthy();
   expect(screen.getByText('Your session expired.')).toBeTruthy();
 });
@@ -452,7 +469,7 @@ test('favourites open the same details view', async () => {
   jest.mocked(api.getFavourites).mockResolvedValue({ items: [project] });
   const screen = await open();
   await waitFor(() => expect(api.getFavourites).toHaveBeenCalled());
-  await fireEvent.press(screen.getByRole('tab', { name: 'Favourites' }));
+  await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
   await fireEvent.press(screen.getByLabelText('Open octocat/compass'));
   await waitFor(() => expect(api.getProject).toHaveBeenCalledWith('session', 'octocat/compass'));
@@ -460,7 +477,7 @@ test('favourites open the same details view', async () => {
 
 test('the favourites tab starts with an empty state', async () => {
   const screen = await open();
-  await fireEvent.press(screen.getByRole('tab', { name: 'Favourites' }));
+  await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
   expect(screen.getByText('No favourites yet.')).toBeTruthy();
 });
 
@@ -652,7 +669,7 @@ test('pull to refresh is not offered without a live idea or outside Home results
   const screen = await open();
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
   expect(screen.getByTestId('discovery-list').props.refreshControl).toBeUndefined();
-  await fireEvent.press(screen.getByRole('tab', { name: 'Favourites' }));
+  await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
   expect(screen.getByTestId('discovery-list').props.refreshControl).toBeUndefined();
 });
 
@@ -662,6 +679,7 @@ test('a search that resolves after sign-out is not written back to the cache', a
   const onSignOut = jest.fn();
   const screen = await open({ onSignOut });
   await search(screen);
+  await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
   await fireEvent.press(screen.getByText('Sign out'));
   await waitFor(() => expect(onSignOut).toHaveBeenCalled());
   await act(async () => { resolve(results([item()])); });
@@ -676,6 +694,7 @@ test('a favourite saved after sign-out is not written back to the cache', async 
   await search(screen);
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
   await fireEvent.press(screen.getByLabelText('Save octocat/compass to favourites'));
+  await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
   await fireEvent.press(screen.getByText('Sign out'));
   await waitFor(() => expect(onSignOut).toHaveBeenCalled());
   await act(async () => { resolve(project); });

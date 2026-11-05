@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppearanceControls } from '../../../components/appearance-controls';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandLoader } from '../../../components/brand-loader';
 import { BrandMark } from '../../../components/brand-mark';
@@ -332,15 +333,6 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
         <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Discover projects</Text>
         <Text style={[styles.meta, { color: colors.muted }]}>@{user.login}</Text>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ disabled: signingOut }}
-        disabled={signingOut}
-        onPress={() => void leave()}
-        style={[styles.signOut, { borderColor: colors.border }]}
-      >
-        <Text style={{ color: colors.text }}>{signingOut ? 'Signing out' : 'Sign out'}</Text>
-      </Pressable>
     </View>
     <ScrollView
       testID="discovery-list"
@@ -362,17 +354,6 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
         onBack={closeDetails}
         onToggle={() => void toggleFavourite(selected)}
       /> : <>
-        <View style={styles.tabs}>
-          {(['Discover', 'Favourites'] as const).map(name => <Pressable
-            key={name}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: tab === name }}
-            onPress={() => setTab(name)}
-            style={[styles.tab, { backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}
-          >
-            <Text style={{ color: tab === name ? colors.onAccent : colors.text, fontWeight: '600' }}>{name}</Text>
-          </Pressable>)}
-        </View>
         {tab === 'Discover' ? <>
           <TextInput
             accessibilityLabel="Project idea"
@@ -428,6 +409,9 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
             <Text style={{ color: colors.text }}>{loadingMore ? 'Loading more' : 'Load more'}</Text>
           </Pressable> : null}
         </> : <>
+          {user.avatar_url ? <Image source={{ uri: user.avatar_url }} accessibilityLabel={`GitHub avatar for ${user.login}`} style={{ width: 64, height: 64, borderRadius: 32 }} /> : null}
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>@{user.login}</Text>
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Favourites</Text>
           {favourites.length === 0 ? <Text style={[styles.notice, { color: colors.muted }]}>No favourites yet.</Text> : null}
           {favourites.map(project => <ProjectCard
             key={project.full_name}
@@ -437,9 +421,22 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
             onOpen={() => void openDetails(project)}
             onToggle={() => void toggleFavourite(project)}
           />)}
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Settings</Text>
+          <Text style={{ color: colors.text }}>Appearance</Text>
+          <AppearanceControls />
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>About and privacy</Text>
+          <Text style={[styles.notice, { color: colors.muted }]}>Your device stores your sign-in session, appearance preference and account-specific cached results and favourites. Signing out clears your account cache. Your idea goes to the backend to search GitHub and the project archive; it is not saved in the results cache. Favourites are saved to your backend account.</Text>
+          <Pressable accessibilityRole="button" accessibilityState={{ disabled: signingOut }} disabled={signingOut} onPress={() => void leave()} style={[styles.more, { borderColor: colors.border }]}>
+            <Text style={{ color: colors.text }}>{signingOut ? 'Signing out' : 'Sign out'}</Text>
+          </Pressable>
         </>}
       </>}
     </ScrollView>
+    <View style={[styles.tabs, { padding: 20, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
+      {(['Discover', 'Favourites'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name === 'Discover' ? 'Home' : 'Profile'} accessibilityState={{ selected: tab === name }} onPress={() => { closeDetails(); setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
+        <Text style={{ color: tab === name ? colors.onAccent : colors.text }}>{name === 'Discover' ? 'Home' : 'Profile'}</Text>
+      </Pressable>)}
+    </View>
   </SafeAreaView>;
 }
 

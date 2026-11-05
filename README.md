@@ -2,6 +2,8 @@
 
 Turn a project idea into a search for existing open-source implementations.
 
+P3 adds Home/Profile navigation for signed-in users: search remains on Home; Profile contains favourites, appearance, privacy information and sign-out. See [verification and limits](execution-plans/voice-assistant/P3_EVIDENCE.md). Review is pending.
+
 RepoRadar is a planned AI-driven discovery service with a React-based mobile client and a Python FastAPI backend. Users describe an idea by text or by holding to talk; the backend combines semantic retrieval from Milvus with GitHub public repository search to find similar projects, and (planned) a small LLM summarises the results, which can be read aloud.
 
 ## Planned architecture
