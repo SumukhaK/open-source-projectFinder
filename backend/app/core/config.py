@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     deepgram_api_key: SecretStr = Field(default=SecretStr(""), repr=False)
     deepgram_model: str = "nova-3"
     voice_max_bytes: int = Field(default=4 * 1024 * 1024, ge=44, le=4 * 1024 * 1024)
+    voice_max_compressed_bytes: int = Field(default=1024 * 1024, ge=1, le=1024 * 1024)
     voice_max_seconds: float = Field(default=30, gt=0, le=30)
     voice_timeout: float = Field(default=15, gt=0, le=30)
     voice_max_concurrent: int = Field(default=2, ge=1, le=4)

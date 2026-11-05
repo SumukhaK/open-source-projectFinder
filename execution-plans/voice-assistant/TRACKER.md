@@ -32,8 +32,7 @@ Record one row per profile run. A profile becomes the default only when it meets
 
 ## History
 
-- 2026-11-06 - Owner approved splitting V1 into two PRs: V1a backend transcription first (`codex/voice-v1a-transcribe`), then V1b mobile recording/UI (`codex/voice-v1b-mobile`) from main only after V1a merges. P3 merge and VD1/VD3 approval verified. V0 is independent; no LLM work in either V1 slice.
-
 - 2026-11-05 - Plan agreed in the owner's project thread (architecture review, LLM decision and switching rules). VD1-VD3 approved, VD4 pending. VD5 approved the same day (existing shared Cloudflare token, owner-rotated). No code yet.
 - 2026-11-05 - UX decisions UX1-UX5 approved (owner delegated them); VD4 approved as "on for voice searches only". Added P3 (Home/Profile navigation and settings) before V1; V1-V3 now carry the UX details.
 - 2026-11-05 - P3 merged as PR #62. GPT opened #61, then its session ended before it pushed the review fixes (tab-aware header, username once, section heading styles, two tests). Claude applied those fixes, verified them RED/GREEN, merged #62 and closed #61. Device light/dark and screen-reader checks remain open in the [evidence](P3_EVIDENCE.md).
+- 2026-11-06 - Owner approved splitting V1 into two PRs: V1a backend transcription first (`codex/voice-v1a-transcribe`), then V1b mobile recording/UI (`codex/voice-v1b-mobile`) from main only after V1a merges. P3 merge and VD1/VD3 approval verified. V0 is independent; no LLM work in either V1 slice.

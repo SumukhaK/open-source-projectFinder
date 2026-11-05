@@ -296,3 +296,80 @@ def test_provider_redirect_is_not_followed(voice, status):
     response = client.post("/v1/voice/transcribe", content=clip())
     assert response.status_code == 503
     assert calls == ["api.deepgram.com"]
+
+
+@pytest.mark.parametrize("content_type", ["audio/mp4", "audio/m4a", "audio/aac"])
+def test_compressed_audio_forwarded_with_original_type(voice, content_type):
+    def remote(request):
+        assert request.headers["content-type"] == content_type
+        assert request.content == b"fake compressed audio"
+        return httpx.Response(
+            200, json={**provider_response(), "metadata": {"duration": 3.5}}
+        )
+
+    client, _, _ = enable(voice, remote)
+    response = client.post(
+        "/v1/voice/transcribe",
+        content=b"fake compressed audio",
+        headers={"Content-Type": content_type},
+    )
+    assert response.status_code == 200
+    assert response.json()["duration_seconds"] == 3.5
+
+
+def test_compressed_upload_limit_precedes_provider(voice):
+    client, _, _ = enable(voice, lambda r: pytest.fail("must not call provider"))
+    response = client.post(
+        "/v1/voice/transcribe",
+        content=b"x" * (1024 * 1024 + 1),
+        headers={"Content-Type": "audio/m4a"},
+    )
+    assert response.status_code == 413
+    assert response.json()["detail"]["code"] == "VOICE_TOO_LARGE"
+
+
+@pytest.mark.parametrize(
+    "duration,status",
+    [
+        (30.5, 200),
+        (30.501, 413),
+        (None, 503),
+        (-1, 503),
+        (True, 503),
+        ("3", 503),
+        (float("nan"), 503),
+    ],
+)
+def test_compressed_duration_is_verified(voice, duration, status, caplog):
+    data = {
+        **provider_response("private transcript"),
+        "metadata": {"duration": duration},
+    }
+    client, _, _ = enable(
+        voice, lambda r: httpx.Response(200, content=json.dumps(data).encode())
+    )
+    with caplog.at_level(logging.INFO, logger="reporadar.voice"):
+        response = client.post(
+            "/v1/voice/transcribe",
+            content=b"compressed",
+            headers={"Content-Type": "audio/mp4"},
+        )
+    assert response.status_code == status
+    if status == 413:
+        assert response.json()["detail"]["code"] == "VOICE_TOO_LONG"
+        assert json.loads(caplog.records[-1].message)["duration_seconds"] == duration
+    assert "private transcript" not in caplog.text
+
+
+def test_default_test_transport_refuses_requests(voice):
+    _, app, _ = voice
+    with pytest.raises(
+        pytest.fail.Exception, match="explicitly configure a fake provider"
+    ):
+        asyncio.run(
+            app.state.voice_transport.handle_async_request(
+                httpx.Request(
+                    "POST", "https://api.deepgram.com/v1/listen", content=clip()
+                )
+            )
+        )

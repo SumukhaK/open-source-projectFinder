@@ -1,4 +1,4 @@
-"""Authenticated, memory-only PCM WAV upload with a verified duration limit."""
+"""Authenticated, bounded memory-only WAV and AAC transcription uploads."""
 
 import asyncio
 import io
@@ -72,11 +72,17 @@ def voice_router(settings, current):
                 "Voice is unavailable. Type your idea.",
                 retryable=True,
             )
-        if (
-            request.headers.get("content-type", "").split(";", 1)[0].lower()
-            != "audio/wav"
-        ):
-            raise error(415, "VOICE_UNSUPPORTED_AUDIO", "Send PCM WAV audio.")
+        content_type = (
+            request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        )
+        compressed = content_type in ("audio/mp4", "audio/m4a", "audio/aac")
+        if not compressed and content_type != "audio/wav":
+            raise error(415, "VOICE_UNSUPPORTED_AUDIO", "Send WAV or AAC audio.")
+        max_bytes = (
+            settings.voice_max_compressed_bytes
+            if compressed
+            else settings.voice_max_bytes
+        )
         if in_flight >= settings.voice_max_concurrent:
             raise error(503, "VOICE_BUSY", "Voice is busy. Try again.", retryable=True)
         in_flight += 1
@@ -87,15 +93,25 @@ def voice_router(settings, current):
             # Covers slow uploads and total provider time, not just socket inactivity.
             async with asyncio.timeout(settings.voice_timeout):
                 async for chunk in request.stream():
-                    if len(body) + len(chunk) > settings.voice_max_bytes:
+                    if len(body) + len(chunk) > max_bytes:
                         raise error(413, "VOICE_TOO_LARGE", "Recording is too large.")
                     body.extend(chunk)
-                audio, duration = pcm_clip(body, settings)
-                text = await transcribe(
+                if compressed:
+                    if not body:
+                        raise error(400, "VOICE_INVALID_AUDIO", "Send a recording.")
+                    audio = bytes(body)
+                else:
+                    audio, duration = pcm_clip(body, settings)
+                text, provider_duration = await transcribe(
                     audio,
                     settings,
+                    content_type=content_type,
                     transport=getattr(request.app.state, "voice_transport", None),
                 )
+                if compressed:
+                    duration = provider_duration
+                    if duration > settings.voice_max_seconds + 0.5:
+                        raise error(413, "VOICE_TOO_LONG", "Record at most 30 seconds.")
                 if len(text) < 2:
                     raise error(
                         422,
