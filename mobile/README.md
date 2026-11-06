@@ -85,7 +85,7 @@ SDK 57 expo-audio records HIGH_QUALITY AAC/M4A; expo-file-system reads and remov
 
 See [V1b evidence](../execution-plans/voice-assistant/V1b_EVIDENCE.md) for RED/GREEN, coverage and export results. Native light/dark, accessibility and release-to-transcript latency checks remain outstanding because no development-build device was connected. A failed filesystem delete is surfaced to the user; abrupt process death is not a guaranteed cleanup path.
 
-## Result summary (V2b, awaiting review)
+## Result summary (V2b, merged #71)
 
 After a fresh first page renders, a separate authenticated SSE request sends only its first ten full_names to `/v1/projects/search/summary`. The static, theme-aware Summary card has an AI tag and “Based only on the results below”; chunks render as received and a polite accessibility announcement occurs once on grounded completion. No summary request is made for empty results, cached results or later pages. The list never waits for, changes with, or persists the summary.
 

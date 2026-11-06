@@ -1,6 +1,6 @@
 # V2b summary card evidence
 
-Status: Awaiting review; merge blocked on V2a #68. Base `e51e1e0bf2aff1c0112658a3b6a8a4b159a53b8d`; branch `codex/voice-v2b-summary-card`. Mobile only, must merge after V2a PR #68. Contract inspected at `f3fc72a0d875e52b93fac4f92d7db34951eb8f91`: POST full_names (up to 10), summary/text and done/grounded SSE events. No backend changes.
+Status: Merged 2026-11-06 as PR #71 (`29a906e`), after V2a #68; device check open. Base `e51e1e0bf2aff1c0112658a3b6a8a4b159a53b8d`; branch `codex/voice-v2b-summary-card`. Mobile only, must merge after V2a PR #68. Contract inspected at `f3fc72a0d875e52b93fac4f92d7db34951eb8f91`: POST full_names (up to 10), summary/text and done/grounded SSE events. No backend changes.
 
 Plan: RED integration tests for list-first rendering, bounded identity-only requests, streaming and fail-closed/cancellation behavior; minimal streaming transport and themed card; GREEN/full mobile gates; merge latest main, one PR, stop. Summary has no animation (including with Reduce Motion); polite completion announcement only. No speech output, storage or provider calls.
 
