@@ -73,7 +73,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   const [summaryPage, setSummaryPage] = useState<{ names: string[]; sequence: number; fromVoice: boolean; account: string; token: string } | null>(null);
   const summarySequence = useRef(0);
   const stopSpeech = speech.stop;
-  const cancelSummary = useCallback(() => { stopSpeech(); summarySequence.current += 1; setSummaryPage(null); }, [stopSpeech]);
+  const cancelSummary = useCallback(() => { stopSpeech(true); summarySequence.current += 1; setSummaryPage(null); }, [stopSpeech]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', state => { if (state === 'background') cancelSummary(); });
     return () => { summarySequence.current += 1; subscription.remove(); };
@@ -405,7 +405,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
             multiline
             style={[styles.input, { paddingRight: 64, backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
           />
-          <VoiceButton voice={voice} />
+          <VoiceButton voice={{ ...voice, start: () => { speech.stop(); return voice.start(); } }} />
           </View>
           <VoiceFeedback voice={voice} />
           <Pressable

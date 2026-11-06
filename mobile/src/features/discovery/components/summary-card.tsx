@@ -43,6 +43,6 @@ export function SummaryCard({ names, token, fromVoice, speech }: { names: string
       onPress={() => speech.playing ? stop() : void play(summaryId, false)} style={{ minHeight: 48, justifyContent: 'center' }}>
       <Text style={{ color: colors.text }}>{speech.playing ? 'Stop' : 'Read aloud'}</Text>
     </Pressable> : null}
-    {speech.tip ? <Text style={{ color: colors.muted }}>Turn this off in Profile &gt; Voice</Text> : null}
+    {speech.tip ? <Text style={{ color: colors.muted }}>Turn this off in Profile › Voice</Text> : null}
   </View>;
 }

@@ -31,3 +31,13 @@ Per the owner's resource instruction, no Docker, Ollama, Gradle or development b
 Final checks on Windows (2026-11-07): `RUN_AUTH_E2E=1 npm run test:coverage` (204 passed, no skips; unchanged coverage gates), `npm run typecheck`, `npm run lint`, `npx expo export --platform all` (Android/iOS/web), and `git diff --check` passed. Only the existing NO_COLOR/FORCE_COLOR export warning was emitted.
 
 Delivery: [PR #73](https://github.com/SumukhaK/open-source-projectFinder/pull/73), implementation head `d05c49a52349bc934e00f90f2968c32f3b6cc050`; the following documentation-only commit links the PR. Latest origin/main merge check was already up to date at the recorded base. Awaiting review, not accepted; must merge after V3a.
+
+## PR #73 review fixes (2026-11-07)
+
+RED: four regression cases failed before implementation: mic press-in did not pause/release speech, completion and native errors during iOS inactive did not release the player, and the first-play tip disappeared on completion. GREEN: the four focused cases passed. The mic regression asserts both pause and release happen before the new recorder's record() invocation. The same wrapped start function handles accessible recording actions.
+
+The current player's finish/error events now stop playback before the active-state gate; a player-identity guard prevents a late old-player event from stopping a replacement. Ordinary stop/completion preserves the visible tip, while a new search/summary cancellation or sign-out clears it. The persisted seen flag still prevents showing it on subsequent searches. Copy is now “Turn this off in Profile › Voice”.
+
+Full mobile coverage run: **207 passed, zero skipped**, including fake-provider auth E2E; unchanged coverage gates passed. No backend, dependency, lockfile or CI changes. No Docker/Ollama/Gradle or device run; native recording/playback arbitration and platform behavior remain for the separate device check.
+
+Review-fix verification also passed: `npm run typecheck`, `npm run lint`, `npx expo export --platform all` (Android, iOS, web), and `git diff --check`. Only the existing NO_COLOR/FORCE_COLOR export warning was emitted.

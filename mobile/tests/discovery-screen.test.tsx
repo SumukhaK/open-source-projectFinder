@@ -967,6 +967,21 @@ describe('spoken summaries', () => {
     expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy();
   });
 
+  test('mic press-in pauses and releases speech before recording starts', async () => {
+    const screen = await voiceScreen(); await complete(screen);
+    await waitFor(() => expect(createAudioPlayer).toHaveBeenCalled());
+    const speaking = player();
+    // The first recorder belongs to the completed voice search; inspect the new hold.
+    await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressIn');
+    await waitFor(() => expect(screen.getByText(/Let go to search/)).toBeTruthy());
+    // eslint-disable-next-line import/namespace
+    const recorder = jest.mocked(AudioModule.AudioRecorder).mock.results.at(-1)!.value;
+    expect(speaking.pause).toHaveBeenCalledTimes(1);
+    expect(speaking.release).toHaveBeenCalledTimes(1);
+    expect(speaking.pause.mock.invocationCallOrder[0]).toBeLessThan(recorder.record.mock.invocationCallOrder[0]);
+    expect(speaking.release.mock.invocationCallOrder[0]).toBeLessThan(recorder.record.mock.invocationCallOrder[0]);
+  });
+
   test('typed summary never auto-plays but Read aloud works and Stop releases', async () => {
     const screen = await open(); await complete(screen, false);
     expect(createAudioPlayer).not.toHaveBeenCalled();
@@ -1019,14 +1034,15 @@ describe('spoken summaries', () => {
   test('auto-play tip appears only once per account after playback starts', async () => {
     const screen = await voiceScreen(); await complete(screen);
     await waitFor(() => expect(createAudioPlayer).toHaveBeenCalled());
-    expect(screen.queryByText('Turn this off in Profile > Voice')).toBeNull();
+    expect(screen.queryByText('Turn this off in Profile › Voice')).toBeNull();
     await act(async () => { player().emit({ playing: true }); });
-    expect(screen.getByText('Turn this off in Profile > Voice')).toBeTruthy();
+    expect(screen.getByText('Turn this off in Profile › Voice')).toBeTruthy();
     await act(async () => { player().emit({ didJustFinish: true }); });
+    expect(screen.getByText('Turn this off in Profile › Voice')).toBeTruthy();
     await complete(screen);
     await waitFor(() => expect(createAudioPlayer).toHaveBeenCalledTimes(2));
     await act(async () => { player().emit({ playing: true }); });
-    expect(screen.queryByText('Turn this off in Profile > Voice')).toBeNull();
+    expect(screen.queryByText('Turn this off in Profile › Voice')).toBeNull();
   });
 
   test('read-aloud setting persists per account and is cleared on sign-out', async () => {

@@ -23,7 +23,7 @@ export function useVoiceOutput(account: string, token: string) {
   const ready = preference.account === account && preference.ready;
   const enabled = preference.account === account ? preference.enabled : true;
 
-  const stop = useCallback(() => {
+  const stop = useCallback((clearTip = false) => {
     sequence.current += 1;
     clearTimeout(timer.current);
     subscription.current?.remove(); subscription.current = null;
@@ -32,7 +32,7 @@ export function useVoiceOutput(account: string, token: string) {
       try { player.pause(); } catch { /* Native failure must not affect search. */ }
       try { player.release(); } catch { /* Already released by the OS. */ }
     }
-    if (mounted.current) { setPlaying(false); setTip(false); }
+    if (mounted.current) { setPlaying(false); if (clearTip) setTip(false); }
   }, []);
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export function useVoiceOutput(account: string, token: string) {
     writes.current = writes.current.then(() => AsyncStorage.setItem(key, String(value))).catch(() => {});
   };
   const signOut = async () => {
-    signedOut.current = true; stop();
+    signedOut.current = true; stop(true);
     await writes.current;
     await AsyncStorage.removeItem(key).catch(() => {});
   };
@@ -74,8 +74,9 @@ export function useVoiceOutput(account: string, token: string) {
       const player = createAudioPlayer({ uri: `${authConfig.apiUrl}/v1/voice/speech/${encodeURIComponent(id)}`, headers: { Authorization: `Bearer ${token}` } }, { downloadFirst: false });
       current.current = player;
       subscription.current = player.addListener('playbackStatusUpdate', status => {
-        if (!valid()) return;
+        if (current.current !== player) return;
         if (status.error || status.didJustFinish) { stop(); return; }
+        if (!valid()) return;
         if (status.playing && automatic && !tipSeen.current) {
           tipSeen.current = true; setTip(true);
           writes.current = writes.current.then(() => AsyncStorage.setItem(tipKey, 'yes')).catch(() => {});

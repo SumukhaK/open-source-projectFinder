@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
-import { AccessibilityInfo, AppState } from 'react-native';
+import { AccessibilityInfo, AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { useVoiceOutput } from '../src/features/discovery/use-voice-output';
@@ -69,4 +69,16 @@ test('sign-out waits for the pending preference write before removing it', async
   let cleared!: Promise<void>;
   await act(async () => { cleared = hook.result.current.signOut(); resolve(); await cleared; });
   expect(await AsyncStorage.getItem('reporadar.voice.123.readAloud')).toBeNull();
+});
+
+
+test.each([{ didJustFinish: true }, { error: 'native failure' }])('inactive playback terminal event %j releases immediately', async status => {
+  let changed!: (state: AppStateStatus) => void;
+  jest.spyOn(AppState, 'addEventListener').mockImplementation((_, fn) => { changed = fn; return { remove: jest.fn() }; });
+  const hook = await ready();
+  await act(async () => { await hook.result.current.play('id', false); });
+  const player = jest.mocked(createAudioPlayer).mock.results.at(-1)!.value as unknown as { emit: (value: object) => void; release: jest.Mock };
+  await act(async () => { changed('inactive'); player.emit(status); });
+  expect(player.release).toHaveBeenCalledTimes(1);
+  expect(hook.result.current.playing).toBe(false);
 });
