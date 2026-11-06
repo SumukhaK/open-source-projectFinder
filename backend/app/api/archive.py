@@ -131,7 +131,7 @@ def page_body(page, generation):
     }
 
 
-def archive_router(settings, current, identity, hybrid):
+def archive_router(settings, current, identity, hybrid, pages):
     router = APIRouter()
 
     @router.post("/v1/projects/search")
@@ -230,7 +230,10 @@ def archive_router(settings, current, identity, hybrid):
                 "Search results are incomplete. Try again.",
                 retryable=True,
             )
-        return page_body(page, target.generation)
+        response_body = page_body(page, target.generation)
+        if body.cursor is None:
+            pages.remember(user["github_id"], response_body["items"])
+        return response_body
 
     @router.get("/v1/archive/status")
     def status(request: Request):
