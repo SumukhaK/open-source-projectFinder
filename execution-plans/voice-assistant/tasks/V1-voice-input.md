@@ -1,6 +1,6 @@
 # V1: Hold-to-talk voice input
 
-Status: split into V1a (backend, merged in [PR #65](https://github.com/SumukhaK/open-source-projectFinder/pull/65), `f4f4bf3`) and V1b (mobile, awaiting review; records AAC/M4A, which the route accepts; [evidence](../V1b_EVIDENCE.md)), approved by the owner on 2026-11-06. [V1a verification evidence](../V1a_EVIDENCE.md); review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: split into V1a (backend, merged in [PR #65](https://github.com/SumukhaK/open-source-projectFinder/pull/65), `f4f4bf3`) and V1b (mobile, merged in [PR #69](https://github.com/SumukhaK/open-source-projectFinder/pull/69), `85cc192`, device check still open; records AAC/M4A, which the route accepts; [evidence](../V1b_EVIDENCE.md)), approved by the owner on 2026-11-06. [V1a verification evidence](../V1a_EVIDENCE.md); review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 ## Approved execution split
 

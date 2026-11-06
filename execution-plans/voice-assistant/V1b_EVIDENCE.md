@@ -1,6 +1,6 @@
 # V1b mobile voice input
 
-Status: Awaiting review; device validation outstanding. Base `6a1c95ccd9739920154ba4ff9f817041ab1850d2`; branch `codex/voice-v1b-mobile`. PR #65 verified MERGED (`f4f4bf3c6b25bd819d932ef106765017012bc877`) and an ancestor of this base.
+Status: Merged 2026-11-06 as [PR #69](https://github.com/SumukhaK/open-source-projectFinder/pull/69) (`85cc192`) after trusted review of head `6e33219`; the owner chose merge-then-check, so device validation is still outstanding and must be recorded here before V2b. Base `6a1c95ccd9739920154ba4ff9f817041ab1850d2`; branch `codex/voice-v1b-mobile`. PR #65 verified MERGED (`f4f4bf3c6b25bd819d932ef106765017012bc877`) and an ancestor of this base.
 
 ## Implementation plan
 
