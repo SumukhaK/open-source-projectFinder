@@ -25,7 +25,7 @@ Sources: [Expo SDK 57 Audio](https://docs.expo.dev/versions/v57.0.0/sdk/audio/),
 
 AAC/M4A uses the SDK 57 HIGH_QUALITY recording preset; recordings stay in cache and are deleted after upload, cancellation or failed upload. Abort plus operation invalidation prevents late transcripts after sign-out, backgrounding or unmount. A native duration cap and JS timer stop at 30 seconds. Uploads are raw audio/m4a with the session bearer token, bounded to 1 MiB and a 20-second timeout. Typed server errors use fixed UX copy. Transcript text is rendered in the editable idea box before the existing search is scheduled; typed edits can submit another search. No summary or speech-output work is included.
 
-Account-scoped consent is cleared on sign-out (also on screen teardown). Permission denial retains typed search. Profile includes microphone status and voice help. The animated ring respects Reduce Motion; accessibility actions allow start/finish/cancel without a hold gesture.
+Account-scoped consent is cleared only on sign-out and survives screen teardown/remount. Permission denial retains typed search. Profile includes microphone status and voice help. The animated ring respects Reduce Motion; accessibility actions allow start/finish/cancel without a hold gesture.
 
 Added SDK-matched expo-audio, expo-haptics and expo-file-system. Explicit expo-asset 57.0.21 prevents expo-audio's unrestricted peer from resolving Asset 58, which failed export against SDK 57. Existing dependency policy and exceptions are unchanged. The targeted import/namespace suppression identifies Expo's declared native AudioRecorder constructor; typecheck validates its contract.
 
@@ -38,3 +38,13 @@ Normal lifecycle cleanup is tested; abrupt process death or a filesystem deletio
 ## Delivery
 
 [PR #69](https://github.com/SumukhaK/open-source-projectFinder/pull/69). Implementation and main-merge head: `115ecd26f2f49e98edb14615f6dd9ee1dc2c94b2`. Latest main `2653aba` was merged with a merge commit; its changes were documentation only. The tracker conflict retained every main row except the authorized V1b status update. Backend, root README/PROJECT_TRACKER and the V0 task match main. Final diff whitespace check passed. The following documentation-only commit links this PR; the PR head is authoritative. CI results are available on the PR and are not claimed before completion.
+
+## PR #69 review fixes (2026-11-06)
+
+Code head: `68a8c1f51351a0bd4e78438eda623143d717fe96` (following reviewed head `e90d8d6c7895e8d5454eda9eefe3f866869a8574`). Only the three requested behaviors changed: background cancels, active refreshes permission, inactive is ignored; effect cleanup retains consent while signOut removes it; typing, submit and tab navigation reset “We heard”. Cleanup still cancels the operation and removes the listener.
+
+RED: the inactive/denied-permission regression and same-account remount regression failed with the old code. Typing and tab-change tests reproduced the stale label; after correcting the submit test's button selector, its focused run also failed on the stale label. No production changes preceded these failures. GREEN: full mobile suite **157 passed, 1 skipped** (existing opt-in auth E2E), including background cancellation/deletion and sign-out consent removal. Coverage: statements 95.65%, branches 87.38%, functions 93.33%, lines 99.40%; unchanged gates passed.
+
+Android device check: `adb devices -l` returned an empty device list. The owner's phone was therefore not available to this environment. No development build was made or installed, and no real recording/provider call was attempted. Hold/speak/release, denial-to-settings, slide cancellation, 30-second cap, native light/dark and TalkBack remain **NOT RUN on device**. Release-to-transcript latency is **not measured**. Connect and authorize the Android phone over USB debugging before this manual validation can run; successful JS exports are not a native development build.
+
+Review-fix verification also passed: `npm run typecheck`, `npm run lint`, `npx expo export --platform all` (Android, iOS, web), and `git diff --check`. Export emitted only the existing NO_COLOR/FORCE_COLOR warning. The final docs-only commit records these results; the tracker names the tested code head and the PR carries the full delivery head.
