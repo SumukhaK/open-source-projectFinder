@@ -6,7 +6,9 @@ import { DiscoveryScreen } from '../src/features/discovery/components/discovery-
 import * as api from '../src/features/discovery/api/discovery';
 import * as cache from '../src/features/discovery/cache';
 import { AudioModule } from 'expo-audio';
-import { Linking } from 'react-native';
+import { AccessibilityInfo, AppState, AppStateStatus, Linking } from 'react-native';
+import { fetch as summaryFetch } from 'expo/fetch';
+import { summaryStream } from './summary-stream';
 import { uploadRecording } from '../src/features/discovery/voice-api';
 
 jest.mock('../src/features/discovery/voice-api', () => ({ ...jest.requireActual('../src/features/discovery/voice-api'), uploadRecording: jest.fn() }));
@@ -818,4 +820,110 @@ test('a search that resolves after unmount is not written to the cache', async (
   await act(async () => { screen.unmount(); });
   await act(async () => { resolve(results([item()])); });
   expect(await cache.loadCachedResults('123')).toBeNull();
+});
+
+
+describe('first-page summary', () => {
+  test('list renders first, sends only ten full_names and announces only completion', async () => {
+    const stream = summaryStream();
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibilityWithOptions').mockImplementation(() => {});
+    const projects = Array.from({ length: 12 }, (_, i) => item({ id: i + 1, name: `repo${i}`, full_name: `owner/repo${i}` }));
+    jest.mocked(api.searchProjects).mockResolvedValue(results(projects));
+    const screen = await open();
+    jest.mocked(summaryFetch).mockImplementationOnce(async () => {
+      expect(screen.getByText('repo0')).toBeTruthy();
+      return stream.response as never;
+    });
+    await search(screen);
+    await waitFor(() => expect(summaryFetch).toHaveBeenCalled());
+    expect(JSON.parse(jest.mocked(summaryFetch).mock.calls[0][1]!.body as string)).toEqual({ full_names: projects.slice(0, 10).map(p => p.full_name) });
+    expect(screen.queryByText('Based only on the results below')).toBeNull();
+    await act(async () => { stream.event('summary', { text: 'Useful projects' }); });
+    expect(screen.getByText('Useful projects')).toBeTruthy();
+    expect(screen.getByText('AI')).toBeTruthy();
+    expect(announce).not.toHaveBeenCalled();
+    await act(async () => { stream.event('done', { grounded: true, results: 10 }); });
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith(expect.stringContaining('Useful projects'), { queue: true });
+  });
+
+  test.each(['ungrounded', 'network'])('%s hides the card without changing results', async failure => {
+    const stream = summaryStream();
+    jest.mocked(summaryFetch).mockResolvedValueOnce(stream.response as never);
+    const screen = await open(); await search(screen);
+    await waitFor(() => expect(summaryFetch).toHaveBeenCalled());
+    await act(async () => { stream.event('summary', { text: 'Partial summary' }); });
+    expect(screen.getByText('Partial summary')).toBeTruthy();
+    await act(async () => { if (failure === 'network') stream.fail(); else stream.event('done', { grounded: false, reason: 'ungrounded' }); });
+    expect(screen.queryByText('Partial summary')).toBeNull();
+    expect(screen.getByText('compass')).toBeTruthy();
+  });
+
+  test.each(['new search', 'tab', 'sign-out', 'background', 'unmount'])('%s aborts and ignores late summary', async action => {
+    let changed: (state: AppStateStatus) => void = () => {};
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_, listener) => { const previous = changed; changed = state => { previous(state); listener(state); }; return { remove: jest.fn() }; });
+    const stream = summaryStream();
+    jest.mocked(summaryFetch).mockResolvedValueOnce(stream.response as never);
+    const screen = await open(); await search(screen);
+    await waitFor(() => expect(summaryFetch).toHaveBeenCalled());
+    const signal = jest.mocked(summaryFetch).mock.calls[0][1]!.signal!;
+    await act(async () => { stream.event('summary', { text: 'Old summary' }); });
+    if (action === 'new search') await search(screen, 'new idea');
+    else if (action === 'tab' || action === 'sign-out') {
+      await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
+      if (action === 'sign-out') await fireEvent.press(screen.getByText('Sign out'));
+      else await fireEvent.press(screen.getByRole('tab', { name: 'Home' }));
+    } else if (action === 'background') await act(async () => { changed('background'); });
+    else await screen.unmount();
+    expect(signal.aborted).toBe(true);
+    await act(async () => { stream.event('summary', { text: 'late' }); });
+    if (action !== 'unmount') expect(screen.queryByText(/Old summary/)).toBeNull();
+  });
+
+  test('deadline hides partial text and aborts even a stalled stream', async () => {
+    const stream = summaryStream();
+    jest.mocked(summaryFetch).mockResolvedValueOnce(stream.response as never);
+    const screen = await open();
+    jest.useFakeTimers();
+    await search(screen);
+    await act(async () => { stream.event('summary', { text: 'Timed partial' }); });
+    expect(screen.getByText('Timed partial')).toBeTruthy();
+    await act(async () => { jest.advanceTimersByTime(20000); });
+    expect(screen.queryByText('Timed partial')).toBeNull();
+    expect(jest.mocked(summaryFetch).mock.calls[0][1]!.signal!.aborted).toBe(true);
+    jest.useRealTimers();
+  });
+
+  test('a first page arriving after leaving Home cannot start a late summary', async () => {
+    let resolve!: (value: api.SearchResults) => void;
+    jest.mocked(api.searchProjects).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    const screen = await open(); await search(screen);
+    await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
+    await act(async () => { resolve(results([item()])); });
+    await fireEvent.press(screen.getByRole('tab', { name: 'Home' }));
+    expect(screen.getByText('compass')).toBeTruthy();
+    expect(summaryFetch).not.toHaveBeenCalled();
+  });
+
+  test('empty and restored cached results never request a summary', async () => {
+    await cache.saveCachedResults('123', results([item()]));
+    const screen = await open();
+    await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
+    expect(summaryFetch).not.toHaveBeenCalled();
+    jest.mocked(api.searchProjects).mockResolvedValueOnce(results([]));
+    await search(screen);
+    await waitFor(() => expect(screen.queryByText('compass')).toBeNull());
+    expect(summaryFetch).not.toHaveBeenCalled();
+  });
+
+  test('loading later pages does not request another summary', async () => {
+    const stream = summaryStream();
+    jest.mocked(summaryFetch).mockResolvedValueOnce(stream.response as never);
+    jest.mocked(api.searchProjects).mockResolvedValueOnce(results([item()], 'next')).mockResolvedValueOnce(results([searchSecond]));
+    const screen = await open(); await search(screen);
+    await waitFor(() => expect(summaryFetch).toHaveBeenCalledTimes(1));
+    await fireEvent.press(screen.getByText('Load more'));
+    await waitFor(() => expect(screen.getByText('navigator')).toBeTruthy());
+    expect(summaryFetch).toHaveBeenCalledTimes(1);
+  });
 });

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AppearanceControls } from '../../../components/appearance-controls';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandLoader } from '../../../components/brand-loader';
@@ -28,6 +28,7 @@ import {
   saveCachedFavourites,
   saveCachedResults,
 } from '../cache';
+import { SummaryCard } from './summary-card';
 import { ProjectCard } from './project-card';
 import { ProjectDetailsView } from './project-details';
 import { useVoiceInput } from '../use-voice-input';
@@ -67,6 +68,13 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   const [voiceSettings, setVoiceSettings] = useState(false);
   const [heard, setHeard] = useState(false);
   const [pendingVoice, setPendingVoice] = useState('');
+  const [summaryPage, setSummaryPage] = useState<{ names: string[]; sequence: number; account: string; token: string } | null>(null);
+  const summarySequence = useRef(0);
+  const cancelSummary = () => { summarySequence.current += 1; setSummaryPage(null); };
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => { if (state === 'background') cancelSummary(); });
+    return () => { summarySequence.current += 1; subscription.remove(); };
+  }, [account, token]);
   const previousAccount = useRef(account);
   const listSeq = useRef(0);
   const detailsSeq = useRef(0);
@@ -164,6 +172,8 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   };
 
   const runSearch = async (text: string, { refresh = false } = {}) => {
+    cancelSummary();
+    const summaryRequest = summarySequence.current;
     const seq = ++listSeq.current;
     const session = sessionSeq.current;
     setActiveIdea(text);
@@ -178,6 +188,9 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       const data = await searchProjects(token, { idea: text, pageSize: discoveryConfig.pageSize });
       if (seq !== listSeq.current || session !== sessionSeq.current) return;
       setResults(data);
+      if (summaryRequest === summarySequence.current && data.items.length) {
+        setSummaryPage({ names: data.items.slice(0, 10).map(item => item.full_name), sequence: summaryRequest, account, token });
+      }
       await saveCachedResults(account, data);
     } catch (failure) {
       if (seq !== listSeq.current || session !== sessionSeq.current) return;
@@ -325,6 +338,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   };
 
   const leave = async () => {
+    cancelSummary();
     setPendingVoice('');
     await voice.signOut();
     sessionSeq.current += 1;
@@ -416,6 +430,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
           >
             <Text style={{ color: colors.text }}>Try again</Text>
           </Pressable> : null}
+          {summaryPage && summaryPage.account === account && summaryPage.token === token && !signingOut ? <SummaryCard key={`${account}:${summaryPage.sequence}`} names={summaryPage.names} token={token} /> : null}
           {results?.items.map(project => <ProjectCard
             key={project.full_name}
             project={project}
@@ -459,7 +474,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       </>}
     </ScrollView>
     <View style={[styles.tabs, { padding: 20, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
-      {(['Home', 'Profile'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name} accessibilityState={{ selected: tab === name }} onPress={() => { void voice.cancel(); setPendingVoice(''); setHeard(false); setVoiceSettings(false); closeDetails(); setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
+      {(['Home', 'Profile'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name} accessibilityState={{ selected: tab === name }} onPress={() => { cancelSummary(); void voice.cancel(); setPendingVoice(''); setHeard(false); setVoiceSettings(false); closeDetails(); setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
         <Text style={{ color: tab === name ? colors.onAccent : colors.text }}>{name}</Text>
       </Pressable>)}
     </View>
