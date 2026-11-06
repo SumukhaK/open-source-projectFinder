@@ -1,6 +1,6 @@
 # V2: Grounded result summary
 
-V2b mobile slice: awaiting review; [evidence](../V2b_EVIDENCE.md). Owner authorized building against the open V2a contract in PR #68; V2b must merge only after #68. Backend work and its status belong to V2a. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: V2a (backend route, PR #68) and V2b (mobile summary card, PR #71, [evidence](../V2b_EVIDENCE.md)) merged 2026-11-06; device check for the card still open. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

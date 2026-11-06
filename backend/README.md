@@ -96,7 +96,7 @@ python scripts/llm_eval.py --profile ollama --limit 3
 
 It prints one labelled tracker row with grounding, licence fidelity, first-word/total time and tidied-versus-raw quality. V0 adds no route or user-facing change; CI uses a fake transport and needs no key.
 
-## Grounded result summary (V2a, awaiting review)
+## Grounded result summary (V2a, merged #68)
 
 `POST /v1/projects/search/summary` requires the normal session guard and shares the discovery rate limit and body limit. The body is only `{"full_names": [...]}` with at most ten `owner/name` identities; unknown or forged names are ignored. Name, description and licence come from the first page the server last served this account (bounded, account-scoped and kept for the same five-minute window as the cursor snapshot), so a client cannot inject repository text.
 
