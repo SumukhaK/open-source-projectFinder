@@ -220,9 +220,11 @@ async def main(args):
         )
     )
     print(
-        "\nHeuristic only: grounding rejects repositories outside the list, "
-        "faithfulness rejects licences not in the list, and tidy quality means "
-        "shorter with keyword overlap. No idea text is stored."
+        "\nHeuristic metrics: grounding checks only that owner/repo names in the "
+        "summary belong to the supplied result list; faithfulness is licence "
+        "fidelity only (it rejects a licence outside the list) and is not "
+        "factual faithfulness; tidy quality means shorter with keyword overlap. "
+        "No idea text is stored."
     )
     if metrics["errors"]:
         print(f"Errors: {', '.join(metrics['errors'])}")

@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -5,7 +6,7 @@ import json
 import logging
 import secrets
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from urllib.parse import urlencode
 
 from cryptography.fernet import Fernet
@@ -92,6 +93,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app):
         app.state.llm_available = False
+        app.state.llm_probe = None
         client = llm
         if client is None and settings.llm_active_profile:
             try:
@@ -107,10 +109,22 @@ def create_app(
                     )
                 )
         if client is not None:
-            app.state.llm_available = await probe_profile(
-                client, client.profile_name, client.model
-            )
-        yield
+
+            async def run_probe():
+                app.state.llm_available = await probe_profile(
+                    client, client.profile_name, client.model
+                )
+
+            # Summaries are background: the probe must never delay a request.
+            app.state.llm_probe = asyncio.create_task(run_probe())
+        try:
+            yield
+        finally:
+            probe = app.state.llm_probe
+            if probe is not None and not probe.done():
+                probe.cancel()
+                with suppress(asyncio.CancelledError):
+                    await probe
 
     app = FastAPI(title="RepoRadar API", lifespan=lifespan)
     store = Store(settings.database_path)

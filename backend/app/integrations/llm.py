@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import re
 import time
 from collections.abc import AsyncIterator, Mapping, Sequence
@@ -30,6 +29,8 @@ PROMPTS = {
 }
 QUERY_PROMPT_VERSION = "query_tidy_v1"
 SUMMARY_PROMPT_VERSION = "summary_grounded_v1"
+# The tidy-up prompt and parse_tidy share this bound.
+QUERY_MAX_CHARS = 120
 _REPOSITORY = re.compile(r"\b[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*\b")
 
 
@@ -90,10 +91,13 @@ def resolve_profile(settings: Settings) -> ResolvedProfile:
         base_url = base_url.replace("{account_id}", account)
     api_key = ""
     if profile.api_key_env:
-        if profile.api_key_env == "WORKERS_AI_API_TOKEN":
-            api_key = settings.workers_ai_api_token.get_secret_value()
-        else:
-            api_key = os.environ.get(profile.api_key_env, "")
+        # Only Workers AI reads a key in V0; anything else fails closed instead
+        # of silently looking up an unrelated environment variable.
+        if profile.api_key_env != "WORKERS_AI_API_TOKEN":
+            raise LlmConfigurationError(
+                f"Unsupported api_key_env: {profile.api_key_env}"
+            )
+        api_key = settings.workers_ai_api_token.get_secret_value()
         if not api_key:
             raise LlmConfigurationError(
                 f"{profile.api_key_env} is required for the {name} profile"
@@ -238,23 +242,28 @@ class LlmClient:
     ) -> AsyncIterator[str]:
         payload = self._payload(messages, True, max_tokens, temperature)
         started = time.monotonic()
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self.resolved.total_timeout
+        first_deadline = min(loop.time() + self.resolved.first_token_timeout, deadline)
         try:
-            async with asyncio.timeout(self.resolved.total_timeout):
-                async with httpx.AsyncClient(
-                    transport=self.transport, timeout=self._timeout()
-                ) as client:
-                    async with client.stream(
-                        "POST", self._url(), json=payload, headers=self._headers()
-                    ) as response:
-                        self._raise_for_status(response)
-                        lines = response.aiter_lines()
-                        line = await self._first_line(lines)
-                        while line is not None:
-                            if line.strip() == "data: [DONE]":
-                                return
-                            chunk = self._sse_content(line)
-                            if chunk:
-                                yield chunk
+            async with httpx.AsyncClient(
+                transport=self.transport, timeout=self._timeout()
+            ) as client:
+                async with client.stream(
+                    "POST", self._url(), json=payload, headers=self._headers()
+                ) as response:
+                    self._raise_for_status(response)
+                    lines = response.aiter_lines()
+                    line = await self._first_line(lines, first_deadline)
+                    while line is not None:
+                        if line.strip() == "data: [DONE]":
+                            return
+                        chunk = self._sse_content(line)
+                        if chunk:
+                            yield chunk
+                        # Scope per read only: nothing stays open across the
+                        # yield, so a slow consumer is never cancelled.
+                        async with asyncio.timeout_at(deadline):
                             line = await anext(lines, None)
         except TimeoutError as error:
             raise LlmTimeout("LLM stream timed out") from error
@@ -263,8 +272,8 @@ class LlmClient:
         finally:
             self._log(started, messages, stream=True)
 
-    async def _first_line(self, lines):
-        async with asyncio.timeout(self.resolved.first_token_timeout):
+    async def _first_line(self, lines, deadline):
+        async with asyncio.timeout_at(deadline):
             async for line in lines:
                 if line.strip():
                     return line
@@ -350,7 +359,7 @@ def parse_tidy(text: str) -> str:
     if not isinstance(query, str):
         raise LlmProtocolError("Tidy response needs a query string")
     query = query.strip()
-    if not 2 <= len(query) <= 200:
+    if not 2 <= len(query) <= QUERY_MAX_CHARS:
         raise LlmProtocolError("Tidy query is outside the allowed length")
     return query
 
