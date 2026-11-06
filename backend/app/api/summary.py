@@ -50,6 +50,8 @@ class SummaryPages:
 
     def remember(self, account, items):
         self._purge()
+        # Re-insert so a re-remembered account becomes the newest entry.
+        self._pages.pop(account, None)
         self._pages[account] = (
             self._now() + self._ttl,
             [
@@ -132,9 +134,11 @@ def _log(profile, model, results, chars, reason, started):
 
 def summary_router(settings, current, pages):
     router = APIRouter()
+    in_flight = 0
 
     @router.post("/v1/projects/search/summary")
     async def summary(body: SummaryBody, request: Request):
+        nonlocal in_flight
         user = current(request)
         started = time.monotonic()
         results = pages.resolve(user["github_id"], body.full_names)
@@ -153,6 +157,10 @@ def summary_router(settings, current, pages):
         if reason is not None:
             _log(profile, model, len(results), 0, reason, started)
             return _response((), reason)
+        if in_flight >= settings.summary_max_concurrent:
+            _log(profile, model, len(results), 0, "busy", started)
+            return _response((), "busy")
+        in_flight += 1
         try:
             text = (await _collect(client, results, settings.summary_deadline)).strip()
         except (TimeoutError, LlmTimeout):
@@ -164,6 +172,8 @@ def summary_router(settings, current, pages):
                 reason = "empty"
             elif not summary_is_grounded(text, results):
                 reason = "ungrounded"
+        finally:
+            in_flight -= 1
         if reason is not None:
             _log(profile, model, len(results), 0, reason, started)
             return _response((), reason)

@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from app.api.summary import SummaryPages
 from app.core.config import Settings
 from app.core.store import digest
 from app.integrations.llm import LlmClient, LlmProviderError
@@ -107,6 +108,9 @@ class FakeLlm:
         self.delay = delay
         self.messages = []
         self.complete_error = None
+        self.calls = 0
+        self.entered = None
+        self.release = None
 
     @property
     def profile_name(self):
@@ -124,9 +128,14 @@ class FakeLlm:
     async def stream(self, messages, **kwargs):
         started = time.monotonic()
         self.messages.append(messages)
+        self.calls += 1
         try:
             if self.error is not None:
                 raise self.error
+            if self.entered is not None:
+                self.entered.set()
+            if self.release is not None:
+                await self.release.wait()
             if self.delay:
                 await asyncio.sleep(self.delay)
             for chunk in self.chunks:
@@ -395,3 +404,123 @@ def test_summary_logs_counts_only(serve, caplog):
     assert text not in caplog.text
     assert "summary_chars" in caplog.text
     assert "duration_ms" in caplog.text
+
+
+def test_remember_moves_a_repeated_account_to_the_newest_position():
+    pages = SummaryPages(ttl=60, max_accounts=2, now=lambda: 0.0)
+
+    def item(full_name):
+        return {
+            "name": full_name.split("/")[1],
+            "full_name": full_name,
+            "description": "",
+            "license": None,
+        }
+
+    pages.remember("A", [item("a/one")])
+    pages.remember("B", [item("b/two")])
+    pages.remember("A", [item("a/three")])
+    pages.remember("C", [item("c/four")])
+
+    assert [entry["full_name"] for entry in pages.resolve("A", ["a/three"])] == [
+        "a/three"
+    ]
+    assert pages.resolve("B", ["b/two"]) == []
+    assert [entry["full_name"] for entry in pages.resolve("C", ["c/four"])] == [
+        "c/four"
+    ]
+
+
+def test_busy_summary_returns_immediately_without_a_second_provider_call(serve):
+    fake = FakeLlm(chunks=("Use owner/repo-1.",))
+    with serve(llm=fake, llm_active_profile="ollama") as (client, app):
+        assert wait_until(lambda: app.state.llm_available is True)
+        assert search(client).status_code == 200
+
+        async def scenario():
+            fake.entered = asyncio.Event()
+            fake.release = asyncio.Event()
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url="http://test",
+                headers=HEADERS,
+            ) as async_client:
+                first = asyncio.create_task(
+                    async_client.post(
+                        SUMMARY_PATH, json={"full_names": ["owner/repo-1"]}
+                    )
+                )
+                await asyncio.wait_for(fake.entered.wait(), timeout=2)
+                try:
+                    busy = await asyncio.wait_for(
+                        async_client.post(
+                            SUMMARY_PATH, json={"full_names": ["owner/repo-1"]}
+                        ),
+                        timeout=1,
+                    )
+                except TimeoutError:
+                    fake.release.set()
+                    pytest.fail("the second summary waited instead of returning busy")
+                assert events(busy.text) == [
+                    ("done", {"grounded": False, "reason": "busy"})
+                ]
+                assert fake.calls == 1
+                fake.release.set()
+                done = await first
+            assert fake.calls == 1
+            assert events(done.text)[-1] == ("done", {"grounded": True, "results": 1})
+
+        asyncio.run(scenario())
+
+
+def test_cancelled_summary_releases_the_slot(serve):
+    fake = FakeLlm(chunks=("Use owner/repo-1.",))
+    with serve(llm=fake, llm_active_profile="ollama") as (client, app):
+        assert wait_until(lambda: app.state.llm_available is True)
+        assert search(client).status_code == 200
+
+        async def scenario():
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url="http://test",
+                headers=HEADERS,
+            ) as async_client:
+                fake.entered = asyncio.Event()
+                fake.release = asyncio.Event()
+                cancelled = asyncio.create_task(
+                    async_client.post(
+                        SUMMARY_PATH, json={"full_names": ["owner/repo-1"]}
+                    )
+                )
+                await asyncio.wait_for(fake.entered.wait(), timeout=2)
+                cancelled.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await cancelled
+
+                fake.entered = asyncio.Event()
+                fake.release = asyncio.Event()
+                second = asyncio.create_task(
+                    async_client.post(
+                        SUMMARY_PATH, json={"full_names": ["owner/repo-1"]}
+                    )
+                )
+                await asyncio.wait_for(fake.entered.wait(), timeout=2)
+                try:
+                    busy = await asyncio.wait_for(
+                        async_client.post(
+                            SUMMARY_PATH, json={"full_names": ["owner/repo-1"]}
+                        ),
+                        timeout=1,
+                    )
+                except TimeoutError:
+                    fake.release.set()
+                    pytest.fail("cancellation did not release the summary slot")
+                assert events(busy.text) == [
+                    ("done", {"grounded": False, "reason": "busy"})
+                ]
+                fake.release.set()
+                done = await second
+            assert events(done.text)[-1] == ("done", {"grounded": True, "results": 1})
+            assert fake.calls == 2
+
+        asyncio.run(scenario())
