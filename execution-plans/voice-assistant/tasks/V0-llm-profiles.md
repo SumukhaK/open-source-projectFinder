@@ -1,6 +1,6 @@
 # V0: LLM provider profiles and eval harness
 
-Status: Awaiting review. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged 2026-11-06 in [PR #63](https://github.com/SumukhaK/open-source-projectFinder/pull/63) (`6a1c95c`). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
