@@ -5,6 +5,11 @@ import { AppProvider } from '../src/app/provider';
 import { DiscoveryScreen } from '../src/features/discovery/components/discovery-screen';
 import * as api from '../src/features/discovery/api/discovery';
 import * as cache from '../src/features/discovery/cache';
+import { AudioModule } from 'expo-audio';
+import { Linking } from 'react-native';
+import { uploadRecording } from '../src/features/discovery/voice-api';
+
+jest.mock('../src/features/discovery/voice-api', () => ({ ...jest.requireActual('../src/features/discovery/voice-api'), uploadRecording: jest.fn() }));
 
 jest.mock('../src/features/discovery/api/discovery', () => ({
   ...jest.requireActual('../src/features/discovery/api/discovery'),
@@ -72,6 +77,74 @@ const results = (
   ...overrides,
 });
 const user = { github_id: 123, login: 'octocat', avatar_url: '' };
+
+test('voice asks for consent while text search stays available', async () => {
+  const screen = await open();
+  expect(screen.getByText('Hold the mic to say your idea.')).toBeTruthy();
+  await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressIn');
+  await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressOut');
+  expect(screen.getByText('Search by voice')).toBeTruthy();
+  await fireEvent.press(screen.getByText('Not now'));
+  expect(screen.queryByText('Search by voice')).toBeNull();
+  await search(screen);
+  await waitFor(() => expect(api.searchProjects).toHaveBeenCalled());
+});
+
+test('Profile links to microphone status and voice explanation', async () => {
+  const screen = await open();
+  await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Voice' }));
+  expect(screen.getByText(/Microphone:/)).toBeTruthy();
+  await fireEvent.press(screen.getByText('How voice works'));
+  expect(screen.getByText(/Deepgram/)).toBeTruthy();
+  await fireEvent.press(screen.getByText('Back to Voice'));
+  await fireEvent.press(screen.getByText('Back to Profile'));
+  expect(screen.getByText('Settings')).toBeTruthy();
+});
+
+test('voice transcript is visible and editable before the existing search receives it', async () => {
+  await AsyncStorage.setItem('reporadar.voice.123.consent', 'yes');
+  jest.mocked(uploadRecording).mockResolvedValue('voice maps');
+  const screen = await open();
+  await waitFor(() => expect(screen.queryByText('Hold the mic to say your idea.')).toBeNull());
+  jest.mocked(api.searchProjects).mockImplementation(async () => {
+    expect(screen.getByText('We heard')).toBeTruthy();
+    expect(screen.getByLabelText('Project idea').props.value).toBe('voice maps');
+    return results([]);
+  });
+  await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressIn');
+  await waitFor(() => expect(screen.getByText(/Let go to search/)).toBeTruthy());
+  await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressOut');
+  await waitFor(() => expect(api.searchProjects).toHaveBeenCalledWith('session', { idea: 'voice maps', pageSize: 20 }));
+  jest.mocked(api.searchProjects).mockResolvedValue(results([]));
+  await search(screen, 'edited maps');
+  expect(api.searchProjects).toHaveBeenLastCalledWith('session', { idea: 'edited maps', pageSize: 20 });
+});
+
+test('consent Continue requests permission and denied sheet opens phone settings', async () => {
+  jest.mocked(AudioModule.requestRecordingPermissionsAsync).mockResolvedValueOnce({ granted: false } as never);
+  const settings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
+  const screen = await open();
+  await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressIn');
+  await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressOut');
+  await fireEvent.press(screen.getByText('Continue'));
+  await waitFor(() => expect(screen.getByText('Microphone is off for RepoRadar')).toBeTruthy());
+  await fireEvent.press(screen.getByText('Open phone settings'));
+  expect(settings).toHaveBeenCalled();
+  await fireEvent.press(screen.getByText('Not now'));
+  expect(screen.getByLabelText('Project idea')).toBeTruthy();
+});
+
+test('sliding away cancels without uploading', async () => {
+  await AsyncStorage.setItem('reporadar.voice.123.consent', 'yes');
+  const screen = await open();
+  await waitFor(() => expect(screen.queryByText('Hold the mic to say your idea.')).toBeNull());
+  await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressIn', { nativeEvent: { pageX: 100, pageY: 100 } });
+  await waitFor(() => expect(screen.getByText(/Let go to search/)).toBeTruthy());
+  await fireEvent(screen.getByLabelText('Hold to record your idea'), 'touchMove', { nativeEvent: { pageX: 0, pageY: 100 } });
+  await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressOut');
+  expect(uploadRecording).not.toHaveBeenCalled();
+});
 
 test('header follows Home and Profile selection', async () => {
   const screen = await open();

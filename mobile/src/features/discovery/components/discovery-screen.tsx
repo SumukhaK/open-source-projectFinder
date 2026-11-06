@@ -30,6 +30,8 @@ import {
 } from '../cache';
 import { ProjectCard } from './project-card';
 import { ProjectDetailsView } from './project-details';
+import { useVoiceInput } from '../use-voice-input';
+import { VoiceButton, VoiceFeedback, VoiceSettings } from './voice-controls';
 
 export type DiscoveryUser = { github_id?: number; login: string; avatar_url?: string };
 type Props = {
@@ -62,6 +64,9 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   const { mode } = useTheme();
   const colors = getThemeColors(mode);
   const account = accountKey(user);
+  const [voiceSettings, setVoiceSettings] = useState(false);
+  const [heard, setHeard] = useState(false);
+  const [pendingVoice, setPendingVoice] = useState('');
   const previousAccount = useRef(account);
   const listSeq = useRef(0);
   const detailsSeq = useRef(0);
@@ -84,6 +89,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState('');
   const [favouriteBusy, setFavouriteBusy] = useState<string | null>(null);
+  const voice = useVoiceInput(account, token, text => { setIdea(text); setHeard(true); setPendingVoice(text); });
 
   useEffect(() => {
     let active = true;
@@ -189,6 +195,8 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   };
 
   const submit = async () => {
+    void voice.cancel();
+    setPendingVoice('');
     const text = idea.trim();
     if (text.length < discoveryConfig.minIdeaLength || text.length > discoveryConfig.maxIdeaLength) {
       setError('Describe your idea');
@@ -197,6 +205,15 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
     }
     await runSearch(text);
   };
+
+  const searchRef = useRef(runSearch);
+  useEffect(() => { searchRef.current = runSearch; });
+  useEffect(() => {
+    if (!pendingVoice || pendingVoice !== idea || signingOut || tab !== 'Home') return;
+    // Paint the editable transcript before initiating the existing search.
+    const frame = requestAnimationFrame(() => { setPendingVoice(''); void searchRef.current(pendingVoice); });
+    return () => cancelAnimationFrame(frame);
+  }, [pendingVoice, idea, signingOut, tab]);
 
   // Retry and pull-to-refresh repeat the last submitted idea, not unsent edits.
   const retry = () => { if (activeIdea) void runSearch(activeIdea); };
@@ -307,6 +324,8 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   };
 
   const leave = async () => {
+    setPendingVoice('');
+    await voice.signOut();
     sessionSeq.current += 1;
     listSeq.current += 1;
     detailsSeq.current += 1;
@@ -355,16 +374,21 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
         onToggle={() => void toggleFavourite(selected)}
       /> : <>
         {tab === 'Home' ? <>
+          {heard ? <Text accessibilityLiveRegion="polite" style={{ color: colors.muted }}>We heard</Text> : null}
+          <View>
           <TextInput
             accessibilityLabel="Project idea"
             placeholder="Describe your idea"
             placeholderTextColor={colors.muted}
             value={idea}
-            onChangeText={setIdea}
+            onChangeText={text => { setIdea(text); setPendingVoice(''); void voice.cancel(); }}
             maxLength={discoveryConfig.maxIdeaLength}
             multiline
-            style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+            style={[styles.input, { paddingRight: 64, backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
           />
+          <VoiceButton voice={voice} />
+          </View>
+          <VoiceFeedback voice={voice} />
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ disabled: loading }}
@@ -408,7 +432,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
           >
             <Text style={{ color: colors.text }}>{loadingMore ? 'Loading more' : 'Load more'}</Text>
           </Pressable> : null}
-        </> : <>
+        </> : voiceSettings ? <VoiceSettings voice={voice} onBack={() => setVoiceSettings(false)} /> : <>
           {user.avatar_url ? <Image source={{ uri: user.avatar_url }} accessibilityLabel={`GitHub avatar for ${user.login}`} style={{ width: 64, height: 64, borderRadius: 32 }} /> : null}
           <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>@{user.login}</Text>
           <Text accessibilityRole="header" style={[styles.sectionHeading, { color: colors.text }]}>Favourites</Text>
@@ -424,6 +448,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
           <Text accessibilityRole="header" style={[styles.sectionHeading, { color: colors.text }]}>Settings</Text>
           <Text style={[styles.settingLabel, { color: colors.muted }]}>Appearance</Text>
           <AppearanceControls />
+          <Pressable accessibilityRole="button" onPress={() => setVoiceSettings(true)} style={[styles.more, { borderColor: colors.border }]}><Text style={{ color: colors.text }}>Voice</Text></Pressable>
           <Text accessibilityRole="header" style={[styles.sectionHeading, { color: colors.text }]}>About and privacy</Text>
           <Text style={[styles.notice, { color: colors.muted }]}>Your device stores your sign-in session, appearance preference and account-specific cached results and favourites. Signing out clears your account cache. Your idea goes to the backend to search GitHub and the project archive; it is not saved in the results cache. Favourites are saved to your backend account.</Text>
           <Pressable accessibilityRole="button" accessibilityState={{ disabled: signingOut }} disabled={signingOut} onPress={() => void leave()} style={[styles.more, { borderColor: colors.border }]}>
@@ -433,7 +458,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       </>}
     </ScrollView>
     <View style={[styles.tabs, { padding: 20, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
-      {(['Home', 'Profile'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name} accessibilityState={{ selected: tab === name }} onPress={() => { closeDetails(); setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
+      {(['Home', 'Profile'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name} accessibilityState={{ selected: tab === name }} onPress={() => { void voice.cancel(); setPendingVoice(''); setVoiceSettings(false); closeDetails(); setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
         <Text style={{ color: tab === name ? colors.onAccent : colors.text }}>{name}</Text>
       </Pressable>)}
     </View>
