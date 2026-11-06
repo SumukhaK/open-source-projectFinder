@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
 from app.api.archive import archive_router
+from app.api.voice import voice_router
 from app.core.config import Settings
 from app.core.store import Store, digest
 from app.discovery import credentials, discovery_router
@@ -157,18 +158,28 @@ def create_app(
     async def protection(request, call_next):
         discovery = request.url.path.startswith(DISCOVERY_PATHS)
         archive = request.url.path.startswith(ARCHIVE_PATHS)
-        if request.url.path.startswith("/auth/") or discovery or archive:
+        voice = request.url.path == "/v1/voice/transcribe"
+        if request.url.path.startswith("/auth/") or discovery or archive or voice:
             # Trust the actual connection, not user-supplied forwarding headers.
             ip = request.client.host if request.client else "unknown"
-            guarded = discovery or archive
+            guarded = discovery or archive or voice
             retry = store.throttle(
                 digest(("discovery:" if guarded else "auth:") + ip),
                 settings.discovery_rate_limit if guarded else settings.rate_limit,
                 settings.rate_window,
             )
             if retry:
+                detail = (
+                    {
+                        "code": "VOICE_RATE_LIMITED",
+                        "message": "Too many requests. Try again later.",
+                        "retryable": True,
+                    }
+                    if voice
+                    else "Too many requests. Try again later."
+                )
                 return JSONResponse(
-                    {"detail": "Too many requests. Try again later."},
+                    {"detail": detail},
                     429,
                     headers={"Retry-After": str(retry), "Cache-Control": "no-store"},
                 )
@@ -381,6 +392,7 @@ def create_app(
         return Response(status_code=204)
 
     app.include_router(discovery_router(store, provider, cipher, current, settings))
+    app.include_router(voice_router(settings, current))
     app.include_router(
         archive_router(settings, current, credentials(store, cipher, current), hybrid)
     )

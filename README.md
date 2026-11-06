@@ -92,7 +92,7 @@ Sanitized local crash events and a mobile retry screen are implemented; producti
 
 ## Planned voice assistant
 
-The user holds to talk, the backend transcribes the clip with Deepgram, and the editable transcript runs the existing hybrid search. The result list shows first. A small LLM then writes a summary of only those results, and Deepgram can read it aloud if voice output is on. The LLM never changes the list, and any voice or LLM failure falls back to plain text search. Models are settings profiles (Ollama first, then Workers AI) and change only after evals. A Home/Profile bottom bar comes first (P3); "Read summaries aloud" lives in Profile › Voice and is on for voice searches only. See the [architecture](docs/VOICE_ASSISTANT_ARCHITECTURE.md), the [UX](docs/VOICE_UX.md) and the [plan and tracker](execution-plans/voice-assistant/README.md) (P3 merged; V0-V4 not started).
+The user holds to talk, the backend transcribes the clip with Deepgram, and the editable transcript runs the existing hybrid search. The result list shows first. A small LLM then writes a summary of only those results, and Deepgram can read it aloud if voice output is on. The LLM never changes the list, and any voice or LLM failure falls back to plain text search. Models are settings profiles (Ollama first, then Workers AI) and change only after evals. A Home/Profile bottom bar comes first (P3); "Read summaries aloud" lives in Profile › Voice and is on for voice searches only. See the [architecture](docs/VOICE_ASSISTANT_ARCHITECTURE.md), the [UX](docs/VOICE_UX.md) and the [plan and tracker](execution-plans/voice-assistant/README.md) (P3 and the V1a transcription route merged; the rest in progress).
 
 ## Planned hybrid search implementation
 
