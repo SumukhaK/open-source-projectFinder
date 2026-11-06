@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -5,6 +6,7 @@ import json
 import logging
 import secrets
 import time
+from contextlib import asynccontextmanager, suppress
 from urllib.parse import urlencode
 
 from cryptography.fernet import Fernet
@@ -21,6 +23,11 @@ from app.core.config import Settings
 from app.core.store import Store, digest
 from app.discovery import credentials, discovery_router
 from app.integrations.github import GitHubProvider, ProviderError
+from app.integrations.llm import (
+    LlmConfigurationError,
+    build_client,
+    probe_profile,
+)
 from app.services.hybrid_runtime import HybridRuntime
 
 
@@ -79,9 +86,48 @@ class BodyLimit:
         return await self.app(scope, replay, send)
 
 
-def create_app(settings=None, transport=None, sleep=time.sleep, *, hybrid=None):
+def create_app(
+    settings=None, transport=None, sleep=time.sleep, *, hybrid=None, llm=None
+):
     settings = settings or Settings()
-    app = FastAPI(title="RepoRadar API")
+
+    @asynccontextmanager
+    async def lifespan(app):
+        app.state.llm_available = False
+        app.state.llm_probe = None
+        client = llm
+        if client is None and settings.llm_active_profile:
+            try:
+                client = build_client(settings)
+            except LlmConfigurationError as error:
+                logging.getLogger("reporadar.llm").error(
+                    json.dumps(
+                        {
+                            "event": "llm_unavailable",
+                            "profile": settings.llm_active_profile,
+                            "error": type(error).__name__,
+                        }
+                    )
+                )
+        if client is not None:
+
+            async def run_probe():
+                app.state.llm_available = await probe_profile(
+                    client, client.profile_name, client.model
+                )
+
+            # Summaries are background: the probe must never delay a request.
+            app.state.llm_probe = asyncio.create_task(run_probe())
+        try:
+            yield
+        finally:
+            probe = app.state.llm_probe
+            if probe is not None and not probe.done():
+                probe.cancel()
+                with suppress(asyncio.CancelledError):
+                    await probe
+
+    app = FastAPI(title="RepoRadar API", lifespan=lifespan)
     store = Store(settings.database_path)
     app.state.settings, app.state.store = settings, store
     provider = GitHubProvider(
