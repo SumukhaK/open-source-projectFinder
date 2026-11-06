@@ -206,6 +206,8 @@ class Settings(BaseSettings):
     max_favourites: int = Field(default=500, ge=1)
     # V0 LLM summaries are opt-in: an empty active profile disables them.
     llm_active_profile: str = ""
+    # A summary that has not finished by this deadline is dropped, never waited on.
+    summary_deadline: float = Field(default=15, gt=0, le=60)
     llm_profiles: dict[str, LlmProfile] = Field(default_factory=_default_llm_profiles)
     workers_ai_account_id: str = ""
     workers_ai_api_token: SecretStr = Field(default=SecretStr(""), repr=False)

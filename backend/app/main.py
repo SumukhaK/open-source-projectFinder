@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
 from app.api.archive import archive_router
+from app.api.summary import SummaryPages, summary_router
 from app.api.voice import voice_router
 from app.core.config import Settings
 from app.core.store import Store, digest
@@ -94,6 +95,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app):
         app.state.llm_available = False
+        app.state.llm_client = None
         app.state.llm_probe = None
         client = llm
         if client is None and settings.llm_active_profile:
@@ -109,6 +111,7 @@ def create_app(
                         }
                     )
                 )
+        app.state.llm_client = client
         if client is not None:
 
             async def run_probe():
@@ -139,6 +142,10 @@ def create_app(
         settings,
     )
     hybrid = hybrid or HybridRuntime(settings, provider=provider)
+    pages = SummaryPages(
+        ttl=settings.hybrid_cursor_ttl_seconds,
+        max_accounts=settings.hybrid_cursor_cache_size,
+    )
     cipher = (
         Fernet(settings.token_encryption_key.encode())
         if settings.token_encryption_key
@@ -394,6 +401,9 @@ def create_app(
     app.include_router(discovery_router(store, provider, cipher, current, settings))
     app.include_router(voice_router(settings, current))
     app.include_router(
-        archive_router(settings, current, credentials(store, cipher, current), hybrid)
+        archive_router(
+            settings, current, credentials(store, cipher, current), hybrid, pages
+        )
     )
+    app.include_router(summary_router(settings, current, pages))
     return app

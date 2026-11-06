@@ -82,7 +82,7 @@ All backend settings live in `app/core/config.py`. `DATABASE_PATH` defaults to i
 
 Authentication can run locally without credentials for health checks; login then returns 503. An invalid configured encryption key fails startup. No production credentials or fake provider are included. The GitHub simulator exists only under tests.
 
-## LLM profiles (V0, awaiting review)
+## LLM profiles (V0, merged)
 
 Summaries are opt-in. `LLM_ACTIVE_PROFILE` selects one profile from the map in `app/core/config.py`; an empty value keeps summaries off. Each profile carries its provider, base URL, model, key reference, connect/first-token/total timeouts, max output tokens, temperature, context limit and streaming flag. The default `ollama` profile expects a local Ollama server; the `workers_ai` profile reads `WORKERS_AI_ACCOUNT_ID` and `WORKERS_AI_API_TOKEN` from the ignored `backend/.env`. No model name appears outside the central config.
 
@@ -95,6 +95,12 @@ python scripts/llm_eval.py --profile ollama --limit 3
 ```
 
 It prints one labelled tracker row with grounding, licence fidelity, first-word/total time and tidied-versus-raw quality. V0 adds no route or user-facing change; CI uses a fake transport and needs no key.
+
+## Grounded result summary (V2a, awaiting review)
+
+`POST /v1/projects/search/summary` requires the normal session guard and shares the discovery rate limit and body limit. The body is only `{"full_names": [...]}` with at most ten `owner/name` identities; unknown or forged names are ignored. Name, description and licence come from the first page the server last served this account (bounded, account-scoped and kept for the same five-minute window as the cursor snapshot), so a client cannot inject repository text.
+
+A request before any search, with no active profile, while the startup probe has not passed, or when the provider fails or exceeds `SUMMARY_DEADLINE` (default 15 seconds, up to 60) returns HTTP 200 with an SSE `done` event `{"grounded": false, "reason": ...}` and no summary events. It never changes `POST /v1/projects/search`. A finished reply is checked with `summary_is_grounded` before the first byte, so an ungrounded reply is also a no-summary result. The response is SSE (`event: summary` text chunks, then `event: done`), not a token stream: the provider stream is collected first so ungrounded text cannot reach the client. Logs carry profile, model, counts, reason and duration only.
 
 ## Archive catalogue (T03, merged)
 
