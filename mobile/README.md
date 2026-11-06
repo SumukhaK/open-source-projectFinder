@@ -77,7 +77,7 @@ On Unix: `RUN_AUTH_E2E=1 npm test`. The test launches a temporary FastAPI server
 
 Use `npm run test:coverage` for enforced application coverage, `npm run lint` for lint and security rules with zero warnings, and `npm run typecheck`. Shared theme access avoids untrusted dynamic lookup. The root crash boundary provides themed retry and sanitized local reporting. See [pipeline documentation](../docs/QUALITY_PIPELINE.md) for thresholds, audits, free-runner boundaries and review-controlled merging.
 
-## Voice input (V1b, awaiting review)
+## Voice input (V1b, merged; device check open)
 
 Home has a hold-to-record mic beside the editable idea. Consent precedes system microphone permission; release shows “We heard” before starting the existing search. Slide away or use Cancel to discard; capture stops at 30 seconds. Permission denial and provider errors keep typed search available. Profile > Voice shows microphone status, phone settings and How voice works. Consent is account-scoped and cleared on sign-out.
 
