@@ -28,7 +28,7 @@ Adapted from [Bulletproof React](https://github.com/alan2207/bulletproof-react/b
 
 - `src/app`: app entry and provider composition.
 - `src/features/auth`: login page, API flow and secure session storage.
-- `src/features/discovery`: authenticated idea search, project details, favourites and account-scoped local cache. The signed-in screen has a Home/Profile bottom bar: Home holds search and results; Profile holds the account, favourites, settings (appearance) and about/privacy.
+- `src/features/discovery`: authenticated idea search, project details, favourites and account-scoped local cache. The signed-in screen has a Home/Profile bottom bar: Home holds search and results; Profile holds the account, favourites, settings (appearance and voice) and about/privacy.
 - `src/features/branding/components`: preserved branding preview component.
 - `src/components`: shared vector mark and accessible animated loader.
 - `src/hooks`: platform accessibility hooks.
@@ -51,7 +51,7 @@ Native splash uses the OS appearance at launch; a saved in-app override is appli
 
 ## Device checks still required
 
-Build release binaries for both platforms and check launcher masks, native splash behavior, theme changes, screen reader output, Reduce Motion, font scaling, and startup on devices. iOS compilation needs macOS or a configured cloud build; this repository does not contain signing credentials or store identifiers. Voice capture is pending; the hybrid `/v1` search path and real account search against a live backend have not been run on a device in this change (T26 owns the real HTTP check).
+Build release binaries for both platforms and check launcher masks, native splash behavior, theme changes, screen reader output, Reduce Motion, font scaling, and startup on devices. iOS compilation needs macOS or a configured cloud build; this repository does not contain signing credentials or store identifiers. Voice capture is implemented but still needs native device validation; the hybrid `/v1` search path and real account search against a live backend have not been run on a device in this change (T26 owns the real HTTP check).
 
 ## Dependency audit
 
@@ -76,3 +76,11 @@ On Unix: `RUN_AUTH_E2E=1 npm test`. The test launches a temporary FastAPI server
 ## Quality pipeline
 
 Use `npm run test:coverage` for enforced application coverage, `npm run lint` for lint and security rules with zero warnings, and `npm run typecheck`. Shared theme access avoids untrusted dynamic lookup. The root crash boundary provides themed retry and sanitized local reporting. See [pipeline documentation](../docs/QUALITY_PIPELINE.md) for thresholds, audits, free-runner boundaries and review-controlled merging.
+
+## Voice input (V1b, merged; device check open)
+
+Home has a hold-to-record mic beside the editable idea. Consent precedes system microphone permission; release shows “We heard” before starting the existing search. Slide away or use Cancel to discard; capture stops at 30 seconds. Permission denial and provider errors keep typed search available. Profile > Voice shows microphone status, phone settings and How voice works. Consent is account-scoped and cleared on sign-out.
+
+SDK 57 expo-audio records HIGH_QUALITY AAC/M4A; expo-file-system reads and removes the cache clip, expo-haptics provides start feedback, and expo/fetch sends raw audio/m4a to the authenticated backend. No provider key belongs in the app. Voice configuration lives in src/config/voice.ts. Native plugin changes require rebuilding; background recording is disabled. Web offers typed search only. Tests cover permission/release, cancellation, background, sign-out, unmount and late-upload races using fakes.
+
+See [V1b evidence](../execution-plans/voice-assistant/V1b_EVIDENCE.md) for RED/GREEN, coverage and export results. Native light/dark, accessibility and release-to-transcript latency checks remain outstanding because no development-build device was connected. A failed filesystem delete is surfaced to the user; abrupt process death is not a guaranteed cleanup path.

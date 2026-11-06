@@ -23,6 +23,7 @@ const config: ExpoConfig = {
   },
   web: { favicon: './assets/branding/icon-light.png' },
   plugins: [
+    ['expo-audio', { microphonePermission: 'Allow RepoRadar to record your project idea.', enableBackgroundRecording: false, enableBackgroundPlayback: false }],
     'expo-system-ui',
     'expo-secure-store',
     ['expo-splash-screen', {
