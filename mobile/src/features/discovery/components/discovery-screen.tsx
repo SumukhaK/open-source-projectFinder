@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AppearanceControls } from '../../../components/appearance-controls';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -31,6 +31,7 @@ import {
 import { SummaryCard } from './summary-card';
 import { ProjectCard } from './project-card';
 import { ProjectDetailsView } from './project-details';
+import { useVoiceOutput } from '../use-voice-output';
 import { useVoiceInput } from '../use-voice-input';
 import { VoiceButton, VoiceFeedback, VoiceSettings } from './voice-controls';
 
@@ -65,16 +66,18 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   const { mode } = useTheme();
   const colors = getThemeColors(mode);
   const account = accountKey(user);
+  const speech = useVoiceOutput(account, token);
   const [voiceSettings, setVoiceSettings] = useState(false);
   const [heard, setHeard] = useState(false);
   const [pendingVoice, setPendingVoice] = useState('');
-  const [summaryPage, setSummaryPage] = useState<{ names: string[]; sequence: number; account: string; token: string } | null>(null);
+  const [summaryPage, setSummaryPage] = useState<{ names: string[]; sequence: number; fromVoice: boolean; account: string; token: string } | null>(null);
   const summarySequence = useRef(0);
-  const cancelSummary = () => { summarySequence.current += 1; setSummaryPage(null); };
+  const stopSpeech = speech.stop;
+  const cancelSummary = useCallback(() => { stopSpeech(); summarySequence.current += 1; setSummaryPage(null); }, [stopSpeech]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', state => { if (state === 'background') cancelSummary(); });
     return () => { summarySequence.current += 1; subscription.remove(); };
-  }, [account, token]);
+  }, [account, token, cancelSummary]);
   const previousAccount = useRef(account);
   const listSeq = useRef(0);
   const detailsSeq = useRef(0);
@@ -171,7 +174,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
     return fallback;
   };
 
-  const runSearch = async (text: string, { refresh = false } = {}) => {
+  const runSearch = async (text: string, { refresh = false, fromVoice = false } = {}) => {
     cancelSummary();
     const summaryRequest = summarySequence.current;
     const seq = ++listSeq.current;
@@ -189,7 +192,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       if (seq !== listSeq.current || session !== sessionSeq.current) return;
       setResults(data);
       if (summaryRequest === summarySequence.current && data.items.length) {
-        setSummaryPage({ names: data.items.slice(0, 10).map(item => item.full_name), sequence: summaryRequest, account, token });
+        setSummaryPage({ names: data.items.slice(0, 10).map(item => item.full_name), sequence: summaryRequest, fromVoice, account, token });
       }
       await saveCachedResults(account, data);
     } catch (failure) {
@@ -225,7 +228,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   useEffect(() => {
     if (!pendingVoice || pendingVoice !== idea || signingOut || tab !== 'Home') return;
     // Paint the editable transcript before initiating the existing search.
-    const frame = requestAnimationFrame(() => { setPendingVoice(''); void searchRef.current(pendingVoice); });
+    const frame = requestAnimationFrame(() => { setPendingVoice(''); void searchRef.current(pendingVoice, { fromVoice: true }); });
     return () => cancelAnimationFrame(frame);
   }, [pendingVoice, idea, signingOut, tab]);
 
@@ -340,6 +343,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   const leave = async () => {
     cancelSummary();
     setPendingVoice('');
+    await speech.signOut();
     await voice.signOut();
     sessionSeq.current += 1;
     listSeq.current += 1;
@@ -430,7 +434,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
           >
             <Text style={{ color: colors.text }}>Try again</Text>
           </Pressable> : null}
-          {summaryPage && summaryPage.account === account && summaryPage.token === token && !signingOut ? <SummaryCard key={`${account}:${summaryPage.sequence}`} names={summaryPage.names} token={token} /> : null}
+          {summaryPage && summaryPage.account === account && summaryPage.token === token && !signingOut ? <SummaryCard key={`${account}:${summaryPage.sequence}`} names={summaryPage.names} token={token} fromVoice={summaryPage.fromVoice} speech={speech} /> : null}
           {results?.items.map(project => <ProjectCard
             key={project.full_name}
             project={project}
@@ -448,7 +452,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
           >
             <Text style={{ color: colors.text }}>{loadingMore ? 'Loading more' : 'Load more'}</Text>
           </Pressable> : null}
-        </> : voiceSettings ? <VoiceSettings voice={voice} onBack={() => setVoiceSettings(false)} /> : <>
+        </> : voiceSettings ? <VoiceSettings speech={speech} voice={voice} onBack={() => setVoiceSettings(false)} /> : <>
           {user.avatar_url ? <Image source={{ uri: user.avatar_url }} accessibilityLabel={`GitHub avatar for ${user.login}`} style={{ width: 64, height: 64, borderRadius: 32 }} /> : null}
           <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>@{user.login}</Text>
           <Text accessibilityRole="header" style={[styles.sectionHeading, { color: colors.text }]}>Favourites</Text>

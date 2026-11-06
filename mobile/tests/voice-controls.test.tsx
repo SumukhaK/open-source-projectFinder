@@ -30,7 +30,7 @@ test('recording countdown and visible cancel are usable; errors retain readable 
 });
 test('phone settings failure does not crash the voice settings screen', async () => {
   jest.spyOn(Linking, 'openSettings').mockRejectedValueOnce(new Error('unavailable'));
-  const screen = await render(<AppProvider><VoiceSettings voice={controller()} onBack={jest.fn()} /></AppProvider>);
+  const screen = await render(<AppProvider><VoiceSettings voice={controller()} speech={{ enabled: true, ready: true, setEnabled: jest.fn(), playing: false, tip: false, play: jest.fn(async () => {}), stop: jest.fn(), signOut: jest.fn(async () => {}) }} onBack={jest.fn()} /></AppProvider>);
   await fireEvent.press(screen.getByText('Open phone settings'));
   expect(screen.getByText('Microphone: Off')).toBeTruthy();
   jest.restoreAllMocks();

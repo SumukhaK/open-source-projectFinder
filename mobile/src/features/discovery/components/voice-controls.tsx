@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Linking, Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { branding, getThemeColors } from '../../../config/branding';
 import { voiceConfig } from '../../../config/voice';
 import { useReducedMotion } from '../../../hooks/use-reduced-motion';
 import { useTheme } from '../../../lib/theme';
+import { useVoiceOutput } from '../use-voice-output';
 import { useVoiceInput } from '../use-voice-input';
 
 type Voice = ReturnType<typeof useVoiceInput>;
@@ -80,13 +81,16 @@ export function VoiceFeedback({ voice }: { voice: Voice }) {
   </>;
 }
 
-export function VoiceSettings({ voice, onBack }: { voice: Voice; onBack: () => void }) {
+export function VoiceSettings({ voice, speech, onBack }: { voice: Voice; speech: ReturnType<typeof useVoiceOutput>; onBack: () => void }) {
   const colors = getThemeColors(useTheme().mode);
   const [help, setHelp] = useState(false);
   return <View style={styles.settings}>
     <Pressable accessibilityRole="button" style={styles.button} onPress={() => help ? setHelp(false) : onBack()}><Text style={{ color: colors.text }}>{help ? 'Back to Voice' : 'Back to Profile'}</Text></Pressable>
     <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>{help ? 'How voice works' : 'Voice'}</Text>
-    {help ? <Text style={{ color: colors.text }}>Audio is sent through our server to Deepgram to become text. The recording is removed after upload or cancellation; audio and transcript are not saved by the app or server. Your words appear in the idea box, where you can edit them. Projects come from the same search as typed ideas. AI summaries describe only listed results and can be imperfect. Spoken replies are not available yet. To stop using voice, type instead or turn off microphone access in phone settings.</Text> : <>
+    {help ? <Text style={{ color: colors.text }}>Audio is sent through our server to Deepgram to become text. The recording is removed after upload or cancellation; audio and transcript are not saved by the app or server. Your words appear in the idea box, where you can edit them. Projects come from the same search as typed ideas. AI summaries describe only listed results and can be imperfect. Read summaries aloud controls automatic speech after voice searches. Typed searches never speak automatically; use Read aloud on a summary to hear it. To stop using voice, type instead or turn off microphone access in phone settings.</Text> : <>
+      <Text style={{ color: colors.text }}>Read summaries aloud</Text>
+      <Text style={{ color: colors.muted }}>After a voice search, hear a short summary. The list always shows.</Text>
+      <Switch accessibilityLabel="Read summaries aloud" value={speech.enabled} disabled={!speech.ready} onValueChange={speech.setEnabled} style={{ minHeight: 48 }} />
       <Text style={{ color: colors.text }}>Microphone: {voice.permission}</Text>
       <Pressable accessibilityRole="button" style={styles.button} onPress={() => void Linking.openSettings().catch(() => {})}><Text style={{ color: colors.text }}>Open phone settings</Text></Pressable>
       <Pressable accessibilityRole="button" style={styles.button} onPress={() => setHelp(true)}><Text style={{ color: colors.text }}>How voice works</Text></Pressable>
