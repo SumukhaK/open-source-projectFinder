@@ -1,12 +1,14 @@
 # V2: Grounded result summary
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: V2a (backend route) awaiting review; V2b (mobile summary card) blocked on V1b and V2a. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
-| Branch to create from latest origin/main | `codex/voice-v2-grounded-summary` |
-| Prerequisites | V0 merged |
-| Intended scope | a backend `/v1/projects/search/summary` route, grounding checks, the mobile summary card, tests and docs |
+| Branch to create from latest origin/main | `codex/voice-v2a-summary-route` (V2b: `codex/voice-v2b-mobile-summary`) |
+| Prerequisites | V0 merged; V2b also needs V1b and V2a |
+| Intended scope | V2a: a backend `/v1/projects/search/summary` route, grounding checks, tests and docs. V2b: the mobile summary card. |
+
+V2a is the backend half and this PR. V2b is the mobile card and starts only after V1b and V2a are merged. The tidy-up remains optional and is not part of V2a.
 
 Read first: [voice architecture](../../../docs/VOICE_ASSISTANT_ARCHITECTURE.md), [plan rules](../README.md), the hybrid [EXECUTION_GUIDE](../../hybrid-search/EXECUTION_GUIDE.md) and the current code, tests and configuration.
 
@@ -17,7 +19,7 @@ Execute V2 only. Follow AGENTS.md, execution-plans/hybrid-search/EXECUTION_GUIDE
 and execution-plans/voice-assistant/README.md. Verify the listed prerequisites are
 MERGED into main and the listed decisions are approved; stop if missing. Read
 current code/tests before editing. Fetch origin main and create branch
-codex/voice-v2-grounded-summary FROM origin/main; record base SHA.
+codex/voice-v2a-summary-route FROM origin/main; record base SHA.
 Minimum complete, human-readable code, existing patterns and standard library
 first, no speculative abstractions or unrelated changes. Write and RUN failing
 tests FIRST (RED), implement the minimum (GREEN), then refactor and run affected
