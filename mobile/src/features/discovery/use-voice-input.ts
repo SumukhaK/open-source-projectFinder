@@ -157,13 +157,12 @@ export function useVoiceInput(account: string, token: string, onTranscript?: (te
     };
     refreshPermission();
     const subscription = AppState.addEventListener('change', state => {
-      if (state !== 'active') { generation.current += 1; setSheet(''); void actions.current.cancel(); }
-      else refreshPermission();
+      if (state === 'background') { generation.current += 1; setSheet(''); void actions.current.cancel(); }
+      else if (state === 'active') refreshPermission();
     });
     return () => {
       mounted.current = false; generation.current += 1;
       void actions.current.cancel(); subscription.remove();
-      void consentWrite.current.then(() => AsyncStorage.removeItem(key)).catch(() => {});
     };
   }, [key, token]);
   return { consent, sheet, phase, seconds, error, transcript, permission, start, release, cancel, accept, signOut, dismiss: () => setSheet('') };

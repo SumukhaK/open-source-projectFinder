@@ -121,6 +121,25 @@ test('voice transcript is visible and editable before the existing search receiv
   expect(api.searchProjects).toHaveBeenLastCalledWith('session', { idea: 'edited maps', pageSize: 20 });
 });
 
+test.each(['typing', 'submit', 'tab change'])('%s after voice search hides We heard', async action => {
+  await AsyncStorage.setItem('reporadar.voice.123.consent', 'yes');
+  jest.mocked(uploadRecording).mockResolvedValue('voice maps');
+  const screen = await open();
+  await waitFor(() => expect(screen.queryByText('Hold the mic to say your idea.')).toBeNull());
+  await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressIn');
+  await waitFor(() => expect(screen.getByText(/Let go to search/)).toBeTruthy());
+  await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressOut');
+  await waitFor(() => expect(api.searchProjects).toHaveBeenCalled());
+  expect(screen.getByText('We heard')).toBeTruthy();
+  if (action === 'typing') await fireEvent.changeText(screen.getByLabelText('Project idea'), 'typed maps');
+  else if (action === 'submit') await fireEvent.press(screen.getByRole('button', { name: 'Search projects' }));
+  else {
+    await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Home' }));
+  }
+  expect(screen.queryByText('We heard')).toBeNull();
+});
+
 test('consent Continue requests permission and denied sheet opens phone settings', async () => {
   jest.mocked(AudioModule.requestRecordingPermissionsAsync).mockResolvedValueOnce({ granted: false } as never);
   const settings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);

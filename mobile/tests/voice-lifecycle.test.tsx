@@ -200,3 +200,27 @@ test('storage and audio-mode failures do not strand the microphone', async () =>
   expect(hook.result.current.phase).toBe('idle');
   expect(jest.mocked(File).mock.results.at(-1)?.value.delete).toHaveBeenCalled();
 });
+
+
+test('inactive during consent permission keeps the denied result', async () => {
+  let changed!: (state: AppStateStatus) => void;
+  jest.spyOn(AppState, 'addEventListener').mockImplementation((_, fn) => { changed = fn; return { remove: jest.fn() }; });
+  const hook = await renderHook(() => useVoiceInput('123', 'session'));
+  let resolve!: (value: Awaited<ReturnType<typeof AudioModule.requestRecordingPermissionsAsync>>) => void;
+  jest.mocked(AudioModule.requestRecordingPermissionsAsync).mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+  let accepted!: Promise<void>;
+  await act(async () => { accepted = hook.result.current.accept(); });
+  await act(async () => { changed('inactive'); resolve({ granted: false } as never); await accepted; });
+  expect(hook.result.current.permission).toBe('Off');
+  expect(hook.result.current.sheet).toBe('denied');
+});
+
+test('same-account remount keeps consent until sign-out', async () => {
+  const hook = await consented();
+  await hook.unmount();
+  expect(await AsyncStorage.getItem(key)).toBe('yes');
+  const remount = await renderHook(() => useVoiceInput('123', 'session'));
+  await waitFor(() => expect(remount.result.current.consent).toBe(true));
+  await act(async () => { await remount.result.current.signOut(); });
+  expect(await AsyncStorage.getItem(key)).toBeNull();
+});

@@ -195,6 +195,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   };
 
   const submit = async () => {
+    setHeard(false);
     void voice.cancel();
     setPendingVoice('');
     const text = idea.trim();
@@ -381,7 +382,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
             placeholder="Describe your idea"
             placeholderTextColor={colors.muted}
             value={idea}
-            onChangeText={text => { setIdea(text); setPendingVoice(''); void voice.cancel(); }}
+            onChangeText={text => { setHeard(false); setIdea(text); setPendingVoice(''); void voice.cancel(); }}
             maxLength={discoveryConfig.maxIdeaLength}
             multiline
             style={[styles.input, { paddingRight: 64, backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
@@ -458,7 +459,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       </>}
     </ScrollView>
     <View style={[styles.tabs, { padding: 20, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
-      {(['Home', 'Profile'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name} accessibilityState={{ selected: tab === name }} onPress={() => { void voice.cancel(); setPendingVoice(''); setVoiceSettings(false); closeDetails(); setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
+      {(['Home', 'Profile'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name} accessibilityState={{ selected: tab === name }} onPress={() => { void voice.cancel(); setPendingVoice(''); setHeard(false); setVoiceSettings(false); closeDetails(); setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
         <Text style={{ color: tab === name ? colors.onAccent : colors.text }}>{name}</Text>
       </Pressable>)}
     </View>
