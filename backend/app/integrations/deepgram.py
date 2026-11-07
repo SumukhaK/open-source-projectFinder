@@ -53,3 +53,35 @@ async def transcribe(audio, settings, *, content_type="audio/wav", transport=Non
         return text.strip(), duration
     except (ValueError, TypeError, KeyError, IndexError):
         raise VoiceUnavailable from None
+
+
+async def speech_audio(text, settings, *, transport=None):
+    """Stream MP3 without file storage, decompression or provider error bodies."""
+    async with httpx.AsyncClient(
+        transport=transport, timeout=settings.speech_deadline, follow_redirects=False
+    ) as client:
+        async with client.stream(
+            "POST",
+            "https://api.deepgram.com/v1/speak",
+            params={"model": settings.deepgram_tts_model, "encoding": "mp3"},
+            headers={
+                "Authorization": "Token "
+                + settings.deepgram_api_key.get_secret_value(),
+                "Accept-Encoding": "identity",
+            },
+            json={"text": text},
+        ) as response:
+            if (
+                response.status_code != 200
+                or response.headers.get("content-type", "").split(";", 1)[0]
+                != "audio/mpeg"
+                or response.headers.get("content-encoding", "identity") != "identity"
+            ):
+                raise VoiceUnavailable
+            size = 0
+            async for chunk in response.aiter_bytes():
+                size += len(chunk)
+                if size > settings.speech_max_bytes:
+                    raise VoiceUnavailable
+                if chunk:
+                    yield chunk
