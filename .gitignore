@@ -23,3 +23,7 @@ backend/pip-audit.json
 backend/htmlcov/
 .ci/bin/
 reports/
+
+# Expo prebuild output (continuous native generation; regenerate with `npx expo prebuild`)
+mobile/android/
+mobile/ios/

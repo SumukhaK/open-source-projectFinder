@@ -11,10 +11,12 @@ const config: ExpoConfig = {
   userInterfaceStyle: 'automatic',
   icon: './assets/branding/icon-dark.png',
   ios: {
+    bundleIdentifier: 'com.sumukhak.reporadar',
     supportsTablet: true,
     icon: { light: './assets/branding/icon-light.png', dark: './assets/branding/icon-dark.png', tinted: './assets/branding/icon-tinted.png' },
   },
   android: {
+    package: 'com.sumukhak.reporadar',
     adaptiveIcon: {
       foregroundImage: './assets/branding/adaptive-foreground.png',
       backgroundColor: branding.themes.dark.background,
