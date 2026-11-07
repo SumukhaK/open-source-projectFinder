@@ -123,6 +123,16 @@ class Settings(BaseSettings):
     github_client_secret: str = ""
     deepgram_api_key: SecretStr = Field(default=SecretStr(""), repr=False)
     deepgram_model: str = "nova-3"
+    deepgram_tts_model: str = Field(
+        default="aura-2-thalia-en",
+        min_length=1,
+        max_length=100,
+        pattern=r"^[a-zA-Z0-9-]+$",
+    )
+    speech_deadline: float = Field(default=30, gt=0, le=120)
+    speech_max_bytes: int = Field(default=4 * 1024 * 1024, ge=1, le=16 * 1024 * 1024)
+    speech_max_chars: int = Field(default=2000, ge=1, le=2000)
+    speech_max_concurrent: int = Field(default=1, ge=1, le=4)
     voice_max_bytes: int = Field(default=4 * 1024 * 1024, ge=44, le=4 * 1024 * 1024)
     voice_max_compressed_bytes: int = Field(default=1024 * 1024, ge=1, le=1024 * 1024)
     voice_max_seconds: float = Field(default=30, gt=0, le=30)
