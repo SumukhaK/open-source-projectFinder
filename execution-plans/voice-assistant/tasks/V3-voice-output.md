@@ -1,6 +1,6 @@
 # V3: Spoken summary and voice-output setting
 
-Status: V3a (backend speech route) and V3b (mobile playback and setting, PR #73) are awaiting review in parallel. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: V3a (backend speech route, PR #74) and V3b (mobile playback and setting, PR #73) merged 2026-11-07; device check and first real Deepgram TTS call still open. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

@@ -1,6 +1,6 @@
 # V3a backend speech evidence
 
-Status: Awaiting review. [PR #74](https://github.com/SumukhaK/open-source-projectFinder/pull/74), code head `d169b8ac870e51d70c98e473b26cb2553f0afd10` (review fix; earlier head `56c92fc479cb6ef91ae93ab40511a5461798e5bd`); base `2d522ea07678a40a7f694b786be65dc619c8beb3`; branch `opencode/voice-v3a-speech`. Backend only; preserves the supplied PR #73 mobile contract. No mobile files changed.
+Status: Merged 2026-11-07 as `1e8ec66`. [PR #74](https://github.com/SumukhaK/open-source-projectFinder/pull/74), code head `d169b8ac870e51d70c98e473b26cb2553f0afd10` (review fix; earlier head `56c92fc479cb6ef91ae93ab40511a5461798e5bd`); base `2d522ea07678a40a7f694b786be65dc619c8beb3`; branch `opencode/voice-v3a-speech`. Backend only; preserves the supplied PR #73 mobile contract. No mobile files changed.
 
 ## Scope delivered
 
