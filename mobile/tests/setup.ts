@@ -8,6 +8,13 @@ jest.mock('react-native-safe-area-context', () =>
 );
 
 jest.mock('expo-audio', () => ({
+  createAudioPlayer: jest.fn(() => {
+    let listener: (status: unknown) => void = () => {};
+    return { play: jest.fn(), pause: jest.fn(), release: jest.fn(),
+      addListener: jest.fn((_, fn) => { listener = fn; return { remove: jest.fn() }; }),
+      emit: (status: unknown) => listener(status),
+    };
+  }),
   AudioModule: {
     getRecordingPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
     requestRecordingPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),

@@ -1,7 +1,7 @@
 import { fetch } from 'expo/fetch';
 import { discoveryConfig } from '../../config/discovery';
 
-export async function streamSummary(names: string[], token: string, signal: AbortSignal, onText: (text: string) => void): Promise<string> {
+export async function streamSummary(names: string[], token: string, signal: AbortSignal, onText: (text: string) => void): Promise<{ text: string; summaryId: string | null }> {
   const response = await fetch(`${discoveryConfig.apiUrl}/v1/projects/search/summary`, {
     method: 'POST', signal,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'text/event-stream' },
@@ -32,7 +32,7 @@ export async function streamSummary(names: string[], token: string, signal: Abor
           if (text.length > discoveryConfig.summaryMaxChars) throw new Error('Summary too large');
           onText(text);
         } else if (event === 'done' && data?.grounded === true && text.trim()) {
-          return text;
+          return { text, summaryId: typeof data.summary_id === 'string' && data.summary_id.trim() ? data.summary_id : null };
         } else throw new Error('No grounded summary');
       }
     }

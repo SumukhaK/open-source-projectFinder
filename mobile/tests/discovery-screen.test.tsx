@@ -5,7 +5,7 @@ import { AppProvider } from '../src/app/provider';
 import { DiscoveryScreen } from '../src/features/discovery/components/discovery-screen';
 import * as api from '../src/features/discovery/api/discovery';
 import * as cache from '../src/features/discovery/cache';
-import { AudioModule } from 'expo-audio';
+import { AudioModule, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { AccessibilityInfo, AppState, AppStateStatus, Linking } from 'react-native';
 import { fetch as summaryFetch } from 'expo/fetch';
 import { summaryStream } from './summary-stream';
@@ -925,5 +925,145 @@ describe('first-page summary', () => {
     await fireEvent.press(screen.getByText('Load more'));
     await waitFor(() => expect(screen.getByText('navigator')).toBeTruthy());
     expect(summaryFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe('spoken summaries', () => {
+  const speechKey = 'reporadar.voice.123.readAloud';
+  const player = () => jest.mocked(createAudioPlayer).mock.results.at(-1)?.value as unknown as {
+    play: jest.Mock; pause: jest.Mock; release: jest.Mock; emit: (status: object) => void;
+  };
+  beforeEach(() => {
+    AppState.currentState = 'active';
+    jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(false);
+  });
+  async function complete(screen: Awaited<ReturnType<typeof open>>, voice = true, done: object = { grounded: true, summary_id: 'opaque/id', results: 1 }) {
+    const stream = summaryStream();
+    jest.mocked(summaryFetch).mockResolvedValueOnce(stream.response as never);
+    if (voice) {
+      jest.mocked(uploadRecording).mockResolvedValue('voice maps');
+      await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressIn');
+      await waitFor(() => expect(screen.getByText(/Let go to search/)).toBeTruthy());
+      await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressOut');
+    } else await search(screen);
+    await waitFor(() => expect(stream.reader.read).toHaveBeenCalled());
+    await act(async () => { stream.event('summary', { text: 'A useful summary' }); });
+    await act(async () => { stream.event('done', done); });
+  }
+  async function voiceScreen() {
+    await AsyncStorage.setItem('reporadar.voice.123.consent', 'yes');
+    const screen = await open();
+    await waitFor(() => expect(screen.queryByText('Hold the mic to say your idea.')).toBeNull());
+    return screen;
+  }
+
+  test('voice auto-play uses only the ID URL and bearer header, never a download', async () => {
+    const screen = await voiceScreen(); await complete(screen);
+    await waitFor(() => expect(createAudioPlayer).toHaveBeenCalledTimes(1));
+    expect(createAudioPlayer).toHaveBeenCalledWith({ uri: expect.stringMatching(/\/v1\/voice\/speech\/opaque%2Fid$/), headers: { Authorization: 'Bearer session' } }, { downloadFirst: false });
+    expect(setAudioModeAsync).toHaveBeenCalledWith(expect.objectContaining({ playsInSilentMode: false, shouldPlayInBackground: false }));
+    expect(player().play).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy();
+  });
+
+  test('mic press-in pauses and releases speech before recording starts', async () => {
+    const screen = await voiceScreen(); await complete(screen);
+    await waitFor(() => expect(createAudioPlayer).toHaveBeenCalled());
+    const speaking = player();
+    // The first recorder belongs to the completed voice search; inspect the new hold.
+    await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressIn');
+    await waitFor(() => expect(screen.getByText(/Let go to search/)).toBeTruthy());
+    // eslint-disable-next-line import/namespace
+    const recorder = jest.mocked(AudioModule.AudioRecorder).mock.results.at(-1)!.value;
+    expect(speaking.pause).toHaveBeenCalledTimes(1);
+    expect(speaking.release).toHaveBeenCalledTimes(1);
+    expect(speaking.pause.mock.invocationCallOrder[0]).toBeLessThan(recorder.record.mock.invocationCallOrder[0]);
+    expect(speaking.release.mock.invocationCallOrder[0]).toBeLessThan(recorder.record.mock.invocationCallOrder[0]);
+  });
+
+  test('typed summary never auto-plays but Read aloud works and Stop releases', async () => {
+    const screen = await open(); await complete(screen, false);
+    expect(createAudioPlayer).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Read aloud' }));
+    await waitFor(() => expect(createAudioPlayer).toHaveBeenCalled());
+    await fireEvent.press(screen.getByRole('button', { name: 'Stop' }));
+    expect(player().pause).toHaveBeenCalled(); expect(player().release).toHaveBeenCalled();
+    expect(screen.getByText('A useful summary')).toBeTruthy();
+  });
+
+  test.each(['setting off', 'screen reader', 'inactive', 'ungrounded', 'missing ID'])('%s prevents automatic speech', async condition => {
+    if (condition === 'setting off') await AsyncStorage.setItem(speechKey, 'false');
+    if (condition === 'screen reader') jest.mocked(AccessibilityInfo.isScreenReaderEnabled).mockResolvedValue(true);
+    if (condition === 'inactive') AppState.currentState = 'inactive';
+    const screen = await voiceScreen();
+    await complete(screen, true, condition === 'ungrounded' ? { grounded: false } : condition === 'missing ID' ? { grounded: true, results: 1 } : undefined);
+    expect(createAudioPlayer).not.toHaveBeenCalled();
+    if (condition === 'missing ID') expect(screen.queryByRole('button', { name: 'Read aloud' })).toBeNull();
+    if (condition === 'setting off') {
+      await fireEvent.press(screen.getByRole('button', { name: 'Read aloud' }));
+      await waitFor(() => expect(createAudioPlayer).toHaveBeenCalledTimes(1));
+    }
+  });
+
+  test.each(['new search', 'tab', 'sign-out', 'background', 'unmount'])('%s stops and releases playback', async action => {
+    let changed: (state: AppStateStatus) => void = () => {};
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_, fn) => { const old = changed; changed = state => { old(state); fn(state); }; return { remove: jest.fn() }; });
+    const screen = await voiceScreen(); await complete(screen);
+    await waitFor(() => expect(createAudioPlayer).toHaveBeenCalled());
+    const playing = player();
+    if (action === 'new search') await search(screen, 'new search');
+    else if (action === 'background') await act(async () => { changed('background'); });
+    else if (action === 'unmount') await screen.unmount();
+    else {
+      await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
+      if (action === 'sign-out') await fireEvent.press(screen.getByText('Sign out'));
+    }
+    expect(playing.pause).toHaveBeenCalled(); expect(playing.release).toHaveBeenCalledTimes(1);
+  });
+
+  test('speech failure leaves the summary and does not retry', async () => {
+    const screen = await voiceScreen(); await complete(screen);
+    await waitFor(() => expect(createAudioPlayer).toHaveBeenCalled());
+    await act(async () => { player().emit({ error: '503 speech_unavailable' }); });
+    expect(screen.getByText('A useful summary')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Read aloud' })).toBeTruthy();
+    expect(player().release).toHaveBeenCalledTimes(1); expect(createAudioPlayer).toHaveBeenCalledTimes(1);
+  });
+
+  test('auto-play tip appears only once per account after playback starts', async () => {
+    const screen = await voiceScreen(); await complete(screen);
+    await waitFor(() => expect(createAudioPlayer).toHaveBeenCalled());
+    expect(screen.queryByText('Turn this off in Profile › Voice')).toBeNull();
+    await act(async () => { player().emit({ playing: true }); });
+    expect(screen.getByText('Turn this off in Profile › Voice')).toBeTruthy();
+    await act(async () => { player().emit({ didJustFinish: true }); });
+    expect(screen.getByText('Turn this off in Profile › Voice')).toBeTruthy();
+    await complete(screen);
+    await waitFor(() => expect(createAudioPlayer).toHaveBeenCalledTimes(2));
+    await act(async () => { player().emit({ playing: true }); });
+    expect(screen.queryByText('Turn this off in Profile › Voice')).toBeNull();
+  });
+
+  test('read-aloud setting persists per account and is cleared on sign-out', async () => {
+    const screen = await open();
+    await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
+    await fireEvent.press(screen.getByText('Voice'));
+    const control = screen.getByRole('switch', { name: 'Read summaries aloud' });
+    expect(control.props.value).toBe(true);
+    await fireEvent(control, 'valueChange', false);
+    await waitFor(async () => expect(await AsyncStorage.getItem(speechKey)).toBe('false'));
+    await screen.unmount();
+    const again = await open();
+    await fireEvent.press(again.getByRole('tab', { name: 'Profile' }));
+    await fireEvent.press(again.getByText('Voice'));
+    await waitFor(() => expect(again.getByRole('switch', { name: 'Read summaries aloud' }).props.value).toBe(false));
+    await fireEvent.press(again.getByText('Back to Profile'));
+    await fireEvent.press(again.getByText('Sign out'));
+    await waitFor(async () => expect(await AsyncStorage.getItem(speechKey)).toBeNull());
+    await again.unmount();
+    const other = await open({ user: { github_id: 456, login: 'other' } });
+    await fireEvent.press(other.getByRole('tab', { name: 'Profile' })); await fireEvent.press(other.getByText('Voice'));
+    expect(other.getByRole('switch', { name: 'Read summaries aloud' }).props.value).toBe(true);
   });
 });

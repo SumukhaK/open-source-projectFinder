@@ -5,13 +5,13 @@ import { summaryStream } from './summary-stream';
 beforeEach(() => jest.mocked(fetch).mockReset());
 
 test('SSE parsing survives byte boundaries, CRLF and multi-byte text', async () => {
-  const raw = 'event: summary\r\ndata: {"text":"café"}\r\n\r\nevent: done\ndata: {"grounded":true,"results":1}\n\n';
+  const raw = 'event: summary\r\ndata: {"text":"café"}\r\n\r\nevent: done\ndata: {"grounded":true,"results":1,"summary_id":"opaque-id"}\n\n';
   const bytes = new TextEncoder().encode(raw);
   let index = 0;
   const reader = { read: async () => ({ done: false, value: bytes.slice(index, ++index) }), cancel: jest.fn(async () => {}), releaseLock: jest.fn() };
   jest.mocked(fetch).mockResolvedValue({ ok: true, headers: { get: () => 'text/event-stream' }, body: { getReader: () => reader } } as never);
   const text = jest.fn();
-  await expect(streamSummary(['owner/repo'], 'session', new AbortController().signal, text)).resolves.toBe('café');
+  await expect(streamSummary(['owner/repo'], 'session', new AbortController().signal, text)).resolves.toEqual({ text: 'café', summaryId: 'opaque-id' });
   expect(text).toHaveBeenCalledWith('café');
   expect(jest.mocked(fetch).mock.calls[0][1]!.headers).toEqual({ Authorization: 'Bearer session', 'Content-Type': 'application/json', Accept: 'text/event-stream' });
 });
