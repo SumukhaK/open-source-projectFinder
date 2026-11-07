@@ -51,7 +51,7 @@ Native splash uses the OS appearance at launch; a saved in-app override is appli
 
 ## Device checks still required
 
-Build release binaries for both platforms and check launcher masks, native splash behavior, theme changes, screen reader output, Reduce Motion, font scaling, and startup on devices. iOS compilation needs macOS or a configured cloud build; this repository does not contain signing credentials or store identifiers. Voice capture is implemented but still needs native device validation; the hybrid `/v1` search path and real account search against a live backend have not been run on a device in this change (T26 owns the real HTTP check).
+Build release binaries for both platforms and check launcher masks, native splash behavior, theme changes, screen reader output, Reduce Motion, font scaling, and startup on devices. iOS compilation needs macOS or a configured cloud build; the app identifier is `com.sumukhak.reporadar` (Android package and iOS bundle ID); the repository contains no signing credentials. `npx expo prebuild` output (`android/`, `ios/`) is generated and git-ignored. Voice capture is implemented but still needs native device validation; the hybrid `/v1` search path and real account search against a live backend have not been run on a device in this change (T26 owns the real HTTP check).
 
 ## Dependency audit
 
