@@ -19,3 +19,31 @@ Limits: `adb devices -l` returned no devices. No native development-build light/
 Final verification (Windows, 2026-11-06): `RUN_AUTH_E2E=1 npm run test:coverage` passed **182 tests, zero skipped** with unchanged coverage gates; `npm run typecheck`, `npm run lint`, `npx expo export --platform all` (Android/iOS/web) and `git diff --check` passed. Auth E2E used the existing local fake provider and Python venv. Export emitted the existing NO_COLOR/FORCE_COLOR warning only. Latest origin/main was fetched and `git merge --no-ff origin/main` reported already up to date at base `e51e1e0bf2aff1c0112658a3b6a8a4b159a53b8d`. Implementation head: `14fae9a57c29284ee65a8e4ba85ad54a1cb1ebb5`; subsequent changes record delivery documentation only.
 
 PR: [#71](https://github.com/SumukhaK/open-source-projectFinder/pull/71). Awaiting review; must merge after #68. The final documentation commit adds this link and test counts to the V2b row only.
+
+
+## Device check — 2026-11-07 (blocked)
+
+Base: `553c4529239b7c1718a94159a00e1e4880db82ef`, branch
+`codex/voice-device-check`. Owner requested a virtual device after ADB found no
+physical phone. Created `RepoRadar_Device_Check`: Pixel 5 hardware profile,
+Android 15/API 35 Google APIs x86_64, 2 GiB RAM, WHPX acceleration. ADB reported
+`emulator-5554` connected and `sys.boot_completed=1`.
+[Emulator readiness screenshot](evidence/2026-11-07-emulator-ready.png) shows
+only Android Home, **not RepoRadar**.
+
+Build type attempted: local Android development/debug build. Locked `npm ci`
+completed. Reproduction on unchanged main: from `mobile`, run
+`CI=1 npx expo prebuild --platform android --no-install`. Expo reports:
+`Cannot automatically write to dynamic config at: app.config.ts` and requests
+an `android.package` value (it suggests `com.anonymous.reporadar`). The current
+dynamic config has no package identifier. No APK was built or installed.
+No feature/configuration fix was made in this docs-only run. A separately
+reviewed native package configuration is needed before retrying.
+
+Laptop available RAM: 5.69 GiB before preparation, 5.44 GiB during SDK setup,
+3.17 GiB with the emulator running, 6.10 GiB after shutdown. Stopped the idle
+Ollama server; no model was loaded. Codex tool processes were preserved. No
+Docker containers, Gradle build/daemon or Metro server were started. Emulator
+was stopped after capturing readiness; its AVD remains installed for reuse.
+
+NOT RUN: list-before-card ordering, AI/grounding labels, native streamed text, light/dark, TalkBack announcement, and loss of Ollama leaving the list intact. No LLM was started. Device check remains open.

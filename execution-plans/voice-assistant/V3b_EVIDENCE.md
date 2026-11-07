@@ -41,3 +41,31 @@ The current player's finish/error events now stop playback before the active-sta
 Full mobile coverage run: **207 passed, zero skipped**, including fake-provider auth E2E; unchanged coverage gates passed. No backend, dependency, lockfile or CI changes. No Docker/Ollama/Gradle or device run; native recording/playback arbitration and platform behavior remain for the separate device check.
 
 Review-fix verification also passed: `npm run typecheck`, `npm run lint`, `npx expo export --platform all` (Android, iOS, web), and `git diff --check`. Only the existing NO_COLOR/FORCE_COLOR export warning was emitted.
+
+
+## Device check — 2026-11-07 (blocked)
+
+Base: `553c4529239b7c1718a94159a00e1e4880db82ef`, branch
+`codex/voice-device-check`. Owner requested a virtual device after ADB found no
+physical phone. Created `RepoRadar_Device_Check`: Pixel 5 hardware profile,
+Android 15/API 35 Google APIs x86_64, 2 GiB RAM, WHPX acceleration. ADB reported
+`emulator-5554` connected and `sys.boot_completed=1`.
+[Emulator readiness screenshot](evidence/2026-11-07-emulator-ready.png) shows
+only Android Home, **not RepoRadar**.
+
+Build type attempted: local Android development/debug build. Locked `npm ci`
+completed. Reproduction on unchanged main: from `mobile`, run
+`CI=1 npx expo prebuild --platform android --no-install`. Expo reports:
+`Cannot automatically write to dynamic config at: app.config.ts` and requests
+an `android.package` value (it suggests `com.anonymous.reporadar`). The current
+dynamic config has no package identifier. No APK was built or installed.
+No feature/configuration fix was made in this docs-only run. A separately
+reviewed native package configuration is needed before retrying.
+
+Laptop available RAM: 5.69 GiB before preparation, 5.44 GiB during SDK setup,
+3.17 GiB with the emulator running, 6.10 GiB after shutdown. Stopped the idle
+Ollama server; no model was loaded. Codex tool processes were preserved. No
+Docker containers, Gradle build/daemon or Metro server were started. Emulator
+was stopped after capturing readiness; its AVD remains installed for reuse.
+
+NOT RUN: automatic playback/three first-sound timings, one-time tip, typed manual Read aloud/Stop, mic interrupt, setting off, silent/vibrate behaviour, TalkBack suppression, or stop on search/tab/sign-out/background. No LLM was started. Emulator results would not establish physical-phone audio or latency in any event. Device check remains open.
