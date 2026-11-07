@@ -91,10 +91,10 @@ After a fresh first page renders, a separate authenticated SSE request sends onl
 
 New search, navigation, sign-out, backgrounding and unmount cancel the summary; stale responses cannot restore it. Errors, ungrounded completion, missing completion, oversized output and the 20-second deadline hide the card. Limits live in discoveryConfig. No new dependencies, animation or spoken output. Text is memory-only and never logged. Native light/dark and screen-reader checks remain unrun (no device connected). This mobile PR must merge after backend PR #68; until that endpoint exists, summaries silently remain absent.
 
-## Spoken summaries (V3b, awaiting review)
+## Spoken summaries (V3b, merged #73)
 
 Profile > Voice includes Read summaries aloud (default on, per account, removed on sign-out). Only the immediate search from a voice transcript can auto-speak; typed/edited submissions, retries and refreshes do not. Auto-play waits for a grounded summary_id, loaded preferences, an active app and a fresh screen-reader check. Any grounded summary with an ID also has a 48-dp Read aloud/Stop button, independent of that setting.
 
 Expo Audio streams the authenticated summary-ID URL with downloadFirst false and silent-mode playback disabled. The app never sends summary text to the speech route or writes audio files. New search, leaving Home, background, sign-out, summary cancellation and unmount stop/release playback. Provider/native errors leave the text and list intact without alerts or retry loops. A content-free per-account tip flag remembers the first successful auto-play across sign-outs; the playback setting itself is cleared.
 
-V3b must merge after V3a. See [V3b evidence](../execution-plans/voice-assistant/V3b_EVIDENCE.md) for tests and platform limits. Native streaming, silent mode, accessibility, light/dark and latency checks are deferred to the separate Android development-build step; no device run is claimed here.
+V3b merged after V3a (#74). See [V3b evidence](../execution-plans/voice-assistant/V3b_EVIDENCE.md) for tests and platform limits. Native streaming, silent mode, accessibility, light/dark and latency checks are deferred to the separate Android development-build step; no device run is claimed here.

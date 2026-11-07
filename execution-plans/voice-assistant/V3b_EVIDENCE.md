@@ -1,6 +1,6 @@
 # V3b spoken summary evidence
 
-Status: Awaiting review; merge only after V3a. Base `2d522ea07678a40a7f694b786be65dc619c8beb3`; branch `codex/voice-v3b-spoken-summary`. Mobile only; V3a is built separately and must merge before V3b.
+Status: Merged 2026-11-07 as `a4b7b8c` (#73), after V3a #74; device check open. Base `2d522ea07678a40a7f694b786be65dc619c8beb3`; branch `codex/voice-v3b-spoken-summary`. Mobile only; V3a is built separately and must merge before V3b.
 
 Plan: RED UI/lifecycle and SSE contract tests, then minimal account-scoped preferences and authenticated native playback, then full mobile verification and one PR. Reuse expo-audio 57.0.5; installed AudioSource declares headers?: Record<string,string>, createAudioPlayer accepts that source, and downloadFirst defaults false. No dependency or backend changes. No Docker, model, native build or live provider call.
 

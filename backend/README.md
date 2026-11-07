@@ -102,7 +102,7 @@ It prints one labelled tracker row with grounding, licence fidelity, first-word/
 
 A request before any search, with no active profile, while the startup probe has not passed, or when the provider fails or exceeds `SUMMARY_DEADLINE` (default 15 seconds, up to 60) returns HTTP 200 with an SSE `done` event `{"grounded": false, "reason": ...}` and no summary events. At most `SUMMARY_MAX_CONCURRENT` summaries (default 1, cap 4) run per API process; a request over that bound gets reason `busy` without a provider call, and the slot is released on success, timeout, error or cancellation. It never changes `POST /v1/projects/search`. A finished reply is checked with `summary_is_grounded` before the first byte, so an ungrounded reply is also a no-summary result. The response is SSE (`event: summary` text chunks, then `event: done`), not a token stream: the provider stream is collected first so ungrounded text cannot reach the client. Logs carry profile, model, counts, reason and duration only.
 
-## Spoken summaries (V3a, awaiting review)
+## Spoken summaries (V3a, merged #74)
 
 A grounded summary's SSE `done` event includes an opaque `summary_id` when the
 validated text fits the speech limit. The authenticated
