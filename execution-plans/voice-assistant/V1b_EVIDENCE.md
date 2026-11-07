@@ -48,3 +48,31 @@ RED: the inactive/denied-permission regression and same-account remount regressi
 Android device check: `adb devices -l` returned an empty device list. The owner's phone was therefore not available to this environment. No development build was made or installed, and no real recording/provider call was attempted. Hold/speak/release, denial-to-settings, slide cancellation, 30-second cap, native light/dark and TalkBack remain **NOT RUN on device**. Release-to-transcript latency is **not measured**. Connect and authorize the Android phone over USB debugging before this manual validation can run; successful JS exports are not a native development build.
 
 Review-fix verification also passed: `npm run typecheck`, `npm run lint`, `npx expo export --platform all` (Android, iOS, web), and `git diff --check`. Export emitted only the existing NO_COLOR/FORCE_COLOR warning. The final docs-only commit records these results; the tracker names the tested code head and the PR carries the full delivery head.
+
+
+## Device check — 2026-11-07 (blocked)
+
+Base: `553c4529239b7c1718a94159a00e1e4880db82ef`, branch
+`codex/voice-device-check`. Owner requested a virtual device after ADB found no
+physical phone. Created `RepoRadar_Device_Check`: Pixel 5 hardware profile,
+Android 15/API 35 Google APIs x86_64, 2 GiB RAM, WHPX acceleration. ADB reported
+`emulator-5554` connected and `sys.boot_completed=1`.
+[Emulator readiness screenshot](evidence/2026-11-07-emulator-ready.png) shows
+only Android Home, **not RepoRadar**.
+
+Build type attempted: local Android development/debug build. Locked `npm ci`
+completed. Reproduction on unchanged main: from `mobile`, run
+`CI=1 npx expo prebuild --platform android --no-install`. Expo reports:
+`Cannot automatically write to dynamic config at: app.config.ts` and requests
+an `android.package` value (it suggests `com.anonymous.reporadar`). The current
+dynamic config has no package identifier. No APK was built or installed.
+No feature/configuration fix was made in this docs-only run. A separately
+reviewed native package configuration is needed before retrying.
+
+Laptop available RAM: 5.69 GiB before preparation, 5.44 GiB during SDK setup,
+3.17 GiB with the emulator running, 6.10 GiB after shutdown. Stopped the idle
+Ollama server; no model was loaded. Codex tool processes were preserved. No
+Docker containers, Gradle build/daemon or Metro server were started. Emulator
+was stopped after capturing readiness; its AVD remains installed for reuse.
+
+NOT RUN: consent/deny/settings, hold/speak/release, editable transcript/search, slide cancel/no upload, 30-second cap, background cancellation, three release-to-transcript measurements, light/dark Home/voice/Profile screens, TalkBack labels/actions. Device check remains open.

@@ -61,3 +61,30 @@ Not run. Neither worktree has `backend/.env`, so no `DEEPGRAM_API_KEY` was avail
 - `backend/tests/test_summary_api.py` (`summary_id` assertions)
 - `backend/.env.example`, `backend/README.md`
 - `execution-plans/voice-assistant/TRACKER.md`, `tasks/V3-voice-output.md`, this file
+
+## Device check — 2026-11-07: one real TTS route call
+
+Current main `553c4529239b7c1718a94159a00e1e4880db82ef`. One real Deepgram
+request through the unchanged production ASGI speech route succeeded:
+
+| Measurement | Result |
+| --- | --- |
+| HTTP status / type | 200 / audio/mpeg |
+| Server time to first non-empty audio body | 3577.19 ms |
+| Total route duration | 3593.02 ms |
+| Audio bytes | 17568 |
+
+The local harness loaded current-main backend modules while running from the
+original checkout's backend directory, whose ignored `.env` holds the key.
+Only key presence/length was checked. A disposable local account/session and
+a short synthetic sentence passing `summary_is_grounded` seeded the in-memory
+validated-summary cache; the request used the normal session guard and real
+Deepgram transport. No LLM, search, physical phone or fake speech provider was
+used. Timing starts at ASGI request dispatch and observes the first response
+body; it is **server route time-to-first-byte**, not network client latency,
+first audible sound or release-to-transcript. Audio was counted and discarded,
+never written to disk; no text, IDs, token or audio is included in evidence.
+
+Android UI run was blocked before build by missing `android.package` in the
+dynamic Expo config; see V1b/V2b/V3b device sections. Free RAM before/after was
+5.69/6.10 GiB. No Docker, Gradle, Metro or LLM was started.
