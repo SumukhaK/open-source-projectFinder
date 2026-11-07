@@ -221,11 +221,16 @@ def summary_router(settings, current, pages, summaries):
             _log(profile, model, len(results), 0, reason, started)
             return _response((), reason)
         _log(profile, model, len(results), len(text), "ok", started)
+        summary_id = (
+            summaries.issue(user["github_id"], text)
+            if len(text) <= settings.speech_max_chars
+            else None
+        )
         return _response(
             _pieces(text),
             None,
             count=len(results),
-            summary_id=summaries.issue(user["github_id"], text),
+            summary_id=summary_id,
         )
 
     return router

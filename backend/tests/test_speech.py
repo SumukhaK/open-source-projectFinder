@@ -6,7 +6,15 @@ import time
 import httpx
 import pytest
 from app.core.store import digest
-from test_summary_api import HEADERS, SUMMARY_PATH, FakeLlm, events, search, wait_until
+from test_summary_api import (
+    HEADERS,
+    SUMMARY_PATH,
+    FakeLlm,
+    events,
+    search,
+    summary_text,
+    wait_until,
+)
 from test_summary_api import serve as serve
 
 TEXT = "Try owner/repo-1 for community tools."
@@ -93,6 +101,29 @@ def test_no_id_for_rejected_summary(serve, chunks):
         )[-1][1]
         assert done["grounded"] is False
         assert "summary_id" not in done
+
+
+@pytest.mark.parametrize("length, issued", [(20, True), (21, False)])
+def test_summary_id_only_within_speech_max_chars(serve, length, issued):
+    text = "a" * length
+    with serve(
+        llm=FakeLlm(chunks=(text,)),
+        llm_active_profile="ollama",
+        speech_max_chars=20,
+    ) as (client, app):
+        assert wait_until(lambda: app.state.llm_available)
+        search(client)
+        body = client.post(
+            SUMMARY_PATH, headers=HEADERS, json={"full_names": ["owner/repo-1"]}
+        ).text
+        done = events(body)[-1][1]
+        assert done["grounded"] is True
+        assert summary_text(body) == text
+        assert ("summary_id" in done) is issued
+        if issued:
+            assert isinstance(done["summary_id"], str)
+        else:
+            assert not app.state.speech_summaries._entries
 
 
 @pytest.mark.parametrize("kind", ["unknown", "expired", "other account"])
@@ -246,6 +277,8 @@ def test_summary_cache_bounds_lru_and_exact_expiry():
         {"speech_max_bytes": 16777217},
         {"speech_max_concurrent": 0},
         {"speech_max_concurrent": 5},
+        {"speech_max_chars": 0},
+        {"speech_max_chars": 2001},
         {"deepgram_tts_model": ""},
         {"deepgram_tts_model": "x" * 101},
     ],

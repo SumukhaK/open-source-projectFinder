@@ -104,21 +104,26 @@ A request before any search, with no active profile, while the startup probe has
 
 ## Spoken summaries (V3a, awaiting review)
 
-A grounded summary's SSE `done` event includes an opaque `summary_id`. The
-authenticated `GET /v1/voice/speech/{summary_id}` streams Deepgram MP3 as
+A grounded summary's SSE `done` event includes an opaque `summary_id` when the
+validated text fits the speech limit. The authenticated
+`GET /v1/voice/speech/{summary_id}` streams Deepgram MP3 as
 `audio/mpeg`; it accepts no text. IDs are account-bound, expire after 300 seconds
 and are kept only in a process-local LRU (existing cursor cache size/per-account
 settings). Restart or eviction invalidates them; use one serving process or
 sticky routing.
 
 Configure `DEEPGRAM_API_KEY`, `DEEPGRAM_TTS_MODEL` (aura-2-thalia-en),
-`SPEECH_DEADLINE` (30 seconds), `SPEECH_MAX_BYTES` (4 MiB) and
-`SPEECH_MAX_CONCURRENT` (1). Unknown/expired/other-account IDs return typed
-`speech_not_found` (404); missing provider configuration or a pre-audio failure
-returns retryable `speech_unavailable` (503); capacity returns retryable
+`SPEECH_DEADLINE` (30 seconds), `SPEECH_MAX_BYTES` (4 MiB),
+`SPEECH_MAX_CHARS` (2000) and `SPEECH_MAX_CONCURRENT` (1). Deepgram Aura
+accepts at most 2,000 characters per `/v1/speak` request, so an ID is issued
+only when the validated text fits `SPEECH_MAX_CHARS`; a longer summary is still
+returned and shown, just without an ID. Unknown/expired/other-account IDs return
+typed `speech_not_found` (404); missing provider configuration or a pre-audio
+failure returns retryable `speech_unavailable` (503); capacity returns retryable
 `speech_busy` (503). Voice throttling returns the existing 429. After audio
 headers, a deadline/provider/byte-limit failure closes partial audio; it cannot
-become a JSON error.
+become a JSON error. `SPEECH_DEADLINE` covers the whole stream, so a very slow
+client can see audio cut off.
 
 No audio is saved. Application logs contain only byte counts and server-side
 latency, never IDs, text or audio. Retain `--no-access-log` and disable/redact
