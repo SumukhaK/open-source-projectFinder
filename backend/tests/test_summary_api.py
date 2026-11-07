@@ -281,7 +281,9 @@ def test_summary_ignores_forged_full_names(serve):
     assert "owner/repo-2" in prompt
     assert "evil/backdoor" not in prompt
     assert "forged" not in prompt
-    assert events(response.text)[-1] == ("done", {"grounded": True, "results": 2})
+    done = events(response.text)[-1][1]
+    assert done == {"grounded": True, "results": 2, "summary_id": done["summary_id"]}
+    assert isinstance(done["summary_id"], str)
 
 
 def test_summary_rejects_an_ungrounded_reply(serve):
@@ -468,7 +470,13 @@ def test_busy_summary_returns_immediately_without_a_second_provider_call(serve):
                 fake.release.set()
                 done = await first
             assert fake.calls == 1
-            assert events(done.text)[-1] == ("done", {"grounded": True, "results": 1})
+            data = events(done.text)[-1][1]
+            assert data == {
+                "grounded": True,
+                "results": 1,
+                "summary_id": data["summary_id"],
+            }
+            assert isinstance(data["summary_id"], str)
 
         asyncio.run(scenario())
 
@@ -520,7 +528,13 @@ def test_cancelled_summary_releases_the_slot(serve):
                 ]
                 fake.release.set()
                 done = await second
-            assert events(done.text)[-1] == ("done", {"grounded": True, "results": 1})
+            data = events(done.text)[-1][1]
+            assert data == {
+                "grounded": True,
+                "results": 1,
+                "summary_id": data["summary_id"],
+            }
+            assert isinstance(data["summary_id"], str)
             assert fake.calls == 2
 
         asyncio.run(scenario())

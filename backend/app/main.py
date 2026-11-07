@@ -18,7 +18,8 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
 from app.api.archive import archive_router
-from app.api.summary import SummaryPages, summary_router
+from app.api.speech import speech_router
+from app.api.summary import SummaryPages, ValidatedSummaries, summary_router
 from app.api.voice import voice_router
 from app.core.config import Settings
 from app.core.store import Store, digest
@@ -146,6 +147,10 @@ def create_app(
         ttl=settings.hybrid_cursor_ttl_seconds,
         max_accounts=settings.hybrid_cursor_cache_size,
     )
+    speech_summaries = ValidatedSummaries(
+        settings.hybrid_cursor_cache_size, settings.hybrid_cursor_cache_per_account
+    )
+    app.state.speech_summaries = speech_summaries
     cipher = (
         Fernet(settings.token_encryption_key.encode())
         if settings.token_encryption_key
@@ -165,7 +170,10 @@ def create_app(
     async def protection(request, call_next):
         discovery = request.url.path.startswith(DISCOVERY_PATHS)
         archive = request.url.path.startswith(ARCHIVE_PATHS)
-        voice = request.url.path == "/v1/voice/transcribe"
+        voice = (
+            request.url.path == "/v1/voice/transcribe"
+            or request.url.path.startswith("/v1/voice/speech/")
+        )
         if request.url.path.startswith("/auth/") or discovery or archive or voice:
             # Trust the actual connection, not user-supplied forwarding headers.
             ip = request.client.host if request.client else "unknown"
@@ -400,10 +408,11 @@ def create_app(
 
     app.include_router(discovery_router(store, provider, cipher, current, settings))
     app.include_router(voice_router(settings, current))
+    app.include_router(speech_router(settings, current, speech_summaries))
     app.include_router(
         archive_router(
             settings, current, credentials(store, cipher, current), hybrid, pages
         )
     )
-    app.include_router(summary_router(settings, current, pages))
+    app.include_router(summary_router(settings, current, pages, speech_summaries))
     return app

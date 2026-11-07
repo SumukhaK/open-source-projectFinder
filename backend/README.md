@@ -102,6 +102,29 @@ It prints one labelled tracker row with grounding, licence fidelity, first-word/
 
 A request before any search, with no active profile, while the startup probe has not passed, or when the provider fails or exceeds `SUMMARY_DEADLINE` (default 15 seconds, up to 60) returns HTTP 200 with an SSE `done` event `{"grounded": false, "reason": ...}` and no summary events. At most `SUMMARY_MAX_CONCURRENT` summaries (default 1, cap 4) run per API process; a request over that bound gets reason `busy` without a provider call, and the slot is released on success, timeout, error or cancellation. It never changes `POST /v1/projects/search`. A finished reply is checked with `summary_is_grounded` before the first byte, so an ungrounded reply is also a no-summary result. The response is SSE (`event: summary` text chunks, then `event: done`), not a token stream: the provider stream is collected first so ungrounded text cannot reach the client. Logs carry profile, model, counts, reason and duration only.
 
+## Spoken summaries (V3a, awaiting review)
+
+A grounded summary's SSE `done` event includes an opaque `summary_id`. The
+authenticated `GET /v1/voice/speech/{summary_id}` streams Deepgram MP3 as
+`audio/mpeg`; it accepts no text. IDs are account-bound, expire after 300 seconds
+and are kept only in a process-local LRU (existing cursor cache size/per-account
+settings). Restart or eviction invalidates them; use one serving process or
+sticky routing.
+
+Configure `DEEPGRAM_API_KEY`, `DEEPGRAM_TTS_MODEL` (aura-2-thalia-en),
+`SPEECH_DEADLINE` (30 seconds), `SPEECH_MAX_BYTES` (4 MiB) and
+`SPEECH_MAX_CONCURRENT` (1). Unknown/expired/other-account IDs return typed
+`speech_not_found` (404); missing provider configuration or a pre-audio failure
+returns retryable `speech_unavailable` (503); capacity returns retryable
+`speech_busy` (503). Voice throttling returns the existing 429. After audio
+headers, a deadline/provider/byte-limit failure closes partial audio; it cannot
+become a JSON error.
+
+No audio is saved. Application logs contain only byte counts and server-side
+latency, never IDs, text or audio. Retain `--no-access-log` and disable/redact
+proxy access logs for this route so opaque URL IDs are not recorded. The
+optional real-provider check is owner-run; automated tests use fake providers.
+
 ## Archive catalogue (T03, merged)
 
 `app/core/archive_store.py` provides an opt-in catalogue, independent of auth. It is not constructed by the app factory and creates no database during ordinary API startup. It uses only standard-library `sqlite3`; no ORM or new dependency is installed. `ARCHIVE_DATABASE_PATH` and `ARCHIVE_CONTENT_PATH` must be separate from auth, including auth/archive journal sidecars and hardlink aliases. `ARCHIVE_BUSY_TIMEOUT_MS` defaults to 5000 (1-30000 allowed).

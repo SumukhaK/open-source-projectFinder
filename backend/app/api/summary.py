@@ -11,7 +11,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import secrets
 import time
+from collections import OrderedDict
 from typing import Annotated
 
 from fastapi import APIRouter, Request
@@ -85,16 +87,57 @@ class SummaryPages:
             self._pages.pop(account, None)
 
 
+class ValidatedSummaries:
+    """Transient account-bound text, bounded globally and per account.
+
+    IDs last a fixed 300 seconds; the LRU bounds reuse the cursor cache
+    settings. Nothing is written to disk.
+    """
+
+    def __init__(self, max_entries, per_account, now=time.monotonic):
+        self._entries = OrderedDict()
+        self._max_entries, self._per_account, self._now = max_entries, per_account, now
+
+    def _purge(self):
+        for identity, (_, expires, _) in list(self._entries.items()):
+            if expires <= self._now():
+                del self._entries[identity]
+
+    def issue(self, account, text):
+        self._purge()
+        owned = [
+            key for key, (owner, _, _) in self._entries.items() if owner == account
+        ]
+        while len(owned) >= self._per_account:
+            del self._entries[owned.pop(0)]
+        identity = secrets.token_urlsafe(24)
+        self._entries[identity] = (account, self._now() + 300, text)
+        while len(self._entries) > self._max_entries:
+            self._entries.popitem(last=False)
+        return identity
+
+    def resolve(self, account, identity):
+        self._purge()
+        entry = self._entries.get(identity)
+        if entry is None or entry[0] != account:
+            return None
+        self._entries.move_to_end(identity)
+        return entry[2]
+
+
 def _event(name, data):
     return f"event: {name}\ndata: {json.dumps(data)}\n\n"
 
 
-def _response(chunks, reason, *, count=0):
+def _response(chunks, reason, *, count=0, summary_id=None):
     def body():
         for chunk in chunks:
             yield _event("summary", {"text": chunk})
         if reason is None:
-            yield _event("done", {"grounded": True, "results": count})
+            data = {"grounded": True, "results": count}
+            if summary_id is not None:
+                data["summary_id"] = summary_id
+            yield _event("done", data)
         else:
             yield _event("done", {"grounded": False, "reason": reason})
 
@@ -132,7 +175,7 @@ def _log(profile, model, results, chars, reason, started):
     )
 
 
-def summary_router(settings, current, pages):
+def summary_router(settings, current, pages, summaries):
     router = APIRouter()
     in_flight = 0
 
@@ -178,6 +221,11 @@ def summary_router(settings, current, pages):
             _log(profile, model, len(results), 0, reason, started)
             return _response((), reason)
         _log(profile, model, len(results), len(text), "ok", started)
-        return _response(_pieces(text), None, count=len(results))
+        return _response(
+            _pieces(text),
+            None,
+            count=len(results),
+            summary_id=summaries.issue(user["github_id"], text),
+        )
 
     return router
