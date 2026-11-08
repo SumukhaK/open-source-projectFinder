@@ -69,3 +69,40 @@ Docker containers, Gradle build/daemon or Metro server were started. Emulator
 was stopped after capturing readiness; its AVD remains installed for reuse.
 
 NOT RUN: automatic playback/three first-sound timings, one-time tip, typed manual Read aloud/Stop, mic interrupt, setting off, silent/vibrate behaviour, TalkBack suppression, or stop on search/tab/sign-out/background. No LLM was started. Emulator results would not establish physical-phone audio or latency in any event. Device check remains open.
+
+
+## Device check — 2026-11-07/08 retry (partial; not accepted)
+
+Base `9b8272fc801ad332f3a3a47dd89a8c9c7c2cb205`; branch
+`codex/voice-device-check-retry`. Android 15/API 35 Google APIs x86_64 emulator,
+Pixel 5 profile, 2 GiB configured RAM. Local debug APK, not Expo Go or a physical
+phone. The merged package-identifier fix allowed Expo prebuild to finish.
+
+First Gradle build was deliberately stopped when available RAM reached 0.70 GiB.
+The retry used one worker, a 1 GiB heap, 384 MiB metaspace, in-process Kotlin and
+x86_64 only; it succeeded in 2m 7s (225 tasks: 23 executed, 202 up-to-date).
+Gradle stopped afterward. APK size: 56,038,718 bytes.
+APK SHA-256: `26a47be13d16e6708092dc098c2728dc188516d4b1df8b702da310721e5ff595`.
+
+Metro required IPv4-first localhost resolution for ADB reverse; it then bundled
+1020 modules and the installed app launched. Backend ran current-main modules
+from the original checkout holding the ignored `.env`, with LLM disabled and
+a process-only random hybrid signing key. No key was copied or printed. The
+owner completed normal GitHub login; no test-session bypass was used. On Nov 8
+the saved session was rejected, and normal browser sign-in restored it.
+
+RAM: 4.79 GiB at the Nov 7 retry start, 0.70 GiB at the deliberate build stop,
+8.23 GiB after build-process cleanup. Nov 8 restart: 5.14 GiB; during checks
+about 2.3–2.7 GiB; final cleanup: 5.81 GiB. WhatsApp and NVIDIA Overlay were
+closed during the build attempt; active coding sessions were preserved. The
+emulator, task-owned Metro and backend were stopped at the end; Android night
+mode was returned to auto. No Docker or Ollama workload was started in this
+retry. No feature, dependency or configuration changes are included.
+
+Phase B was NOT RUN: recording interaction remained unresolved and available
+RAM with the emulator was insufficient for the planned 5–6 GiB Ollama model.
+No summary ordering, automatic/manual playback, first-sound latency, silence,
+TalkBack, tip persistence, cancellation or Ollama-failure outcome is claimed.
+The Voice settings screen and its default enabled switch were visible; see the
+[V1b retry evidence](V1b_EVIDENCE.md). That does not establish playback behaviour.
+Device status remains open.

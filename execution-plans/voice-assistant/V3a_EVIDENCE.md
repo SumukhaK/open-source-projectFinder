@@ -88,3 +88,13 @@ never written to disk; no text, IDs, token or audio is included in evidence.
 Android UI run was blocked before build by missing `android.package` in the
 dynamic Expo config; see V1b/V2b/V3b device sections. Free RAM before/after was
 5.69/6.10 GiB. No Docker, Gradle, Metro or LLM was started.
+
+
+## Device check — 2026-11-08 retry
+
+Base `9b8272fc801ad332f3a3a47dd89a8c9c7c2cb205`. Android debug build and
+normal account login succeeded, but recording interaction remained unresolved
+and Phase B was not started (see V1b retry evidence). No additional TTS request
+was made. The Nov 7 single real production-route call above remains the only
+measured TTS run: 3577.19 ms server first byte, 3593.02 ms total, 17568 bytes.
+Those figures are not emulator/phone first-sound latency.
