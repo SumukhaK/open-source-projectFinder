@@ -283,7 +283,7 @@ Both content and catalogue disk locations are checked. The owner-approved fastap
 
 Output is one sanitized JSON line with `repo_id`, revision, chunk/embed/vector counts, timings and `result` (`published`, `unchanged`, `refused` or `failed`). It never prints the worker token, README text or user data. Exit code is 0 only for `published`/`unchanged`.
 
-## Publication generations (T19a, awaiting review)
+## Publication generations (T19a, merged)
 
 A retired revision keeps a `cleanup` tombstone in `archive_tasks` because a timed-out Milvus delete may still apply on the server. Reusing the same chunk IDs would let that late delete remove the newly published vectors. `persist_revision` therefore allocates a per-repository publication generation and `archive_index.with_generation` salts the chunk identity hash for generations above 1. An unchanged active revision still returns `unchanged` with zero embedding calls; a revision that returns after retirement is persisted as a new generation and published with IDs disjoint from the retired set. Same-generation reuse after cleanup remains quarantined. This is the T17 follow-up A→B→A fix; it does not add a scheduler or a refresh command.
 

@@ -40,6 +40,8 @@ Keep the production change approximately 1-5 files plus necessary tests/docs. If
 
 ## Tests and verification before acceptance
 
+Constraint from T19a (PR #83): chunk-ID generations are allocated per repository as the maximum over its `archive_documents` and `archive_tasks` rows. Purging must keep a generation high-water mark (or the last tombstone) for every repository that ever published, so a later return never restarts at generation 1 and reuses unsalted IDs a late Milvus delete could still target. Add a RED test for purge then republish.
+
 RED: public-to-private, archive/cutoff boundary, missing README vs repo404, credential outage, repeated purge, old vectors and stale file references. GREEN: suppressed content never serves during partial cleanup and ledger survives restart.
 
 Use real focused commands from [the guide](../EXECUTION_GUIDE.md#verification-commands) and existing suite paths found during discovery. Record baseline and RED/GREEN command, date/platform, exit code and assertions in the PR. Run affected existing tests, lint/type/format and required CI; document unavailable integration evidence as blocked. `git diff --check` and secret inspection are required before staging/push.
