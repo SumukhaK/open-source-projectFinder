@@ -40,7 +40,7 @@ Do not amend a PR after review simply to tick its own tracker row. The GitHub re
 | [ ] | [T27: Evaluate relevance on a human-judged query set](tasks/T27-relevance-evaluation.md) | T26 | Not started | — | — | — |
 | [ ] | [T28: Measure capacity and foreground fairness before expansion](tasks/T28-capacity.md) | T23, T26, T27 | Not started | — | — | — |
 | [ ] | [T29: Close rollout readiness and recovery documentation](tasks/T29-rollout-readiness.md) | T28 | Not started | — | — | — |
-| [ ] | [T30: Upkeep — apply deferred improvements in one pass](tasks/T30-upkeep.md) | T29 (all of T00-T29) | Not started (backlog open: U1-U12, U15; U13 and U14 closed) | — | — | — |
+| [ ] | [T30: Upkeep — apply deferred improvements in one pass](tasks/T30-upkeep.md) | T29 (all of T00-T29) | Not started (backlog open: U1-U12, U15, U16; U13 and U14 closed) | — | — | — |
 
 ## Blockers and decisions
 
