@@ -18,7 +18,11 @@ from dataclasses import asdict, dataclass
 
 from app.core.config import ARCHIVE_MAX_CHUNKS, ARCHIVE_RECONCILE_DOCUMENTS
 from app.integrations.milvus import VectorChunk
-from app.services.archive_index import PreparedChunk, PreparedRepository
+from app.services.archive_index import (
+    PreparedChunk,
+    PreparedRepository,
+    with_generation,
+)
 from app.services.archive_runs import check_lease, publication_writer
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -152,7 +156,7 @@ def _stage(connect, prepared, *, lease, payload_digest):
     with connect(write=True) as db:
         check_lease(db, lease)
         row = db.execute(
-            "SELECT state, model_revision FROM archive_documents "
+            "SELECT state, model_revision, generation FROM archive_documents "
             "WHERE repo_id=? AND revision=?",
             (prepared.repo_id, prepared.semantic_hash),
         ).fetchone()
@@ -164,7 +168,11 @@ def _stage(connect, prepared, *, lease, payload_digest):
             raise PublicationContractError(
                 "catalogue model revision does not match the prepared revision"
             )
-        state = row[0]
+        state, generation = row[0], row[2]
+        if with_generation(prepared, generation).chunks != prepared.chunks:
+            raise PublicationContractError(
+                "prepared chunk identities do not match the publication generation"
+            )
         if state == "superseded":
             raise PublicationContractError("superseded revisions cannot be republished")
         if state == "published":
@@ -177,16 +185,17 @@ def _stage(connect, prepared, *, lease, payload_digest):
                     "published revision is not the active revision"
                 )
         intent = db.execute(
-            "SELECT stage,payload_digest FROM archive_tasks WHERE repo_id=? AND revision=?",
+            "SELECT stage,payload_digest,generation FROM archive_tasks "
+            "WHERE repo_id=? AND revision=?",
             (prepared.repo_id, prepared.semantic_hash),
         ).fetchone()
         if intent is not None:
-            if intent[0] == "cleanup":
+            if intent[0] == "cleanup" and generation <= intent[2]:
                 raise PublicationIncomplete(
                     "revision is quarantined after uncertain vector IO; "
                     "drain outstanding writes and rebuild the vector generation before reuse"
                 )
-            if intent[1] != payload_digest:
+            if intent[0] != "cleanup" and intent[1] != payload_digest:
                 raise PublicationIncomplete(
                     "revision payload differs from its fenced vector identity"
                 )
@@ -229,11 +238,20 @@ def _stage(connect, prepared, *, lease, payload_digest):
 
         # Keep only a digest, never vector values; identical late writes are safe.
         db.execute(
-            "INSERT INTO archive_tasks(run_id,repo_id,revision,stage,payload_digest) "
-            "VALUES(?,?,?,'publish',?) ON CONFLICT(repo_id,revision) DO UPDATE SET "
+            "INSERT INTO archive_tasks("
+            "run_id,repo_id,revision,stage,payload_digest,generation"
+            ") VALUES(?,?,?,'publish',?,?) "
+            "ON CONFLICT(repo_id,revision) DO UPDATE SET "
             "retry_count=retry_count+CASE WHEN stage='publish' THEN 1 ELSE 0 END, "
-            "stage='publish'",
-            (lease.run_id, prepared.repo_id, prepared.semantic_hash, payload_digest),
+            "stage='publish', payload_digest=excluded.payload_digest, "
+            "generation=excluded.generation",
+            (
+                lease.run_id,
+                prepared.repo_id,
+                prepared.semantic_hash,
+                payload_digest,
+                generation,
+            ),
         )
 
 
@@ -241,17 +259,23 @@ def _activate(connect, prepared, *, lease, payload_digest=None):
     with connect(write=True) as db:
         check_lease(db, lease)
         intent = db.execute(
-            "SELECT stage,payload_digest FROM archive_tasks WHERE repo_id=? AND revision=?",
+            "SELECT stage,payload_digest,generation FROM archive_tasks "
+            "WHERE repo_id=? AND revision=?",
             (prepared.repo_id, prepared.semantic_hash),
         ).fetchone()
         if intent is None or intent[0] != "publish" or intent[1] != payload_digest:
             raise PublicationIncomplete("activation requires the staged vector payload")
         row = db.execute(
-            "SELECT state FROM archive_documents WHERE repo_id=? AND revision=?",
+            "SELECT state, generation FROM archive_documents "
+            "WHERE repo_id=? AND revision=?",
             (prepared.repo_id, prepared.semantic_hash),
         ).fetchone()
         if row is None:
             raise PublicationContractError("revision disappeared before activation")
+        if row[1] != intent[2]:
+            raise PublicationIncomplete(
+                "activation generation does not match the staged vector payload"
+            )
         if row[0] == "superseded":
             raise PublicationContractError("revision was superseded before activation")
         rows = db.execute(
@@ -388,15 +412,22 @@ def _reconcile(connect, vectors, limit, lease):
                     (repo_id, revision),
                 )
             )
+            generation = db.execute(
+                "SELECT generation FROM archive_documents "
+                "WHERE repo_id=? AND revision=?",
+                (repo_id, revision),
+            ).fetchone()[0]
         # Persist before remote deletion: a timeout does not cancel server work.
         with connect(write=True) as db:
             check_lease(db, lease)
             db.execute(
-                "INSERT INTO archive_tasks(run_id,repo_id,revision,stage) VALUES(?,?,?,'cleanup') "
+                "INSERT INTO archive_tasks("
+                "run_id,repo_id,revision,stage,generation"
+                ") VALUES(?,?,?,'cleanup',?) "
                 "ON CONFLICT(repo_id,revision) DO UPDATE SET "
                 "retry_count=retry_count+CASE WHEN stage='published' THEN 0 ELSE 1 END, "
-                "stage='cleanup'",
-                (lease.run_id, repo_id, revision),
+                "stage='cleanup', generation=excluded.generation",
+                (lease.run_id, repo_id, revision, generation),
             )
         for batch in _batches(chunk_ids, batch_size):
             with connect() as db:

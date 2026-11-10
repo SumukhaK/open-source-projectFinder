@@ -36,7 +36,11 @@ from app.services.archive_content import (
     ContentError,
     persist_revision,
 )
-from app.services.archive_index import PreparedRepository, prepare_repository
+from app.services.archive_index import (
+    PreparedRepository,
+    prepare_repository,
+    with_generation,
+)
 from app.services.archive_publication import (
     PublicationError,
     load_active_chunks,
@@ -213,7 +217,7 @@ def ingest_one(runtime, repo_id, *, now=None, lease=None, progress=None):
     with runtime.connect(write=True) as db:
         if lease is not None:
             check_lease(db, lease)
-        persist_revision(
+        stored = persist_revision(
             db,
             runtime.content,
             metadata=metadata,
@@ -221,6 +225,7 @@ def ingest_one(runtime, repo_id, *, now=None, lease=None, progress=None):
             readme=readme,
             raw=raw,
         )
+    prepared = with_generation(prepared, stored.generation)
     timings["persist"] = _elapsed(step)
     report("persisted", {})
 
