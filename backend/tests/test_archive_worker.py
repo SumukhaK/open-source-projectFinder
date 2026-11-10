@@ -379,6 +379,64 @@ def test_interrupted_publish_keeps_the_prior_revision_and_replays_without_duplic
         )
 
 
+def test_readme_revert_after_retirement_republishes_with_a_new_generation(tmp_path):
+    state = harness(tmp_path)
+    first = worker.ingest_one(state.runtime, REPO_ID, now=NOW)
+    assert first["result"] == "published"
+    retired_ids = set(state.vectors.rows)
+
+    state.reader.snapshot = make_snapshot(
+        readme_text="# Compass\n\nOffline routing with elevation profiles."
+    )
+    second = worker.ingest_one(state.runtime, REPO_ID, now=NOW)
+    assert second["result"] == "published"
+    assert second["revision"] != first["revision"]
+
+    with state.connect() as db:
+        assert (
+            db.execute(
+                "SELECT count(*) FROM archive_documents WHERE repo_id=? AND revision=?",
+                (REPO_ID, first["revision"]),
+            ).fetchone()[0]
+            == 0
+        )
+        assert db.execute(
+            "SELECT stage, generation FROM archive_tasks "
+            "WHERE repo_id=? AND revision=?",
+            (REPO_ID, first["revision"]),
+        ).fetchone()[:] == ("cleanup", 1)
+
+    state.reader.snapshot = make_snapshot(readme_text=README)
+    third = worker.ingest_one(state.runtime, REPO_ID, now=NOW)
+
+    assert third["result"] == "published"
+    assert third["revision"] == first["revision"]
+    with state.connect() as db:
+        active = db.execute(
+            "SELECT active_revision FROM archive_repositories WHERE repo_id=?",
+            (REPO_ID,),
+        ).fetchone()[0]
+        chunks = load_active_chunks(db, REPO_ID)
+        assert active == first["revision"]
+        assert {chunk.chunk_id for chunk in chunks} == set(state.vectors.rows)
+        assert {chunk.chunk_id for chunk in chunks}.isdisjoint(retired_ids)
+        assert (
+            db.execute(
+                "SELECT generation FROM archive_documents "
+                "WHERE repo_id=? AND revision=?",
+                (REPO_ID, first["revision"]),
+            ).fetchone()[0]
+            > 1
+        )
+        assert (
+            db.execute(
+                "SELECT stage FROM archive_tasks WHERE repo_id=? AND revision=?",
+                (REPO_ID, first["revision"]),
+            ).fetchone()[0]
+            == "published"
+        )
+
+
 def test_reconcile_failure_leaves_the_new_revision_active(tmp_path):
     state = harness(tmp_path)
     worker.ingest_one(state.runtime, REPO_ID, now=NOW)

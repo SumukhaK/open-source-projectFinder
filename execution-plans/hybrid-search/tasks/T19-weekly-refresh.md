@@ -1,6 +1,6 @@
 # T19: Refresh weekly with content-aware change detection
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: T19a merged as `393726f` (PR #83). T19b is not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
@@ -39,6 +39,9 @@ Add manual refresh/resume for all selected known IDs plus recent discovery from 
 Keep the production change approximately 1-5 files plus necessary tests/docs. If that cannot cover the task honestly, propose smaller slices for review before expanding. No placeholder implementation of later tasks.
 
 ## Tests and verification before acceptance
+
+T19b additions from the T19a review (PR #83): (1) fix the generation-1 guard in `_stage` (T30 U19) with a RED test that staging salted chunks against a generation-1 document raises `PublicationContractError`; (2) RED: a revision that returns before reconcile has retired its superseded row (e.g. after a Milvus delete timeout) must be retried later or reconciled first, never stop the run as a `dependency` failure.
+
 
 RED: README revert A→B→A after A was retired by T17 cleanup (must republish safely, not stay on B or report `failed`), 304 unchanged, changed description/topics with unchanged README, metadata-only stars, removed README, rename, model change, overlap gap, partial run and quota pause. GREEN: unchanged content makes zero embedding calls; failures never advance unfinished coverage watermarks.
 

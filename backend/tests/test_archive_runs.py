@@ -180,7 +180,7 @@ def test_partial_checkpoint_rolls_back_without_losing_completed_work(catalogue):
 
 
 @pytest.mark.skipif(os.name != "posix", reason="Real archive WAL requires POSIX")
-def test_migration_five_replays_on_existing_v3(tmp_path):
+def test_all_migrations_replay_on_existing_v3(tmp_path):
     settings = Settings(
         _env_file=None,
         database_path=str(tmp_path / "auth.db"),
@@ -201,7 +201,7 @@ def test_migration_five_replays_on_existing_v3(tmp_path):
     store = ArchiveStore(settings)
     store.migrate()
     with store.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 6
         assert (
             db.execute("SELECT repo_id FROM archive_repositories").fetchone()[0] == 42
         )

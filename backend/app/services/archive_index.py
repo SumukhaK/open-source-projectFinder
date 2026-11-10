@@ -3,7 +3,7 @@
 import hashlib
 import json
 import unicodedata
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from math import ceil
 
 from app.core.config import (
@@ -157,6 +157,40 @@ def prepare_repository(
         status,
         tuple(sorted(set(omissions))),
         tuple(chunks),
+    )
+
+
+def with_generation(prepared, generation):
+    """Return one revision with chunk IDs salted for its publication generation.
+
+    Generation one keeps the original unsalted IDs so existing catalogues and
+    replays stay valid. Later generations add the generation to the identity
+    hash, so a retired revision can be published again without reusing IDs that
+    a late vector delete may still target.
+    """
+    if not isinstance(prepared, PreparedRepository):
+        raise TypeError("prepared must be a PreparedRepository")
+    if type(generation) is not int or generation < 1:
+        raise ValueError("generation must be a positive integer")
+    if generation == 1:
+        return prepared
+    return replace(
+        prepared,
+        chunks=tuple(
+            replace(
+                chunk,
+                chunk_id=_hash(
+                    [
+                        prepared.repo_id,
+                        prepared.semantic_hash,
+                        generation,
+                        chunk.ordinal,
+                        chunk.text_hash,
+                    ]
+                ),
+            )
+            for chunk in prepared.chunks
+        ),
     )
 
 

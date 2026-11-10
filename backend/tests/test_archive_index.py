@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 from app.services import archive_index
-from app.services.archive_index import prepare_repository
+from app.services.archive_index import prepare_repository, with_generation
 from app.services.embeddings import EmbeddingAdapter, ModelManifest
 
 
@@ -36,6 +36,22 @@ def prepare(adapter, readme=None, **changes):
     }
     metadata.update(changes)
     return prepare_repository(metadata, readme, adapter=adapter)
+
+
+def test_with_generation_salts_chunk_ids_but_keeps_the_revision(adapter):
+    prepared = prepare(adapter)
+    assert with_generation(prepared, 1) is prepared
+    salted = with_generation(prepared, 2)
+    assert salted.semantic_hash == prepared.semantic_hash
+    assert salted.chunks != prepared.chunks
+    assert {chunk.ordinal for chunk in salted.chunks} == {
+        chunk.ordinal for chunk in prepared.chunks
+    }
+    assert with_generation(salted, 2) == salted
+    with pytest.raises(TypeError):
+        with_generation(object(), 2)
+    with pytest.raises(ValueError):
+        with_generation(prepared, 0)
 
 
 def test_missing_readme_keeps_useful_metadata_overview(adapter):
