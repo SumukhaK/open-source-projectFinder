@@ -1,6 +1,7 @@
 """T14: bounded fused snapshots and account-bound pagination cursors."""
 
 import asyncio
+import base64
 import hashlib
 import json
 import threading
@@ -8,6 +9,7 @@ import threading
 import pytest
 from app.core.config import Settings
 from app.services.fused_cursor import (
+    CursorCodec,
     CursorExpired,
     CursorInvalid,
     HybridPager,
@@ -333,7 +335,8 @@ def test_missing_or_short_signing_key_is_refused(build, key):
         build(FakeService(result([])), key=key)
 
 
-def test_snapshot_and_cursor_contain_no_idea_or_embedding(build):
+def test_snapshot_and_cursor_contain_no_idea_or_embedding(build, caplog):
+    caplog.set_level("DEBUG")
     idea = "unique-private-idea-7f3c9a"
     pager = build(FakeService(result([card(1, 1201), card(2, 1202)])))
 
@@ -341,6 +344,7 @@ def test_snapshot_and_cursor_contain_no_idea_or_embedding(build):
     payload = pager.codec.decode(page.next_cursor)
     snapshot = pager.store.get(payload["sid"])
 
+    assert idea not in caplog.text
     assert idea not in repr(snapshot)
     assert idea not in json.dumps(payload)
     assert "embedding" not in repr(snapshot).lower()
@@ -602,3 +606,26 @@ def test_page_size_equal_to_the_snapshot_limit_is_allowed(build):
 
     assert len(page.items) == 3
     assert page.has_more is False
+
+
+def test_digest_is_stable_and_separate_from_cursor_signature():
+    codec = CursorCodec(KEY)
+    body, signature = codec.encode({"v": 1, "sid": "test"}).split(".")
+    data = body.encode("ascii")
+
+    digest = codec.digest(data)
+
+    assert digest == CursorCodec(KEY).digest(data)
+    assert bytes.fromhex(digest) != base64.urlsafe_b64decode(
+        signature + "=" * (-len(signature) % 4)
+    )
+
+
+def test_request_digest_cannot_authenticate_a_cursor():
+    codec = CursorCodec(KEY)
+    body, _ = codec.encode({"v": 1, "sid": "test"}).split(".")
+    digest = bytes.fromhex(codec.digest(body.encode("ascii")))
+    signature = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+    with pytest.raises(CursorInvalid):
+        codec.decode(f"{body}.{signature}")

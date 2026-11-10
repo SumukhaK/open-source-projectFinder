@@ -199,8 +199,8 @@ class CursorCodec:
         self._key = key.encode("utf-8")
 
     def digest(self, data):
-        """Keyed request digest; equality checks stay constant-time."""
-        return hmac.new(self._key, data, hashlib.sha256).hexdigest()
+        """Domain-separated request digest; equality checks stay constant-time."""
+        return hmac.new(self._key, b"digest:" + data, hashlib.sha256).hexdigest()
 
     def encode(self, payload):
         if not isinstance(payload, dict):
