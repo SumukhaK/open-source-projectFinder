@@ -72,6 +72,8 @@ GREEN (all archive, backfill and hybrid-runtime suites):
 
 Changed production files: `backend/app/core/archive_store.py`, `backend/app/services/archive_index.py`, `backend/app/services/archive_content.py`, `backend/app/services/archive_publication.py`, `backend/app/workers/archive.py` (five files). Tests and documentation are additional.
 
+Required GitHub CI passed on the pushed branch at `2f1c1986cbaf2c369cf9f90a63ab8cf5c41d797b` ([CI 42780740297](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/42780740297)): Backend quality, Quality gate, Mobile quality and E2E, Dependency audit, Secret scan and GitGuardian all passed. The commit after it is documentation-only.
+
 ## Migration compatibility evidence
 
 - `test_existing_v5_catalogue_upgrades_to_v6_with_generation_defaults` builds a v5 catalogue, inserts a repository and document, then opens it with the new code. It asserts `user_version = 6`, `generation = 1` for the existing document, and the new `archive_tasks.generation` column.
