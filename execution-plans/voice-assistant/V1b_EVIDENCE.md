@@ -140,3 +140,33 @@ Recording, slide-cancel/no-upload, file cleanup, 30-second cap, background
 cancellation, three spoken clips/latencies and TalkBack remain UNVERIFIED.
 Accessibility labels in the UI tree are not proof of TalkBack operation.
 Device status remains open.
+
+
+## Permission-result-after-release fix — 2026-11-10
+
+Branch `codex/voice-permission-sheet-fix`, original base
+`9b8272fc801ad332f3a3a47dd89a8c9c7c2cb205`; latest main docs
+`5f7a7271d68e798cf64415768150289feacab166` merged without conflicts.
+
+`start()` now checks cancellation, updates permission and handles denial, then
+requires the hold to remain active before preparing a recorder. A denied result
+after release shows the denied sheet; a granted result shows Allowed without
+recording or uploading. Cancelled operations still cannot update the sheet.
+
+- RED (Nov 8): both deferred-result cases failed on stale permission state;
+  21 existing lifecycle tests passed. Each starts with the opposite permission
+  status so the granted case cannot pass on the initial default.
+- GREEN: all 23 lifecycle tests passed.
+- Final full run (Nov 10): 208 tests / 18 suites passed, including
+  `RUN_AUTH_E2E=1` with the existing Python venv and fake GitHub.
+- Coverage: statements 96.18%, branches 88.36%, functions 92.76%, lines 99.5%; unchanged thresholds passed.
+- Typecheck, lint (zero warnings), all-platform Expo export and
+  `git diff --check` passed.
+
+Earlier full attempts hit the existing five-second consent-screen test timeout
+and the auth test backend startup readiness window. Neither test, timeout nor
+gate was changed; the final full rerun passed. Backend import was independently
+checked at 2.77 seconds before that run.
+
+Tests only: no emulator, Gradle, Docker, Ollama or real provider calls. This
+regression fix does not close the outstanding physical/device acceptance items.

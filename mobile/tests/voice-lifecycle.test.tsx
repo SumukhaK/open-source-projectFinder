@@ -45,13 +45,18 @@ test('release uploads once and deletes the local recording', async () => {
   expect(jest.mocked(File).mock.results.at(-1)?.value.delete).toHaveBeenCalled();
 });
 
-test('release while permission is pending never records or uploads', async () => {
+test.each([false, true])('permission granted=%s after release updates permission without recording', async granted => {
+  jest.mocked(AudioModule.getRecordingPermissionsAsync).mockResolvedValueOnce({ granted: !granted } as never);
   const hook = await consented();
+  await waitFor(() => expect(hook.result.current.permission).toBe(granted ? 'Off' : 'Allowed'));
   let resolve!: (value: Awaited<ReturnType<typeof AudioModule.requestRecordingPermissionsAsync>>) => void;
   jest.mocked(AudioModule.requestRecordingPermissionsAsync).mockImplementationOnce(() => new Promise(r => { resolve = r; }));
   let start!: Promise<void>;
   await act(async () => { start = hook.result.current.start(); });
-  await act(async () => { void hook.result.current.release(); resolve({ granted: true } as never); await start; });
+  await act(async () => { void hook.result.current.release(); resolve({ granted } as never); await start; });
+  expect(hook.result.current.permission).toBe(granted ? 'Allowed' : 'Off');
+  expect(hook.result.current.sheet).toBe(granted ? '' : 'denied');
+  expect(hook.result.current.phase).toBe('idle');
   expect(AudioRecorder).not.toHaveBeenCalled();
   expect(uploadRecording).not.toHaveBeenCalled();
 });
