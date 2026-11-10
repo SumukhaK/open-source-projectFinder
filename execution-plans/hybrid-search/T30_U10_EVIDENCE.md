@@ -1,5 +1,6 @@
 # T30 U10: cursor/digest domain separation
 
+PR: [#85](https://github.com/SumukhaK/open-source-projectFinder/pull/85).
 Date: 2026-11-10. Status: awaiting review; not accepted or merged.
 Branch: `codex/hybrid-t30-u10-digest-separation`.
 Base main: `d90fab154c8b8ddd38bbfd29e4cf5f5578dd12f0`.
