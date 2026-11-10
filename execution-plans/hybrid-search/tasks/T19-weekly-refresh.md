@@ -1,6 +1,6 @@
 # T19: Refresh weekly with content-aware change detection
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: T19a awaiting review. T19b is not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 
 from app.core.config import ARCHIVE_CONTENT_MAX_BYTES, ARCHIVE_METADATA_MAX_BYTES
 from app.integrations.archive_github import ReadmeDocument, RepositoryMetadata
-from app.services.archive_index import PreparedRepository
+from app.services.archive_index import PreparedRepository, with_generation
 
 CONTENT_FORMAT_VERSION = "prepared-v1"
 _KINDS = frozenset({"raw", "normalized"})
@@ -67,6 +67,7 @@ class StoredRevision:
     normalized_sha256: str
     normalized_bytes: int
     replayed: bool
+    generation: int
 
 
 class ArchiveContentStore:
@@ -220,6 +221,24 @@ class ArchiveContentStore:
         return data
 
 
+def _generation(db, repo_id, revision):
+    """Reuse a persisted generation or allocate the next one for this repository."""
+    row = db.execute(
+        "SELECT generation FROM archive_documents WHERE repo_id=? AND revision=?",
+        (repo_id, revision),
+    ).fetchone()
+    if row is not None:
+        return row[0]
+    used = db.execute(
+        "SELECT MAX(generation) FROM ("
+        "SELECT generation FROM archive_documents WHERE repo_id=? "
+        "UNION ALL "
+        "SELECT generation FROM archive_tasks WHERE repo_id=?)",
+        (repo_id, repo_id),
+    ).fetchone()[0]
+    return (used or 0) + 1
+
+
 def persist_revision(
     db,
     content,
@@ -327,6 +346,8 @@ def persist_revision(
                 "raw content does not match the README blob SHA"
             )
 
+    generation = _generation(db, repo_id, revision)
+    prepared = with_generation(prepared, generation)
     normalized = _normalized_bytes(prepared)
     if len(normalized) > ARCHIVE_CONTENT_MAX_BYTES:
         raise ContentTooLarge("normalized content exceeds the archive storage bound")
@@ -361,11 +382,12 @@ def persist_revision(
     existing = db.execute(
         "SELECT raw_path, raw_sha256, normalized_path, normalized_sha256, "
         "blob_sha, raw_bytes, truncated, model_revision, normalizer_version, "
-        "chunker_version FROM archive_documents WHERE repo_id=? AND revision=?",
+        "chunker_version, generation FROM archive_documents "
+        "WHERE repo_id=? AND revision=?",
         (repo_id, revision),
     ).fetchone()
     if existing is not None:
-        if tuple(existing) != identity:
+        if tuple(existing) != (*identity, generation):
             raise RevisionConflict(
                 "revision already exists with different content identity"
             )
@@ -387,6 +409,7 @@ def persist_revision(
             normalized_sha,
             len(normalized),
             True,
+            generation,
         )
 
     created = []
@@ -408,8 +431,8 @@ def persist_revision(
             "repo_id, revision, raw_path, raw_sha256, normalized_path, "
             "normalized_sha256, model_revision, normalizer_version, "
             "chunker_version, source_endpoint, source_ref, blob_sha, etag, "
-            "last_modified, raw_bytes, truncated"
-            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "last_modified, raw_bytes, truncated, generation"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 repo_id,
                 revision,
@@ -427,6 +450,7 @@ def persist_revision(
                 source.last_modified,
                 raw_bytes,
                 truncated,
+                generation,
             ),
         )
     except Exception:
@@ -446,6 +470,7 @@ def persist_revision(
         normalized_sha,
         len(normalized),
         False,
+        generation,
     )
 
 

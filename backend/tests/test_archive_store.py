@@ -112,7 +112,7 @@ def test_migration_is_idempotent_and_preserves_stable_ids(tmp_path):
     store.migrate()
     reopened = archive_store.ArchiveStore(settings)
     with reopened.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 6
         assert db.execute(
             "SELECT repo_id, full_name FROM archive_repositories"
         ).fetchall()[0][:] == (101, "owner/project")
@@ -157,7 +157,7 @@ def test_existing_v1_catalogue_upgrades_to_v2_without_data_loss(tmp_path):
     store = archive_store.ArchiveStore(settings_for(tmp_path))
 
     with store.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 6
         row = db.execute(
             "SELECT state, normalized_path, blob_sha, raw_bytes, truncated "
             "FROM archive_documents"
@@ -176,6 +176,48 @@ def test_existing_v1_catalogue_upgrades_to_v2_without_data_loss(tmp_path):
             "raw_bytes",
             "truncated",
         } <= columns
+
+
+def test_existing_v5_catalogue_upgrades_to_v6_with_generation_defaults(tmp_path):
+    directory = tmp_path / "private"
+    directory.mkdir(mode=0o700)
+    path = directory / "catalogue.sqlite3"
+    with sqlite3.connect(path) as db:
+        db.execute("PRAGMA foreign_keys=ON")
+        for migration in archive_store.MIGRATIONS[:5]:
+            for statement in migration:
+                db.execute(statement)
+        db.execute("PRAGMA user_version=5")
+        db.execute(f"PRAGMA application_id={archive_store.APPLICATION_ID}")
+        db.execute(
+            "INSERT INTO archive_repositories (repo_id, full_name) VALUES (101, 'owner/project')"
+        )
+        db.execute(
+            "INSERT INTO archive_documents (repo_id, revision) VALUES (101, 'rev-one')"
+        )
+    path.chmod(0o600)
+
+    store = archive_store.ArchiveStore(settings_for(tmp_path))
+
+    with store.connect() as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert (
+            db.execute(
+                "SELECT generation FROM archive_documents WHERE revision='rev-one'"
+            ).fetchone()[0]
+            == 1
+        )
+        assert "generation" in {
+            item[1] for item in db.execute("PRAGMA table_info(archive_tasks)")
+        }
+
+
+def test_previous_code_refuses_the_v6_generation_schema(catalogue, monkeypatch):
+    before = catalogue.path.read_bytes()
+    monkeypatch.setattr(archive_store, "MIGRATIONS", archive_store.MIGRATIONS[:5])
+    with pytest.raises(RuntimeError, match="newer"):
+        archive_store.ArchiveStore(settings_for(catalogue.path.parents[1]))
+    assert catalogue.path.read_bytes() == before
 
 
 def test_auth_database_is_untouched(tmp_path):
@@ -379,7 +421,7 @@ def test_migration_failure_rolls_back_ddl_and_version(tmp_path, monkeypatch):
     monkeypatch.undo()
     store = archive_store.ArchiveStore(settings_for(tmp_path))
     with store.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 6
 
 
 def test_private_file_and_wal_sidecars_and_bounded_lock_wait(catalogue):

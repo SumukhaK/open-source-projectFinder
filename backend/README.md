@@ -156,6 +156,8 @@ Migrations are ordered in `MIGRATIONS`, use transactional individual statements 
 
 Future schema changes must append migration 2 or later; never edit migration 1 after delivery. Existing catalogues must upgrade through the same versioned path as new installations.
 
+Migration 6 adds a positive `generation` to `archive_documents` and `archive_tasks`, defaulting existing rows to 1. Generation 1 keeps the original unsalted chunk IDs, so existing catalogues and pending replays stay valid. Later generations salt the chunk identity hash, which lets retired content be published again without reusing IDs a late Milvus delete may still target. Previous code refuses schema 6 exactly as it refuses any newer version.
+
 Rollback: stop catalogue consumers and revert the T03 code; the existing API continues using its unchanged auth DB. Preserve the catalogue and any WAL/SHM together. Before a future upgrade, take a consistent snapshot using SQLite's backup API rather than copying a live main DB file alone. T21 owns encrypted backup/restore tooling. Never point the catalogue at auth, delete the database to bypass a migration error, or move a live WAL database between filesystems.
 
 Evidence and reproducible tests: [T03 evidence](../execution-plans/hybrid-search/T03_EVIDENCE.md). Ingestion, raw-file writes, vector publication, queues, APIs and scheduling are later tasks.
@@ -280,6 +282,10 @@ The command resolves metadata by numeric ID (never owner/name identity), checks 
 Both content and catalogue disk locations are checked. The owner-approved fastapi/typer (229937405), MIT pilot published eight chunks, replayed with zero embedding calls/writes, and returned eight active search hits on the GPU profile. Its zero indexed rows do not establish CAGRA acceleration or capacity; broader ingestion policy remains unapproved. See the evidence below.
 
 Output is one sanitized JSON line with `repo_id`, revision, chunk/embed/vector counts, timings and `result` (`published`, `unchanged`, `refused` or `failed`). It never prints the worker token, README text or user data. Exit code is 0 only for `published`/`unchanged`.
+
+## Publication generations (T19a, awaiting review)
+
+A retired revision keeps a `cleanup` tombstone in `archive_tasks` because a timed-out Milvus delete may still apply on the server. Reusing the same chunk IDs would let that late delete remove the newly published vectors. `persist_revision` therefore allocates a per-repository publication generation and `archive_index.with_generation` salts the chunk identity hash for generations above 1. An unchanged active revision still returns `unchanged` with zero embedding calls; a revision that returns after retirement is persisted as a new generation and published with IDs disjoint from the retired set. Same-generation reuse after cleanup remains quarantined. This is the T17 follow-up A→B→A fix; it does not add a scheduler or a refresh command.
 
 ## Bounded archive backfill (T18, Phase A merged; real run pending approval)
 
