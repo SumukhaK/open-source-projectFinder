@@ -40,6 +40,9 @@ Keep the production change approximately 1-5 files plus necessary tests/docs. If
 
 ## Tests and verification before acceptance
 
+T19b additions from the T19a review (PR #83): (1) fix the generation-1 guard in `_stage` (T30 U19) with a RED test that staging salted chunks against a generation-1 document raises `PublicationContractError`; (2) RED: a revision that returns before reconcile has retired its superseded row (e.g. after a Milvus delete timeout) must be retried later or reconciled first, never stop the run as a `dependency` failure.
+
+
 RED: README revert A→B→A after A was retired by T17 cleanup (must republish safely, not stay on B or report `failed`), 304 unchanged, changed description/topics with unchanged README, metadata-only stars, removed README, rename, model change, overlap gap, partial run and quota pause. GREEN: unchanged content makes zero embedding calls; failures never advance unfinished coverage watermarks.
 
 Use real focused commands from [the guide](../EXECUTION_GUIDE.md#verification-commands) and existing suite paths found during discovery. Record baseline and RED/GREEN command, date/platform, exit code and assertions in the PR. Run affected existing tests, lint/type/format and required CI; document unavailable integration evidence as blocked. `git diff --check` and secret inspection are required before staging/push.
