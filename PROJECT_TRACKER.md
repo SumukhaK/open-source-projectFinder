@@ -1620,3 +1620,27 @@ late permission outcomes with deferred promises (RED); move only the released-ho
 guard below permission handling (GREEN); run mobile coverage, typecheck, lint and
 all-platform export; raise one PR. Preserve cancelled-operation protection.
 Status (2026-11-10): merged as PR #79 (`9db8edb`) after review; CI green. RED: both new cases failed, 21 existing lifecycle tests passed. GREEN: 23 lifecycle tests passed. Full verification: 208 tests / 18 suites including authentication integration; unchanged coverage gate, typecheck, lint, all-platform Expo export and diff check passed. Initial full runs hit an existing consent-test timeout and backend-startup readiness timeout; final unchanged run passed after backend import was checked (2.77 seconds). No device run or merge. Latest main docs merged without conflicts.
+
+## T30 U10 cursor/digest separation — 2026-11-10
+
+Owner requirement: execute U10 ahead of T29 in an isolated worktree; raise one PR
+and stop for review. U11 waits until the reviewer confirms U10 is merged.
+Base: `d90fab154c8b8ddd38bbfd29e4cf5f5578dd12f0`.
+Plan: prove same-byte digest/signature interchangeability (RED), prefix only digest
+inputs with `b"digest:"` (GREEN), verify cursor/privacy regressions and full backend
+quality gates, then request review. No configuration, dependencies or other upkeep.
+Status: awaiting review. RED: two expected assertion failures. GREEN: 126 focused
+tests and 1080 full-suite tests passed (65 Windows skips); coverage, Ruff, Bandit
+and diff gates passed. See [U10 evidence](execution-plans/hybrid-search/T30_U10_EVIDENCE.md).
+
+U10 implementation request (verbatim):
+
+> Problem: one key both signs cursors and computes the HMAC idea/filter digests. Intended change: add domain separation (e.g. prefix the digest input with b"digest:", or derive two subkeys from the one configured key). Invalidating live cursors is acceptable; they last five minutes.
+>
+> Ponytail discipline: the smallest readable change, standard library hmac/hashlib, no new dependency, no config knob, no unrelated refactor.
+>
+> TDD: write and RUN a failing test FIRST showing the current defect: a cursor signature and an idea/filter digest over the same bytes are interchangeable, or are computed with the same undifferentiated key. Then implement the minimum change, and add or keep tests that:
+> - cursors still round-trip;
+> - tampered or expired cursors are still rejected;
+> - digests stay stable for the same input and differ from cursor signatures;
+> - no raw idea text is persisted or logged.
