@@ -4,7 +4,8 @@ Status: **T19a awaiting review.** This PR delivers only the T17 follow-up safe g
 
 - Branch: `codex/hybrid-t19-weekly-refresh`
 - Base: `7fec65a322cecac587ec8722eb1774155e191c76` (`origin/main`, T18 Phase B evidence)
-- PR: pending (raised from this branch after the evidence commit)
+- PR: [#83](https://github.com/SumukhaK/open-source-projectFinder/pull/83) (open, not merged)
+- Verified tree: merge commit `e56bd441ae5f08d8c428171c9518afeb1d9c959c` (merges `origin/main` `d90fab154c8b8ddd38bbfd29e4cf5f5578dd12f0`, PR #82). The full-suite, coverage, ruff and bandit results below were re-run on that merged tree.
 - Worktree: `E:\OpenSourceProjectFinder-t19` (the unrelated dirty main checkout was not used)
 
 ## Scope delivered (T19a only)
