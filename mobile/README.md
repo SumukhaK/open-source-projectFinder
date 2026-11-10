@@ -98,3 +98,5 @@ Profile > Voice includes Read summaries aloud (default on, per account, removed 
 Expo Audio streams the authenticated summary-ID URL with downloadFirst false and silent-mode playback disabled. The app never sends summary text to the speech route or writes audio files. New search, leaving Home, background, sign-out, summary cancellation and unmount stop/release playback. Provider/native errors leave the text and list intact without alerts or retry loops. A content-free per-account tip flag remembers the first successful auto-play across sign-outs; the playback setting itself is cleared.
 
 V3b merged after V3a (#74). See [V3b evidence](../execution-plans/voice-assistant/V3b_EVIDENCE.md) for tests and platform limits. Native streaming, silent mode, accessibility, light/dark and latency checks are deferred to the separate Android development-build step; no device run is claimed here.
+
+Voice permission results are handled after a released hold: denial opens the settings sheet, while a grant updates microphone status without starting a recording. The user must hold again to record; explicit cancellation still discards the pending result.

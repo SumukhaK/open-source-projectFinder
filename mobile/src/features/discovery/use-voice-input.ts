@@ -100,9 +100,10 @@ export function useVoiceInput(account: string, token: string, onTranscript?: (te
     op.ready = (async () => {
       try {
         const permission = await AudioModule.requestRecordingPermissionsAsync();
-        if (op.cancelled || !op.held) return;
+        if (op.cancelled) return;
         setPermission(permission.granted ? 'Allowed' : 'Off');
         if (!permission.granted) { setSheet('denied'); return; }
+        if (!op.held) return;
         await setAudioModeAsync({ allowsRecording: true, shouldPlayInBackground: false });
         if (op.cancelled || !op.held) return;
         const preset = RecordingPresets.HIGH_QUALITY;

@@ -1607,3 +1607,16 @@ Agreed after review in the project thread:
 - VD4 and VD5 approved the same day: spoken summaries on for voice searches only; the owner's existing Cloudflare token as `WORKERS_AI_ACCOUNT_ID`/`WORKERS_AI_API_TOKEN` in the laptop's ignored `backend/.env`. The owner delegated UI/UX decisions ("whatever u recommend is fine by me"): Home/Profile bottom bar first (P3), Profile › Voice toggle, visible mic button, in-context explanations ([docs/VOICE_UX.md](docs/VOICE_UX.md)).
 
 Recorded in [docs/VOICE_ASSISTANT_ARCHITECTURE.md](docs/VOICE_ASSISTANT_ARCHITECTURE.md), [execution-plans/voice-assistant](execution-plans/voice-assistant/README.md), README, REQUIREMENTS, SCOPE and the architecture diagrams. The hybrid archive plan is unchanged; T18 Phase B still awaits the owner's approval.
+
+## Voice permission sheet fix — 2026-11-08
+
+Owner request (verbatim):
+
+> Bug fix (mobile, small): in mobile/src/features/discovery/use-voice-input.ts start(), after `await AudioModule.requestRecordingPermissionsAsync()` the code returns on `op.cancelled || !op.held` BEFORE updating permission state and showing the denied sheet. On Android the system prompt ends the hold, so a denial never shows the "denied" sheet. Fix: always setPermission(...) and, when not granted, setSheet('denied') unless op.cancelled; only the recording path should require op.held. Granting mid-prompt must still not start recording (user holds again). RED test first: permission prompt resolves after release -> denied sheet shown; granted after release -> no recording, permission shows Allowed. Run full mobile gates, branch codex/voice-permission-sheet-fix from origin/main, one PR, stop for review.
+> Resource note: tests only, no emulator/Gradle/Docker/Ollama.
+
+Base: `9b8272fc801ad332f3a3a47dd89a8c9c7c2cb205`. Plan: reproduce both
+late permission outcomes with deferred promises (RED); move only the released-hold
+guard below permission handling (GREEN); run mobile coverage, typecheck, lint and
+all-platform export; raise one PR. Preserve cancelled-operation protection.
+Status (2026-11-10): implemented; awaiting review. RED: both new cases failed, 21 existing lifecycle tests passed. GREEN: 23 lifecycle tests passed. Full verification: 208 tests / 18 suites including authentication integration; unchanged coverage gate, typecheck, lint, all-platform Expo export and diff check passed. Initial full runs hit an existing consent-test timeout and backend-startup readiness timeout; final unchanged run passed after backend import was checked (2.77 seconds). No device run or merge. Latest main docs merged without conflicts.
