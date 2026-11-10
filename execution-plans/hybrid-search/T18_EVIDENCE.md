@@ -1,6 +1,6 @@
 # T18 bounded resumable backfill
 
-Status: Phase A merged as `aa5db53`. Phase B (the owner-approved real 1k sample) ran on 2026-11-10 and is **awaiting review**; see [Phase B](#phase-b-real-1k-sample-2026-11-10). The Phase A sections below are unchanged history.
+Status: Phase A merged as `aa5db53`. Phase B (the owner-approved real 1k sample) ran on 2026-11-10 and was reviewed and merged as `7fec65a` ([PR #81](https://github.com/SumukhaK/open-source-projectFinder/pull/81)); see [Phase B](#phase-b-real-1k-sample-2026-11-10). The Phase A sections below are unchanged history.
 
 ## Scope and safety
 
