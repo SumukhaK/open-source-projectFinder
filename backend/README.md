@@ -316,6 +316,24 @@ Run it from `backend/` with the WSL worker interpreter, private `ARCHIVE_GITHUB_
 
 Run it from `backend/` with the WSL worker interpreter, private `ARCHIVE_GITHUB_TOKEN`/`MILVUS_TOKEN` and `HF_HUB_OFFLINE=1`. Migration 7 rebuilds `archive_suppressions` with the wider reason set and keeps its rows; previous code refuses schema 7. Rollback after migration means restoring the pre-upgrade snapshot. Purges are not reversible: a purged repository returns only through a new ingest after its suppression is lifted. Offline backups are not erased by a purge; T21/T22 reapply the ledger on restore.
 
+## Encrypted backups (T21, awaiting review)
+
+`python -m app.workers.archive backup` exports one encrypted restic snapshot of the archive. `backup --verify` restores the latest snapshot into a private temporary folder, checks every manifest hash plus `restic check`, and deletes the restore. Neither command runs on a schedule; T23 owns scheduling.
+
+- **What is backed up.** The catalogue is copied with SQLite's backup API, so committed WAL state is included and the live file is never copied raw. Only the content files that copy references are included, each hash-verified. A `manifest.json` records the catalogue and file hashes, the model manifest and the policy. The current suppression ledger is **never** included: a restore (T22) must reapply the current ledger instead. Milvus vectors are rebuildable and are not backed up.
+- **Consistency.** The copy runs under the writer lock, so no publication, purge, refresh or retention runs meanwhile. A live lease makes the export stop with `WriterBusy`.
+- **Plaintext handling.** The private plaintext staging folder is always deleted, on success, failure or interruption. Only a successful restic snapshot counts as a backup. A failed export leaves no snapshot and no manifest.
+- **Expiry and disk.** Each run then calls `restic forget --keep-within 7d --prune` (D5). The export refuses to start without enough free disk for the staging copy plus `ARCHIVE_MIN_FREE_BYTES`.
+- **Destination.** `ARCHIVE_BACKUP_REPOSITORY` must be an existing, already-initialised restic repository on a different volume from the catalogue and outside the catalogue/content tree. The export never creates it.
+- **Password.** `ARCHIVE_BACKUP_PASSWORD_FILE` is a private (0600) file that only restic reads. The application never opens, logs or prints it. `ARCHIVE_BACKUP_RESTIC` names the restic binary (default `restic`).
+- **Errors.** restic errors are reported as `restic <command> failed (exit N)`, without restic's own output.
+
+Owner-approved destination (2026-11-11, a change to D6): a subfolder of the owner's Google Drive for desktop sync folder on `D:`, encrypted by restic before it syncs. Caveats:
+- Drive Trash keeps deleted pack files for 30 days, so the 7-day expiry is fully effective only once the Trash empties.
+- A synced folder can propagate ransomware; Drive version history mitigates this.
+
+The real repository and password file are created by the owner, never by this code. See [T21 evidence](../execution-plans/hybrid-search/T21_EVIDENCE.md).
+
 ## API
 
 - `POST /auth/github/start`: app PKCE challenge and exact allowlisted return URI; returns GitHub authorization URL and state.

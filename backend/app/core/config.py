@@ -162,6 +162,12 @@ class Settings(BaseSettings):
     archive_backfill_byte_limit: int = Field(
         default=512 * 1024**2, ge=1, le=2 * 1024**3
     )
+    # T21 backups (D5/D6): restic to an owner-provided, already-initialised
+    # repository on an external drive. Only paths live here; restic reads the
+    # password file itself and the application never opens it.
+    archive_backup_repository: str = ""
+    archive_backup_password_file: str = ""
+    archive_backup_restic: str = "restic"
     milvus_uri: str = "http://127.0.0.1:19530"
     milvus_token: SecretStr = Field(default=SecretStr(""), repr=False)
     milvus_profile: Literal["cpu", "gpu"] = "gpu"

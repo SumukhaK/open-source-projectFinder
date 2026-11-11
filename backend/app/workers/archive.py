@@ -33,6 +33,7 @@ from app.integrations.milvus import (
     MilvusUnavailable,
     VectorChunk,
 )
+from app.services.archive_backup import BackupError
 from app.services.archive_content import (
     ArchiveContentStore,
     ContentError,
@@ -632,13 +633,37 @@ def main(argv=None):
         default=[],
         help="Owner-requested removal (D4); repeatable",
     )
+    backup = commands.add_parser(
+        "backup", help="Export an encrypted catalogue/content backup with restic"
+    )
+    backup.add_argument(
+        "--verify",
+        action="store_true",
+        help="Restore the latest snapshot privately and check its manifest",
+    )
     args = parser.parse_args(argv)
 
     started = time.perf_counter()
     runtime = None
     try:
         settings = Settings()
-        if args.command == "retire":
+        if args.command == "backup":
+            from app.services.archive_backup import export_backup, verify_backup
+
+            if args.verify:
+                summary = verify_backup(
+                    settings,
+                    settings.archive_database_path.expanduser().parent,
+                    connect=ArchiveStore(settings).connect,
+                )
+            else:
+                summary = export_backup(
+                    ArchiveStore(settings).connect,
+                    ArchiveContentStore(settings),
+                    settings,
+                    now=datetime.now(timezone.utc),
+                )
+        elif args.command == "retire":
             # An empty or wrong allowlist would suppress every repository as
             # "licence", so the sweep runs only under the approved D2 list.
             if not backfill_license_policy_ok(settings):
@@ -696,6 +721,8 @@ def main(argv=None):
         summary["reason"] = error.reason
     except IngestError as error:
         summary = _failure(getattr(args, "repo_id", None), str(error), started)
+    except BackupError as error:
+        summary = _failure(None, str(error), started)
     except (
         ArchiveGitHubError,
         EmbeddingError,
@@ -732,10 +759,21 @@ def main(argv=None):
         summary["timings_ms"] = {"total": _elapsed(started)}
     summary["timings_ms"]["total"] = _elapsed(started)
     print(json.dumps(summary, sort_keys=True))
+    if summary.get("expiry") == "failed":
+        return 1
     return (
         0
         if summary["result"]
-        in ("published", "unchanged", "finished", "cap", "quota", "rate_limit")
+        in (
+            "published",
+            "unchanged",
+            "finished",
+            "cap",
+            "quota",
+            "rate_limit",
+            "exported",
+            "verified",
+        )
         else 1
     )
 
