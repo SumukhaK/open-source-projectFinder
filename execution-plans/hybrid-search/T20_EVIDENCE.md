@@ -1,5 +1,7 @@
 # T20 suppression and retirement
 
+In plain terms: T20 cleans **our own local copy** of repository data, never anything on GitHub. When an archived repository becomes unsafe, our stored copy is removed: its README files on the laptop, its catalogue rows and its Milvus vectors. Unsafe means private, gone (404), archived, legally blocked, licence no longer allowed, or removed on the owner's request. Expired content (no push in 365 days) is removed the same way. It is hidden from search first, unsafe repositories are remembered on a content-free "do not store" list kept outside backups, and favourites and offline backups are not touched.
+
 Status: **Awaiting review.** Implemented by Claude on the owner's instruction (2026-11-11), relayed through the project thread. It needs an independent review before merge.
 
 - Branch: `codex/hybrid-t20-retirement`
