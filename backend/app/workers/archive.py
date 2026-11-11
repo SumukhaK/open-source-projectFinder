@@ -265,9 +265,15 @@ def ingest_one(runtime, repo_id, *, now=None, lease=None, progress=None, cached=
         raise IngestError("repository id must be a positive integer")
     if cached is not None and not isinstance(cached, CachedRepository):
         raise IngestError("cached repository state is invalid")
-    if lease is not None:
-        with runtime.connect() as db:
+    with runtime.connect() as db:
+        if lease is not None:
             check_lease(db, lease)
+        # T20: a suppressed repository is never re-ingested until a fresh check
+        # (or the owner, for an operator removal) lifts it.
+        if db.execute(
+            "SELECT 1 FROM archive_suppressions WHERE repo_id=?", (repo_id,)
+        ).fetchone():
+            raise IneligibleRepository("suppressed", "repository is suppressed")
     report = progress or (lambda stage, facts: None)
     cutoff = _utc(now) - timedelta(days=ELIGIBILITY_DAYS)
     timings = {}
@@ -566,6 +572,14 @@ def _refresh_cap(value):
     return int(value)
 
 
+def _retire_limit(value):
+    if not value.isascii() or not value.isdigit() or not 1 <= int(value) <= 10000:
+        raise argparse.ArgumentTypeError(
+            "--limit must be an integer from 1 through 10000"
+        )
+    return int(value)
+
+
 def backfill_license_policy_ok(settings):
     """The approved SPDX set, order-insensitive and without duplicates."""
     values = settings.archive_license_allowlist
@@ -607,13 +621,40 @@ def main(argv=None):
     )
     refresh.add_argument("--sweep-buckets", type=_sweep_buckets, default=1)
     refresh.add_argument("--cap", type=_refresh_cap, default=0)
+    retire = commands.add_parser(
+        "retire", help="Run the daily suppression and retention sweep"
+    )
+    retire.add_argument("--limit", type=_retire_limit, default=1000)
+    retire.add_argument(
+        "--remove-repo-id",
+        type=_positive_id,
+        action="append",
+        default=[],
+        help="Owner-requested removal (D4); repeatable",
+    )
     args = parser.parse_args(argv)
 
     started = time.perf_counter()
     runtime = None
     try:
         settings = Settings()
-        if args.command == "refresh":
+        if args.command == "retire":
+            # An empty or wrong allowlist would suppress every repository as
+            # "licence", so the sweep runs only under the approved D2 list.
+            if not backfill_license_policy_ok(settings):
+                raise IngestError(
+                    "ARCHIVE_LICENSE_ALLOWLIST must equal the approved backfill policy"
+                )
+            runtime = build_runtime(settings)
+            from app.workers.retire import sweep
+
+            summary = sweep(
+                runtime,
+                now=datetime.now(timezone.utc),
+                limit=args.limit,
+                remove_ids=tuple(args.remove_repo_id),
+            )
+        elif args.command == "refresh":
             if not backfill_license_policy_ok(settings):
                 raise IngestError(
                     "ARCHIVE_LICENSE_ALLOWLIST must equal the approved backfill policy"

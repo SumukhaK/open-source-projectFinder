@@ -17,6 +17,7 @@ from app.integrations.archive_github import (
     RepositoryNotPublic,
 )
 from app.services.archive_publication import filter_active_hits
+from app.services.archive_retirement import SuppressionLedger, suppress
 from app.services.live_scope import live_eligible
 
 
@@ -70,11 +71,19 @@ class EligibilityService:
         self._lock = Lock()
 
     def _suppress(self, repo_id, reason, now):
-        with self.connect(write=True) as db:
-            db.execute(
-                "INSERT INTO archive_suppressions (repo_id, reason, observed_at) "
-                "VALUES (?, ?, ?) ON CONFLICT(repo_id) DO NOTHING",
-                (repo_id, reason, now.timestamp()),
+        with self.connect() as db:
+            known = db.execute(
+                "SELECT 1 FROM archive_suppressions WHERE repo_id=?", (repo_id,)
+            ).fetchone()
+        if known is None:
+            # T20: the first decision also goes to the content-free ledger so
+            # a restored backup can reapply it; later reasons stay sticky here.
+            suppress(
+                self.connect,
+                SuppressionLedger.for_catalogue(self.connect),
+                repo_id,
+                reason,
+                now.timestamp(),
             )
         with self._lock:
             self._cache.pop(repo_id, None)

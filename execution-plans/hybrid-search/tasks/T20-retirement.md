@@ -1,6 +1,6 @@
 # T20: Suppress and retire unsafe or expired archive content
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review (implemented by Claude, 2026-11-11; [evidence](../T20_EVIDENCE.md)). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
