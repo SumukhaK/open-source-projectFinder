@@ -136,3 +136,62 @@ warning. `python scripts/quality.py coverage reports/backend-coverage.json` ->
 **92.5% combined / 89.4% branches**, exit 0, unchanged gate passed. Skips include
 platform/runtime restrictions and opt-in integration tests; Linux/real-server
 checks were not run locally, as required by this fake-only slice.
+
+## U11 execution — 2026-11-11
+
+Owner-authorized early slice. Base `434fa8ce6ae19ede7bd340e3e62d4fc1b2b6fa8b`;
+U10 `14a82b6` and U1-U3 `f4983e7` verified as merged ancestors.
+Branch `codex/hybrid-t30-u11-build-waiters` in an isolated worktree.
+Reverified cold-start waiters block on the build lock; U14 fallback already uses
+non-blocking acquisition. Plan: event-controlled RED for pool/HTTP waiters,
+non-blocking acquisition with existing starting response, retry/cleanup/U14
+regressions, full fake-only gates, one PR and stop. Per the owner's file scope,
+plan/evidence stay here and in hybrid TRACKER; no root tracker or worker edits.
+
+### U11 verification and compatibility
+
+2026-11-11, Windows Python 3.11.9 / SQLite 3.45.1. Commands use the existing
+`E:/OpenSourceProjectFinder/backend/.venv/Scripts/python.exe` (`python` below),
+with `PYTHONPATH=backend`. Read [T15 evidence](../T15_EVIDENCE.md), PR #51's
+review-fix record in its body (GitHub returned no formal reviews), and PR #57's
+U14 fallback/backoff changes. No already-fixed item was skipped.
+
+- Baseline: `python -m pytest backend/tests/test_hybrid_runtime.py backend/tests/test_archive_api.py -q`
+  -> 50 passed.
+- RED before runtime edits: same command with
+  `-k "cold_build or failed_build_releases"` -> 2 failed, 2 passed, 50 deselected.
+  An event-held fake build occupied one worker and four additional waiters stayed
+  blocked; eight HTTP requests also stayed pending before the route's five-second
+  configured timeout. Both failures are assertions, not setup errors. Failure
+  backoff/retry tests passed already and are retained as regressions.
+- GREEN focused: original focused command -> 54 passed. Tests prove immediate
+  waiter completion while the builder stays blocked, a reusable free pool worker,
+  exactly one build, successful next request, retry after either expected or
+  unexpected build failure, released lock, and joined test-pool threads. Existing
+  U14 model/Milvus fallback, retry/backoff, shared executor and recovery tests pass.
+- `python -m ruff check backend scripts` -> passed.
+- `python -m ruff format --check backend scripts` -> passed, 78 files.
+- `python -m bandit -r backend/app -q` -> passed, no findings.
+- `git diff --check` -> passed.
+
+The existing build lock itself supplies the atomic in-progress check; no flag,
+new executor, future, setting or dependency is added. Contending cold-start
+`target()` calls raise TimeoutError without waiting on that lock. The unchanged
+route already maps this to 503 / SEARCH_UNAVAILABLE / "Search is starting. Try
+again shortly." / retryable true. Its existing response has no Retry-After header;
+the test asserts that remains unchanged. Calls still briefly execute through
+`to_thread`, but no waiter holds its worker until the build finishes. The original
+builder retains its route wait bound and finishes in the background if timed out.
+Live-only fallback is still returned during rebuild, and failure retry backoff
+and the build lock's finally-release remain unchanged.
+
+No migration or operator configuration change; revert code to roll back (which
+restores the blocking-waiter behavior). No worker, publication, archive storage,
+Milvus or T20 file edits. Fakes only: no Docker/server/WSL/model or app closure.
+Live-server behavior and Linux-only catalogue tests are not verified locally.
+
+Full regression: `python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch --cov-report=json:reports/backend-coverage.json`
+-> **1124 passed, 67 skipped**, exit 0, 94.99 s. Existing Starlette/httpx warning;
+platform/runtime and opt-in integration skips unchanged. Coverage command
+`python scripts/quality.py coverage reports/backend-coverage.json` ->
+**92.6% combined / 89.4% branches**, unchanged gate passed (exit 0).
