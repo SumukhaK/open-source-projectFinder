@@ -1656,3 +1656,7 @@ U10 implementation request (verbatim):
 ## T20 suppression and retirement merged — 2026-11-11
 
 [PR #92](https://github.com/SumukhaK/open-source-projectFinder/pull/92) was squash-merged as `a454b98` after an independent review and one round of fixes (retention under the writer lease, keeping the refresh runs T19b depends on, and rotating daily re-checks). The `retire` sweep hides unsafe repositories at once, purges their local text, rows and vectors in bounded steps, keeps a content-free suppression ledger outside backups, and applies 365-day expiry plus 30/90-day retention. T21 (backups) is next and needs the owner to approve installing restic and to connect the external drive.
+
+## T21 encrypted backups merged — 2026-11-11
+
+[PR #96](https://github.com/SumukhaK/open-source-projectFinder/pull/96) was squash-merged as `5622403` after an independent review and one fix (leftover plaintext from a killed run is now cleaned up). The owner changed D6: backups go to an encrypted restic repository inside their Google Drive for desktop sync folder instead of an external drive. The first real export still needs restic installed inside WSL, plus the owner creating the password file and running `restic init`. T22 (restore) is next.

@@ -1,6 +1,6 @@
 # T21: Create consistent encrypted backup exports
 
-Status: Awaiting review (implemented by Claude, 2026-11-11; [evidence](../T21_EVIDENCE.md)). The real export to the owner-approved destination is still pending. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged as `5622403` (implemented by Claude, independently reviewed, 2026-11-11; [evidence](../T21_EVIDENCE.md)). The real export to the owner-approved destination is still pending. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
