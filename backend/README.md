@@ -303,7 +303,7 @@ Output is one sanitized JSON summary: `coverage` (`complete`/`partial`), `stop_r
 
 Run it from `backend/` with the WSL worker interpreter, private `ARCHIVE_GITHUB_TOKEN`/`MILVUS_TOKEN` and `HF_HUB_OFFLINE=1`. Rollback is a code revert: there is no migration, refresh rows use the existing additive run/state tables, and older code ignores the extra metadata keys. No real refresh was run in T19b; T20 owns retention/removal and T23 owns host scheduling. See [T19 evidence](../execution-plans/hybrid-search/T19_EVIDENCE.md).
 
-## Suppression and retirement sweep (T20, awaiting review)
+## Suppression and retirement sweep (T20)
 
 `python -m app.workers.archive retire [--limit N] [--remove-repo-id ID ...]` is the manual daily privacy/removal sweep (D4). It is not an API route or scheduler; T23 owns scheduling. Like `backfill` and `refresh`, it refuses to start unless `ARCHIVE_LICENSE_ALLOWLIST` is exactly the approved D2 list, because a wrong allowlist would otherwise suppress every repository as `licence`.
 
