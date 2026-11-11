@@ -381,31 +381,7 @@ class Backfill:
             )
 
     def _finish_completed_parents(self, run_id, lease):
-        """Only promote a split parent after every durable child is complete."""
-        with self.runtime.connect() as db:
-            rows = db.execute(
-                "SELECT t.partition_key,t.page FROM archive_tasks t "
-                "WHERE t.run_id=? AND t.stage='split'",
-                (run_id,),
-            ).fetchall()
-            ready = [
-                row
-                for row in rows
-                if not db.execute(
-                    "SELECT 1 FROM archive_partitions WHERE run_id=? "
-                    "AND json_extract(record,'$.parent_key')=? AND state<>'completed'",
-                    (run_id, row["partition_key"]),
-                ).fetchone()
-            ]
-        for row in ready:
-            self.store.checkpoint(
-                lease,
-                row["partition_key"],
-                page=row["page"],
-                stage="completed",
-                completed=True,
-            )
-        return bool(ready)
+        return finish_completed_parents(self.runtime, self.store, run_id, lease)
 
     def _defer(self, lease, key, retry):
         self._retry_at = retry
@@ -537,3 +513,31 @@ class Backfill:
             ),
             encoding="utf-8",
         )
+
+
+def finish_completed_parents(runtime, store, run_id, lease):
+    """Only promote a split parent after every durable child is complete."""
+    with runtime.connect() as db:
+        rows = db.execute(
+            "SELECT t.partition_key,t.page FROM archive_tasks t "
+            "WHERE t.run_id=? AND t.stage='split'",
+            (run_id,),
+        ).fetchall()
+        ready = [
+            row
+            for row in rows
+            if not db.execute(
+                "SELECT 1 FROM archive_partitions WHERE run_id=? "
+                "AND json_extract(record,'$.parent_key')=? AND state<>'completed'",
+                (run_id, row["partition_key"]),
+            ).fetchone()
+        ]
+    for row in ready:
+        store.checkpoint(
+            lease,
+            row["partition_key"],
+            page=row["page"],
+            stage="completed",
+            completed=True,
+        )
+    return bool(ready)

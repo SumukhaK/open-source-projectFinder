@@ -1,10 +1,10 @@
 # T19: Refresh weekly with content-aware change detection
 
-Status: T19a merged as `393726f` (PR #83). T19b is not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: T19a merged as `393726f` (PR #83). T19b is **awaiting review** on `codex/hybrid-t19b-refresh`. Review/merge evidence belongs in [TRACKER](../TRACKER.md) and [T19 evidence](../T19_EVIDENCE.md).
 
 | Control | Value |
 | --- | --- |
-| Branch to create from latest origin/main | `codex/hybrid-t19-weekly-refresh` |
+| Branch used from latest origin/main | `codex/hybrid-t19b-refresh` |
 | Prerequisites, merged into main | [T10](T10-visibility.md), [T17](T17-durable-runs.md), [T18](T18-backfill.md) |
 | Intended scope | worker refresh/reconcile service + tests |
 

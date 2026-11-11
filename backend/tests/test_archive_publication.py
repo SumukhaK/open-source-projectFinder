@@ -1,4 +1,5 @@
 import hashlib
+import json
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import replace
@@ -7,12 +8,17 @@ from types import SimpleNamespace
 import pytest
 from app.core import archive_store
 from app.integrations.milvus import MilvusUnavailable, VectorChunk
-from app.services.archive_index import PreparedChunk, PreparedRepository
+from app.services.archive_index import (
+    PreparedChunk,
+    PreparedRepository,
+    with_generation,
+)
 from app.services.archive_publication import (
     PublicationContractError,
     PublicationIncomplete,
     PublicationResult,
     ReconcileResult,
+    RevisionSuperseded,
     filter_active_hits,
     load_active_chunks,
     publish_revision,
@@ -24,14 +30,21 @@ MODEL_REVISION = "c" * 40
 VECTOR = [0.01] * 384
 
 
-def make_chunk_id(revision, ordinal):
-    return hashlib.sha256(f"{revision}:{ordinal}".encode()).hexdigest()
+def make_chunk_id(revision, ordinal, *, repo_id=REPO_ID):
+    text = f"passage text {ordinal}"
+    text_hash = hashlib.sha256(text.encode()).hexdigest()
+    encoded = json.dumps(
+        [repo_id, revision, ordinal, text_hash],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def make_prepared(count=3, *, revision="a" * 64, repo_id=REPO_ID):
     chunks = tuple(
         PreparedChunk(
-            chunk_id=make_chunk_id(revision, ordinal),
+            chunk_id=make_chunk_id(revision, ordinal, repo_id=repo_id),
             ordinal=ordinal,
             section=f"Section {ordinal}",
             text=f"passage text {ordinal}",
@@ -654,15 +667,31 @@ def test_superseded_revision_cannot_be_reactivated(connect, db_path):
         connect, FakeVectors(), prepared=second, chunks=make_vectors(second)
     )
 
-    with pytest.raises(PublicationContractError):
+    with pytest.raises(RevisionSuperseded) as caught:
         publish_revision(
             connect, FakeVectors(), prepared=first, chunks=make_vectors(first)
         )
+    assert isinstance(caught.value, PublicationContractError)
 
     with connect() as db:
         assert (
             db.execute("SELECT active_revision FROM archive_repositories").fetchone()[0]
             == second.semantic_hash
+        )
+
+
+def test_staging_rejects_chunks_salted_for_a_generation_one_document(connect, db_path):
+    prepared = make_prepared()
+    seed_document(db_path, prepared)
+    salted = with_generation(prepared, 2)
+    assert salted.chunks != prepared.chunks
+
+    with pytest.raises(PublicationContractError):
+        publish_revision(
+            connect,
+            FakeVectors(),
+            prepared=salted,
+            chunks=make_vectors(salted),
         )
 
 
@@ -908,7 +937,7 @@ def test_activation_refuses_a_revision_superseded_after_vectors(connect, db_path
         with connect(write=write) as db:
             yield db
 
-    with pytest.raises(PublicationContractError):
+    with pytest.raises(RevisionSuperseded):
         publish_revision(
             racing_connect,
             FakeVectors(),

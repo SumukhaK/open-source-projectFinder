@@ -161,19 +161,18 @@ def prepare_repository(
 
 
 def with_generation(prepared, generation):
-    """Return one revision with chunk IDs salted for its publication generation.
+    """Return one revision with chunk IDs derived for its publication generation.
 
     Generation one keeps the original unsalted IDs so existing catalogues and
     replays stay valid. Later generations add the generation to the identity
     hash, so a retired revision can be published again without reusing IDs that
-    a late vector delete may still target.
+    a late vector delete may still target. The identity is always recomputed so
+    a caller cannot stage salted chunks against a generation-one document.
     """
     if not isinstance(prepared, PreparedRepository):
         raise TypeError("prepared must be a PreparedRepository")
     if type(generation) is not int or generation < 1:
         raise ValueError("generation must be a positive integer")
-    if generation == 1:
-        return prepared
     return replace(
         prepared,
         chunks=tuple(
@@ -181,6 +180,13 @@ def with_generation(prepared, generation):
                 chunk,
                 chunk_id=_hash(
                     [
+                        prepared.repo_id,
+                        prepared.semantic_hash,
+                        chunk.ordinal,
+                        chunk.text_hash,
+                    ]
+                    if generation == 1
+                    else [
                         prepared.repo_id,
                         prepared.semantic_hash,
                         generation,

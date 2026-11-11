@@ -37,6 +37,10 @@ class PublicationContractError(PublicationError):
     """The prepared revision and vectors do not match the catalogue contract."""
 
 
+class RevisionSuperseded(PublicationContractError):
+    """A newer activation retired this revision; reconcile and replay it."""
+
+
 class PublicationIncomplete(PublicationError):
     """Vectors were written but the complete expected set is not readable."""
 
@@ -174,7 +178,7 @@ def _stage(connect, prepared, *, lease, payload_digest):
                 "prepared chunk identities do not match the publication generation"
             )
         if state == "superseded":
-            raise PublicationContractError("superseded revisions cannot be republished")
+            raise RevisionSuperseded("superseded revisions cannot be republished")
         if state == "published":
             active = db.execute(
                 "SELECT active_revision FROM archive_repositories WHERE repo_id=?",
@@ -277,7 +281,7 @@ def _activate(connect, prepared, *, lease, payload_digest=None):
                 "activation generation does not match the staged vector payload"
             )
         if row[0] == "superseded":
-            raise PublicationContractError("revision was superseded before activation")
+            raise RevisionSuperseded("revision was superseded before activation")
         rows = db.execute(
             "SELECT chunk_id FROM archive_chunks WHERE repo_id=? AND revision=? "
             "ORDER BY ordinal",
