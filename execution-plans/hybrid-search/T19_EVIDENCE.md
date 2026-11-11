@@ -9,10 +9,11 @@ Status: **T19b awaiting review.** T19a (safe generation protocol) is merged as `
 
 ## T19b scope delivered
 
-- `backend/app/workers/refresh.py` adds one manual `Refresh` run and `python -m app.workers.archive refresh [--sweep-buckets N]`. The run identity is the most recent Saturday 22:00 UTC boundary, so a stopped or partial run resumes in place; running the same boundary again after completion is idempotent.
+- `backend/app/workers/refresh.py` adds one manual `Refresh` run and `python -m app.workers.archive refresh [--sweep-buckets N] [--cap N]`. The run identity is the most recent Saturday 22:00 UTC boundary, so a stopped or partial run resumes in place; running the same boundary again after completion is idempotent.
 - Known IDs: every row in `archive_repositories` is reconciled by numeric ID every run, even without a new push.
 - Recent discovery: search covers `[last completed boundary - 48h, due]`; the first run falls back to `[due - 7 days - 48h, due]`.
-- Sweep: one 28-day bucket of the rolling `[due - 365 days, due]` window per run (default), with `--sweep-buckets` 1-14. The bucket index advances only when the run completes, so a partial run does not skip coverage.
+- Sweep: one 28-day bucket of the rolling `[due - 365 days, due]` window per run (default), with `--sweep-buckets` 1-14. The bucket index advances only when the run finishes; the next week's run retries the bucket of a capped or partial run, so no coverage is skipped (see review fixes).
+- New admissions: `--cap` 0-1000 (default 0) bounds repositories not yet in the catalogue; known IDs are always reconciled (see review fixes).
 - Conditional reads: `load_cached_repository` rebuilds ETag/Last-Modified state only from metadata written as `payload_version: 2`. A 304 metadata/README response reuses the stored body; a README 304 never fetches the blob. Legacy or inconsistent metadata falls back to a full read and is upgraded on the next unchanged pass.
 - Metadata-only changes: `upsert_repository_metadata` updates `full_name`, description, topics, language, stars, `pushed_at`, licence/visibility flags and validators in place. Stars or other non-semantic scalar changes make no embedding calls; a model/chunker/semantic change still re-embeds.
 - Removed README: a 404 after verified metadata publishes the metadata-only overview and retires the old README chunks through the existing safe publication/reconcile path.
@@ -75,16 +76,50 @@ Platform: WSL, `/home/sumukha/reporadar-worker-venv/bin/python`, Python 3.11.17,
 
 Changed production files: `backend/app/services/archive_content.py`, `backend/app/services/archive_index.py`, `backend/app/services/archive_publication.py`, `backend/app/workers/archive.py` and `backend/app/workers/refresh.py` (five files). Tests and documentation are additional.
 
+## T19b review fixes (2026-11-11)
+
+Claude's review of PR #87 at `d2147352` requested three blockers: an uncapped admission of new repositories, an in-memory discovery walk that restarted from the root after every quota stop, and a missing licence-policy gate on `refresh`. OpenCode started the fixes in this worktree and stopped before finishing or committing them. **Claude completed the fixes** on the owner's instruction (2026-11-11), keeping OpenCode's work, and committed them as `3de2941`. `origin/main` `47525dc` was then merged in (no rebase or force-push).
+
+- **Admission cap.** `refresh --cap N` (0-1000, default 0) admits at most N repositories that are not already in `archive_repositories`. Known IDs are always reconciled and never count. The count is stored in the run state in the same SQLite transaction as the claim, so a resume can never exceed the cap. A cap stop is `partial`, advances no watermark and leaves the boundary resumable. `--cap 0` reconciles known IDs, makes no search requests and stops with `cap`, so a skipped discovery is never recorded as a finished boundary. The summary reports `cap`, `admitted` and `unread_partitions`.
+- **Durable discovery.** Recent discovery and each sweep bucket walk the T16/T17 `archive_partitions`/`archive_tasks`/`archive_backfill_pages` checkpoints with `archive_backfill_partition_limit`, as `backfill.py` does. IDs are ingested page by page. A page saved before a stop is reused on resume, so no search is repeated. Split parents are promoted through `finish_completed_parents`, a module function extracted unchanged from `Backfill` and shared by both workers, so a finished refresh can release a run that contains splits.
+- **Sweep rotation.** The next run starts after the latest finished run's index, or retries the `sweep_start` bucket of an unfinished run.
+- **Licence gate.** `refresh` checks `backfill_license_policy_ok` (exactly the D2 list) before building a runtime, as `backfill` does.
+- **Retry comment.** A `failed` row is retried on every resume, not once; the docstring now says so.
+
+RED (mutation, Windows Python 3.11.9, 2026-11-11). Each defect was restored in the fixed code, its test run, and the code restored:
+
+| Defect restored | Test | Result |
+| --- | --- | --- |
+| Saved page reused without its record (OpenCode WIP crash) | `test_resume_reuses_a_saved_page_that_needs_a_split` | 1 failed: `UnboundLocalError: ... 'record'` |
+| Admission count not persisted (in-memory counter) | `test_cap_holds_across_a_resume_without_repeating_searches`, `test_cap_admits_exactly_cap_new_repositories` | 2 failed: `'finished' == 'cap'` |
+| Off-by-one, admits cap-1 (OpenCode WIP) | `test_cap_admits_exactly_cap_new_repositories` | 1 failed: `assert 1 == 2` |
+| Sweep index advanced on a cap stop (OpenCode WIP) | `test_cap_admits_exactly_cap_new_repositories` | 1 failed: `'sweep_index' not in {...}` |
+| Refresh licence gate removed (PR head) | `test_refresh_refuses_a_non_d2_allowlist_before_any_request` | 1 failed: runtime built with a non-D2 allowlist |
+| Split parents never promoted | `test_resume_reuses_a_saved_page_that_needs_a_split` | 1 failed: `ValueError: run still has incomplete partitions` |
+
+New tests also cover `--cap 0` (known IDs reconciled, zero search requests) and the next week's run retrying the capped bucket. Existing refresh tests that are not about the cap now pass an explicit `refresh_cap=CAP`.
+
+GREEN (Windows, Python 3.11.9 / SQLite 3.45.1, after merging `47525dc`):
+
+- `python -m pytest backend/tests/test_archive_refresh.py backend/tests/test_archive_backfill.py -q` → 62 passed; refresh alone 29 passed.
+- `python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch --cov-report=json:reports/backend-coverage.json` → **1112 passed, 67 skipped**.
+- `python scripts/quality.py coverage reports/backend-coverage.json` → 92.5% combined / 89.3% branches (gate 90/80).
+- `ruff check backend scripts` passed; `ruff format --check` 78 files already formatted; `bandit -r backend/app -q` no findings; `git diff --check` clean.
+
+The WSL worker venv was unavailable: WSL refused to start with `Wsl/Service/CreateVm/HCS/ERROR_NO_SYSTEM_RESOURCES` at about 3.9 GB free host RAM (T30 U18). `.wslconfig` was not changed. The 67 Windows skips are the WAL-backed/Linux-only paths; the required Linux CI run on this PR is the authoritative check for them. Fakes only: no GitHub, Milvus, model, Docker or WSL run.
+
 ## T19b operator and rollback notes
 
 - Run from `backend/` with the WSL worker interpreter, private `ARCHIVE_GITHUB_TOKEN`/`MILVUS_TOKEN` and `HF_HUB_OFFLINE=1`:
 
 ```sh
-/home/sumukha/reporadar-worker-venv/bin/python -m app.workers.archive refresh --sweep-buckets 1
+/home/sumukha/reporadar-worker-venv/bin/python -m app.workers.archive refresh --sweep-buckets 1 --cap 0
 ```
 
+- `--cap 0` (default) reconciles known IDs only and stops with `cap`. Any `--cap` above 0 admits new repositories and needs the owner's explicit approval under D1; a 10k pilot is not approved.
+
 - The command is manual only; no scheduler or API route starts it. A second invocation at the same due boundary resumes the same run. A completed boundary returns the stored summary instead of reprocessing.
-- `coverage: "partial"` with `stop_reason` (`quota`, `rate_limit`, `bytes`, `disk`, `credential`, `dependency`, `partition`, `incomplete`) means the run is unfinished. `last_completed_boundary` and the sweep index advance only on `finished`; retry later with the same command. `retry_at` is a Unix timestamp from the server's reset header or a bounded fallback.
+- `coverage: "partial"` with `stop_reason` (`cap`, `quota`, `rate_limit`, `bytes`, `disk`, `credential`, `dependency`, `partition`, `incomplete`) means the run is unfinished. `last_completed_boundary` and the sweep index advance only on `finished`; retry later with the same command. `retry_at` is a Unix timestamp from the server's reset header or a bounded fallback.
 - Rollback: revert the worker code; there is no migration. Refresh rows/state live in the existing additive T17/T18 tables, and `payload_version: 2` metadata is an additive JSON object. Older code ignores the extra metadata keys and never uses the conditional-read path. Do not delete catalogue/vector rows to force a refresh; retry by numeric ID or leave the boundary incomplete.
 - No real refresh was run in this task. A real run needs the private catalogue, GPU Milvus, the cached E5 snapshot, the dedicated worker credential and owner approval; inspect the JSON summary and `archive_runs`/`archive_backfill_repositories` before accepting coverage.
 
@@ -95,7 +130,7 @@ Changed production files: `backend/app/services/archive_content.py`, `backend/ap
 - The summary is operator JSON, not an API/status route. T23 owns host scheduling and operator status.
 - `payload_version: 2` stores selected scalar fields, not the full GitHub payload. A legacy v1 row pays one full read and is upgraded; a corrupt/inconsistent row is treated the same way.
 - No parallel workers, token rotation, `pushed_at`-only hash, search-absence deletion or whole-corpus re-embedding was added. Schema version remains 6.
-- CI at `615dec1`: Backend quality, Mobile quality and E2E, Secret scan and GitGuardian passed. Dependency audit and the aggregate Quality gate failed on four npm advisories for node-forge 1.4.2 (GHSA-6889-vf6x-f3g5, GHSA-w4xr-hqv8-ch44, GHSA-6cv4-p8m7-4r25, GHSA-j8rw-jp99-435v). This diff changes no JavaScript: `mobile/package-lock.json`, `.ci/quality-policy.json`, `scripts/quality.py` and `.github/workflows/quality.yml` are identical to `origin/main`, which was green on 2026-11-10, so the advisory data changed after that run. No exception was added and no gate was lowered; it needs an owner decision (dependency bump or a narrow dated exception) and is not part of T19b.
+- (Resolved) CI at `615dec1`: Backend quality, Mobile quality and E2E, Secret scan and GitGuardian passed. Dependency audit and the aggregate Quality gate failed on four npm advisories for node-forge 1.4.2 (GHSA-6889-vf6x-f3g5, GHSA-w4xr-hqv8-ch44, GHSA-6cv4-p8m7-4r25, GHSA-j8rw-jp99-435v). This diff changes no JavaScript: `mobile/package-lock.json`, `.ci/quality-policy.json`, `scripts/quality.py` and `.github/workflows/quality.yml` are identical to `origin/main`, which was green on 2026-11-10, so the advisory data changed after that run. No exception was added and no gate was lowered; it needs an owner decision (dependency bump or a narrow dated exception) and is not part of T19b. Resolved by PR #88 (node-forge 1.4.3, merged as `47525dc`), which is merged into this branch.
 
 ## T19a (merged as `393726f`)
 
