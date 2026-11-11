@@ -102,6 +102,7 @@ def test_migration_is_idempotent_and_preserves_stable_ids(tmp_path):
             "archive_backfill_repositories",
             "archive_backfill_pages",
             "archive_backfill_state",
+            "archive_sweep_state",
         }
     with store.connect(write=True) as db:
         add_repository(db)
@@ -135,6 +136,7 @@ def test_migration_is_idempotent_and_preserves_stable_ids(tmp_path):
             "archive_backfill_repositories",
             "archive_backfill_pages",
             "archive_backfill_state",
+            "archive_sweep_state",
         }
 
 
