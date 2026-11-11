@@ -70,7 +70,7 @@ class Restic:
         env["RESTIC_REPOSITORY"] = self.repository
         env["RESTIC_PASSWORD_FILE"] = self.password_file
         try:
-            result = self._run(  # nosec B603 - fixed argv, configured binary
+            result = self._run(
                 [self.binary, *args],
                 env=env,
                 cwd=cwd,
@@ -123,7 +123,7 @@ def _catalogue_path(connect):
     return Path(path)
 
 
-def _check_destination(settings, catalogue, restic, device):
+def _check_destination(settings, catalogue, content_root, restic, device):
     if (
         not settings.archive_backup_repository
         or not settings.archive_backup_password_file
@@ -139,6 +139,10 @@ def _check_destination(settings, catalogue, restic, device):
     if os.name == "posix" and info.st_mode & 0o077:
         raise BackupError("backup password file must be private (0600)")
     repository = Path(settings.archive_backup_repository)
+    resolved = repository.expanduser().resolve()
+    for private in (catalogue.parent.resolve(), Path(content_root).resolve()):
+        if resolved == private or private in resolved.parents:
+            raise BackupError("backup repository must be outside the archive tree")
     if not repository.is_dir():
         # Never created here: only the owner-approved drive may hold backups.
         raise BackupError("backup repository does not exist; initialise it first")
@@ -182,7 +186,7 @@ def export_backup(
     """Create one encrypted restic snapshot and expire old ones; return a summary."""
     restic = restic or Restic.from_settings(settings)
     catalogue = _catalogue_path(connect)
-    _check_destination(settings, catalogue, restic, device)
+    _check_destination(settings, catalogue, content.root, restic, device)
     staging = catalogue.parent / f"backup-staging-{uuid.uuid4().hex}"
     staging.mkdir(mode=0o700)
     try:
