@@ -3,7 +3,8 @@
 import json
 import sqlite3
 import time
-from threading import Lock
+from concurrent.futures import ThreadPoolExecutor, wait
+from threading import Event, Lock
 from types import SimpleNamespace
 
 import pytest
@@ -564,3 +565,71 @@ def test_runtime_still_refuses_without_the_archive_reader(monkeypatch):
     with pytest.raises(HybridUnavailable):
         runtime.target()
     assert loads == []
+
+
+def test_cold_build_waiters_leave_pool_workers_free(monkeypatch):
+    runtime = HybridRuntime(Settings(_env_file=None), provider=None)
+    entered, release = Event(), Event()
+    target = SimpleNamespace(archive_online=True)
+    builds = []
+
+    def build():
+        builds.append(1)
+        entered.set()
+        assert release.wait(5), "test must release the builder"
+        return target
+
+    monkeypatch.setattr(runtime, "_build", build)
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        builder = pool.submit(runtime.target)
+        try:
+            assert entered.wait(2)
+            waiters = [pool.submit(runtime.target) for _ in range(4)]
+            _, pending = wait(waiters, timeout=1)
+            assert not pending, f"{len(pending)} waiters still occupy pool workers"
+            for waiter in waiters:
+                with pytest.raises(TimeoutError):
+                    waiter.result()
+            assert builds == [1]
+            assert not builder.done()
+            assert (
+                pool.submit(lambda: "pool available").result(timeout=1)
+                == "pool available"
+            )
+        finally:
+            release.set()
+        assert builder.result(timeout=2) is target
+        assert runtime.target() is target
+        assert builds == [1]
+        assert runtime._build_lock.acquire(blocking=False)
+        runtime._build_lock.release()
+    assert all(not thread.is_alive() for thread in pool._threads)
+
+
+@pytest.mark.parametrize("failure", [HybridUnavailable("missing"), ValueError("bad")])
+def test_failed_build_releases_lock_and_retries_after_backoff(monkeypatch, failure):
+    clock = [0.0]
+    runtime = HybridRuntime(
+        Settings(_env_file=None), provider=None, now=lambda: clock[0]
+    )
+    target = SimpleNamespace(archive_online=True)
+    builds = []
+
+    def build():
+        builds.append(1)
+        if len(builds) == 1:
+            raise failure
+        return target
+
+    monkeypatch.setattr(runtime, "_build", build)
+    with pytest.raises(HybridUnavailable):
+        runtime.target()
+    assert runtime._build_lock.acquire(blocking=False)
+    runtime._build_lock.release()
+    with pytest.raises(HybridUnavailable):
+        runtime.target()
+    assert builds == [1]
+    clock[0] = runtime.settings.hybrid_build_retry_seconds
+    assert runtime.target() is target
+    assert runtime.target() is target
+    assert builds == [1, 1]
