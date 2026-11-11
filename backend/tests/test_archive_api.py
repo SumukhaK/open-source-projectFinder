@@ -1,5 +1,6 @@
 """T15: authenticated hybrid v1 search and sanitized archive status."""
 
+import asyncio
 import json
 import threading
 import time
@@ -13,7 +14,7 @@ from app.core.store import digest
 from app.main import create_app
 from app.services.eligibility import ArchiveEvidence, EligibilityResult
 from app.services.fused_cursor import HybridPager
-from app.services.hybrid_runtime import FusedRevalidator
+from app.services.hybrid_runtime import FusedRevalidator, HybridRuntime
 from app.services.hybrid_search import BoundedExecutor, HybridSearchResult
 from app.services.rank_fusion import (
     ArchiveCard,
@@ -762,3 +763,64 @@ def test_status_requires_auth_and_returns_the_sanitized_runtime_view(serve):
         assert response.json() == status
         assert "path" not in response.text.lower()
         assert "token" not in response.text.lower()
+
+
+def test_concurrent_cold_build_requests_return_starting_before_build_finishes(
+    serve, monkeypatch
+):
+    runtime = HybridRuntime(Settings(_env_file=None), provider=None)
+    entered, release = threading.Event(), threading.Event()
+    target = FakeRuntime(pager(FakeService(result([card(1, 101)])))).target()
+    target.archive_online = True
+    builds = []
+
+    def build():
+        builds.append(1)
+        entered.set()
+        assert release.wait(10), "test must release the builder"
+        return target
+
+    monkeypatch.setattr(runtime, "_build", build)
+
+    async def requests(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+
+            async def search():
+                return await client.post(
+                    "/v1/projects/search", headers=HEADERS, json={"idea": IDEA}
+                )
+
+            builder = asyncio.create_task(search())
+            waiters = []
+            try:
+                assert await asyncio.to_thread(entered.wait, 2)
+                waiters = [asyncio.create_task(search()) for _ in range(8)]
+                done, pending = await asyncio.wait(waiters, timeout=2)
+                assert not pending, (
+                    "waiters must return before the 5-second build timeout"
+                )
+                for task in done:
+                    response = task.result()
+                    assert response.status_code == 503
+                    assert response.json()["detail"] == {
+                        "code": "SEARCH_UNAVAILABLE",
+                        "message": "Search is starting. Try again shortly.",
+                        "retryable": True,
+                    }
+                    assert "Retry-After" not in response.headers
+                assert builds == [1]
+                assert not builder.done()
+            finally:
+                release.set()
+                await asyncio.gather(builder, *waiters)
+            assert (await search()).status_code == 200
+            assert builds == [1]
+
+    try:
+        with serve(runtime, hybrid_build_wait_seconds=5) as (_, app):
+            asyncio.run(requests(app))
+    finally:
+        release.set()
+        target.executor.close()

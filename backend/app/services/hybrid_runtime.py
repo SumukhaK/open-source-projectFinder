@@ -289,13 +289,11 @@ class HybridRuntime:
                 return fallback
             if fallback is None and self._now() < self._failure_until:
                 raise HybridUnavailable("hybrid search is unavailable")
-        if fallback is not None:
-            # Keep serving live-only results while one request retries the
-            # full stack instead of queueing everyone behind a slow connect.
-            if not self._build_lock.acquire(blocking=False):
+        # Never hold a pool worker waiting for another request's build.
+        if not self._build_lock.acquire(blocking=False):
+            if fallback is not None:
                 return fallback
-        else:
-            self._build_lock.acquire()
+            raise TimeoutError("hybrid search is starting")
         try:
             with self._lock:
                 if self._target is not None:

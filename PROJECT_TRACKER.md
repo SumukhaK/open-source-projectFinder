@@ -1648,3 +1648,7 @@ U10 implementation request (verbatim):
 ## T30 U1-U3 Milvus adapter fixes merged — 2026-11-11
 
 [PR #90](https://github.com/SumukhaK/open-source-projectFinder/pull/90) was reviewed by Claude and squash-merged as `f4983e7`. The adapter now derives the chunk-ordinal bound from `ARCHIVE_MAX_CHUNKS` and the vector size from the embedding manifest, and `close()` is safe without a client. The generation fingerprint is unchanged, so no re-ingest is needed. Open T30 backlog: U4-U9, U11, U12 and U15-U18.
+
+## T30 U11 build waiters merged — 2026-11-11
+
+[PR #93](https://github.com/SumukhaK/open-source-projectFinder/pull/93) was reviewed by Claude and squash-merged as `b0a1981`. Requests that arrive during the lazy hybrid build no longer hold a server thread on the build lock; they get the live-only fallback or the retryable "Search is starting" 503 at once. Open T30 backlog: U4-U9, U12 and U15-U18.
