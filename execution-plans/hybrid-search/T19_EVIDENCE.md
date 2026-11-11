@@ -95,6 +95,7 @@ Changed production files: `backend/app/services/archive_content.py`, `backend/ap
 - The summary is operator JSON, not an API/status route. T23 owns host scheduling and operator status.
 - `payload_version: 2` stores selected scalar fields, not the full GitHub payload. A legacy v1 row pays one full read and is upgraded; a corrupt/inconsistent row is treated the same way.
 - No parallel workers, token rotation, `pushed_at`-only hash, search-absence deletion or whole-corpus re-embedding was added. Schema version remains 6.
+- CI at `615dec1`: Backend quality, Mobile quality and E2E, Secret scan and GitGuardian passed. Dependency audit and the aggregate Quality gate failed on four npm advisories for node-forge 1.4.2 (GHSA-6889-vf6x-f3g5, GHSA-w4xr-hqv8-ch44, GHSA-6cv4-p8m7-4r25, GHSA-j8rw-jp99-435v). This diff changes no JavaScript: `mobile/package-lock.json`, `.ci/quality-policy.json`, `scripts/quality.py` and `.github/workflows/quality.yml` are identical to `origin/main`, which was green on 2026-11-10, so the advisory data changed after that run. No exception was added and no gate was lowered; it needs an owner decision (dependency bump or a narrow dated exception) and is not part of T19b.
 
 ## T19a (merged as `393726f`)
 
