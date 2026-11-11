@@ -1,6 +1,6 @@
 # T19: Refresh weekly with content-aware change detection
 
-Status: T19a merged as `393726f` (PR #83). T19b is **awaiting review** on `codex/hybrid-t19b-refresh`. Review/merge evidence belongs in [TRACKER](../TRACKER.md) and [T19 evidence](../T19_EVIDENCE.md).
+Status: T19a merged as `393726f` (PR #83). T19b merged as `43f5db9` (PR #87). Review/merge evidence belongs in [TRACKER](../TRACKER.md) and [T19 evidence](../T19_EVIDENCE.md).
 
 | Control | Value |
 | --- | --- |
