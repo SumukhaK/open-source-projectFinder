@@ -1652,3 +1652,7 @@ U10 implementation request (verbatim):
 ## T30 U11 build waiters merged — 2026-11-11
 
 [PR #93](https://github.com/SumukhaK/open-source-projectFinder/pull/93) was reviewed by Claude and squash-merged as `b0a1981`. Requests that arrive during the lazy hybrid build no longer hold a server thread on the build lock; they get the live-only fallback or the retryable "Search is starting" 503 at once. Open T30 backlog: U4-U9, U12 and U15-U18.
+
+## T20 suppression and retirement merged — 2026-11-11
+
+[PR #92](https://github.com/SumukhaK/open-source-projectFinder/pull/92) was squash-merged as `a454b98` after an independent review and one round of fixes (retention under the writer lease, keeping the refresh runs T19b depends on, and rotating daily re-checks). The `retire` sweep hides unsafe repositories at once, purges their local text, rows and vectors in bounded steps, keeps a content-free suppression ledger outside backups, and applies 365-day expiry plus 30/90-day retention. T21 (backups) is next and needs the owner to approve installing restic and to connect the external drive.
