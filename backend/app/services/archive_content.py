@@ -239,6 +239,25 @@ def _generation(db, repo_id, revision):
     return (used or 0) + 1
 
 
+def upsert_repository_metadata(db, *, metadata, payload=None):
+    """Store the bounded scalar metadata used for status and conditional reads.
+
+    Stars and other scalar facts are updated in place so a metadata-only change
+    never requires re-embedding semantic content.
+    """
+    if not isinstance(metadata, RepositoryMetadata):
+        raise TypeError("metadata must be RepositoryMetadata")
+    text = _metadata_json(metadata, payload)
+    if len(text.encode("utf-8")) > ARCHIVE_METADATA_MAX_BYTES:
+        raise RevisionIdentityError("repository metadata exceeds its byte budget")
+    db.execute(
+        "INSERT INTO archive_repositories (repo_id, full_name, metadata_json) "
+        "VALUES (?, ?, ?) ON CONFLICT(repo_id) DO UPDATE SET "
+        "full_name=excluded.full_name, metadata_json=excluded.metadata_json",
+        (metadata.repo_id, metadata.full_name, text),
+    )
+
+
 def persist_revision(
     db,
     content,
@@ -250,6 +269,7 @@ def persist_revision(
     source_ref=None,
     source_truncated=False,
     expected_repo_id=None,
+    metadata_payload=None,
 ):
     """Write files first, then insert a pending catalogue revision atomically.
 
@@ -268,6 +288,8 @@ def persist_revision(
         raise TypeError("readme must be ReadmeDocument or None")
     if type(source_truncated) is not bool:
         raise RevisionIdentityError("source_truncated must be a boolean")
+    if metadata_payload is not None and not isinstance(metadata_payload, dict):
+        raise RevisionIdentityError("metadata payload must be an object or None")
     if not db.in_transaction:
         raise RuntimeError("persist_revision requires an open write transaction")
     if db.execute("PRAGMA user_version").fetchone()[0] < 2:
@@ -351,9 +373,7 @@ def persist_revision(
     normalized = _normalized_bytes(prepared)
     if len(normalized) > ARCHIVE_CONTENT_MAX_BYTES:
         raise ContentTooLarge("normalized content exceeds the archive storage bound")
-    metadata_json = _metadata_json(metadata)
-    if len(metadata_json.encode("utf-8")) > ARCHIVE_METADATA_MAX_BYTES:
-        raise RevisionIdentityError("repository metadata exceeds its byte budget")
+    upsert_repository_metadata(db, metadata=metadata, payload=metadata_payload)
 
     raw_sha = hashlib.sha256(raw).hexdigest() if raw is not None else None
     raw_path = content.path_for("raw", raw_sha) if raw is not None else None
@@ -421,11 +441,6 @@ def persist_revision(
         _, made = content._ensure("normalized", normalized)
         if made:
             created.append(normalized_path)
-        db.execute(
-            "INSERT INTO archive_repositories (repo_id, full_name, metadata_json) "
-            "VALUES (?, ?, ?) ON CONFLICT(repo_id) DO NOTHING",
-            (repo_id, metadata.full_name, metadata_json),
-        )
         db.execute(
             "INSERT INTO archive_documents ("
             "repo_id, revision, raw_path, raw_sha256, normalized_path, "
@@ -501,8 +516,8 @@ def _normalized_bytes(prepared):
     ).encode("utf-8")
 
 
-def _metadata_json(metadata):
-    payload = {
+def _metadata_json(metadata, payload=None):
+    stored = {
         "default_branch": metadata.default_branch,
         "visibility": metadata.visibility,
         "archived": metadata.archived,
@@ -510,7 +525,33 @@ def _metadata_json(metadata):
         "license_spdx": metadata.license_spdx,
         "pushed_at": metadata.pushed_at,
     }
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    if isinstance(payload, dict):
+        topics = payload.get("topics")
+        if not isinstance(topics, list) or any(
+            not isinstance(item, str) for item in topics
+        ):
+            topics = []
+        stars = payload.get("stargazers_count")
+        if type(stars) is not int or stars < 0:
+            stars = None
+        stored.update(
+            {
+                "payload_version": 2,
+                "id": metadata.repo_id,
+                "full_name": metadata.full_name,
+                "description": _optional_text(payload.get("description")),
+                "topics": topics,
+                "language": _optional_text(payload.get("language")),
+                "stargazers_count": stars,
+                "metadata_etag": metadata.response.etag,
+                "metadata_last_modified": metadata.response.last_modified,
+            }
+        )
+    return json.dumps(stored, sort_keys=True, separators=(",", ":"))
+
+
+def _optional_text(value):
+    return value if isinstance(value, str) else None
 
 
 def _git_blob_sha(data):

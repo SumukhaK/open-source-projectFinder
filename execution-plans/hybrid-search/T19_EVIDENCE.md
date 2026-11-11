@@ -1,14 +1,104 @@
 # T19 weekly refresh
 
-Status: **T19a awaiting review.** This PR delivers only the T17 follow-up safe generation protocol. The T19b manual `refresh` worker command (known-ID reconciliation, recent discovery, rotating full-window sweep, conditional reads and status) is deliberately not started.
+Status: **T19b awaiting review.** T19a (safe generation protocol) is merged as `393726f` (PR #83). T19b adds the manual `refresh` worker command: known-ID reconciliation, recent discovery, a rotating full-window sweep, conditional reads, metadata-only scalar updates and real attempt/complete status.
 
-- Branch: `codex/hybrid-t19-weekly-refresh`
-- Base: `7fec65a322cecac587ec8722eb1774155e191c76` (`origin/main`, T18 Phase B evidence)
-- PR: [#83](https://github.com/SumukhaK/open-source-projectFinder/pull/83) (open, not merged)
-- Verified tree: merge commit `e56bd441ae5f08d8c428171c9518afeb1d9c959c` (merges `origin/main` `d90fab154c8b8ddd38bbfd29e4cf5f5578dd12f0`, PR #82). The full-suite, coverage, ruff and bandit results below were re-run on that merged tree.
-- Worktree: `E:\OpenSourceProjectFinder-t19` (the unrelated dirty main checkout was not used)
+- Branch: `codex/hybrid-t19b-refresh`
+- Base: `9065f660da3b4182b5086644e9e81e0db6ec4f0f` (`origin/main`, T19a merge). Main then advanced to `71c02edd` (T30 U10, PR #85); the branch was rebased onto it with only the tracker history resolved, and the full verification below was re-run on the rebased tree.
+- PR: [#87](https://github.com/SumukhaK/open-source-projectFinder/pull/87) (open, not merged)
+- Worktree: `E:\OpenSourceProjectFinder-t19b` (the unrelated dirty main checkout was not used)
 
-## Scope delivered (T19a only)
+## T19b scope delivered
+
+- `backend/app/workers/refresh.py` adds one manual `Refresh` run and `python -m app.workers.archive refresh [--sweep-buckets N]`. The run identity is the most recent Saturday 22:00 UTC boundary, so a stopped or partial run resumes in place; running the same boundary again after completion is idempotent.
+- Known IDs: every row in `archive_repositories` is reconciled by numeric ID every run, even without a new push.
+- Recent discovery: search covers `[last completed boundary - 48h, due]`; the first run falls back to `[due - 7 days - 48h, due]`.
+- Sweep: one 28-day bucket of the rolling `[due - 365 days, due]` window per run (default), with `--sweep-buckets` 1-14. The bucket index advances only when the run completes, so a partial run does not skip coverage.
+- Conditional reads: `load_cached_repository` rebuilds ETag/Last-Modified state only from metadata written as `payload_version: 2`. A 304 metadata/README response reuses the stored body; a README 304 never fetches the blob. Legacy or inconsistent metadata falls back to a full read and is upgraded on the next unchanged pass.
+- Metadata-only changes: `upsert_repository_metadata` updates `full_name`, description, topics, language, stars, `pushed_at`, licence/visibility flags and validators in place. Stars or other non-semantic scalar changes make no embedding calls; a model/chunker/semantic change still re-embeds.
+- Removed README: a 404 after verified metadata publishes the metadata-only overview and retires the old README chunks through the existing safe publication/reconcile path.
+- Superseded revisions: `RevisionSuperseded` is a typed `PublicationContractError`. A refresh catches it, runs one bounded `reconcile`, retries the repository once, and otherwise leaves the row `pending` with reason `superseded` and stops the run `incomplete`/partial. It never reports the run as a `dependency` failure for this case.
+- Generation-1 guard (T19a review U19): `with_generation` always recomputes chunk identities, including generation 1, so staging salted chunks against a generation-1 document raises `PublicationContractError`.
+- Status: the JSON summary exposes `last_attempt_at`, `last_complete_at`, `last_completed_boundary`, `coverage` (`complete`/`partial`), `stop_reason`, known/discovered/repository counts, published/unchanged/failed/pending counts, skipped reasons, bytes and request buckets. A resumed run retries repositories left `failed` by an earlier attempt; a completed boundary is not re-run.
+- No scheduler in Uvicorn, no `pushed_at`-only content hash, no whole-corpus re-embedding, no search-absence deletion, no token rotation, no parallel workers, no real GitHub/Milvus/model/Docker run and no new migration.
+
+## T19b RED evidence
+
+Platform: WSL, `/home/sumukha/reporadar-worker-venv/bin/python`, Python 3.11.17, SQLite 3.53.1. Fake HTTP, fake model and fake Milvus only.
+
+1. Generation-1 guard. Temporarily restoring the old `if generation == 1: return prepared` short-circuit:
+
+```sh
+cd /mnt/e/OpenSourceProjectFinder-t19b
+/home/sumukha/reporadar-worker-venv/bin/python -m pytest \
+  backend/tests/test_archive_publication.py -q -k staging_rejects_chunks_salted
+# exit 1: Failed: DID NOT RAISE PublicationContractError
+```
+
+After restoring the recompute, the same selection passed (5 passed with the superseded tests).
+
+2. Superseded retry. Temporarily removing the `except RevisionSuperseded` branch:
+
+```sh
+/home/sumukha/reporadar-worker-venv/bin/python -m pytest \
+  backend/tests/test_archive_refresh.py -q -k superseded
+# exit 1: 2 failed; stop_reason was "dependency" instead of "finished"/"incomplete"
+```
+
+After restoring the branch, both tests pass.
+
+3. Resume/idempotency. Before the failed-row retry and completed-run guard:
+
+```sh
+/home/sumukha/reporadar-worker-venv/bin/python -m pytest \
+  backend/tests/test_archive_refresh.py -q -k "resume_retries or idempotent"
+# exit 1: test_resume_retries... failed (the failed row was not retried);
+# test_second_manual_run... raised ValueError: run is missing or completed
+```
+
+After the fixes, both pass.
+
+## T19b GREEN and full verification
+
+Platform: WSL, `/home/sumukha/reporadar-worker-venv/bin/python`, Python 3.11.17, SQLite 3.53.1. Fake HTTP, fake model and fake Milvus only. The WSL VM initially refused to start with `ERROR_NO_SYSTEM_RESOURCES` (T30 U18); verification used a temporary 1 GB WSL memory limit, and the owner's 6 GB/2 GB config was restored afterwards.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Focused archive suites | `python -m pytest backend/tests/test_archive_refresh.py backend/tests/test_archive_worker.py backend/tests/test_archive_content.py backend/tests/test_archive_publication.py backend/tests/test_archive_index.py backend/tests/test_archive_backfill.py -q` | exit 0: `276 passed` |
+| Full backend suite | `python -m pytest backend/tests -q` | exit 0: `1134 passed, 2 skipped` |
+| Full backend + scripts suite with coverage | `python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch --cov-report=json:reports/backend-coverage.json -q` | exit 0: `1171 passed, 2 skipped` |
+| Coverage gate | `python scripts/quality.py coverage reports/backend-coverage.json` | exit 0: `93.3% combined; 90.2% branches` (gate: 90% combined, 80% branches) |
+| Ruff check | `python -m ruff check backend scripts` | exit 0: `All checks passed!` |
+| Ruff format | `python -m ruff format --check backend scripts` | exit 0: `78 files already formatted` |
+| Bandit | `python -m bandit -r backend/app -f json -o reports/bandit.json` | exit 0: 0 findings |
+| Whitespace check | native Windows `git diff --check` | exit 0 |
+| Windows cross-check | full backend suite on the available Python 3.11.9 / SQLite 3.45.1 venv | exit 0: `1069 passed, 67 skipped` (not the required worker runtime; the WSL result above is authoritative) |
+
+Changed production files: `backend/app/services/archive_content.py`, `backend/app/services/archive_index.py`, `backend/app/services/archive_publication.py`, `backend/app/workers/archive.py` and `backend/app/workers/refresh.py` (five files). Tests and documentation are additional.
+
+## T19b operator and rollback notes
+
+- Run from `backend/` with the WSL worker interpreter, private `ARCHIVE_GITHUB_TOKEN`/`MILVUS_TOKEN` and `HF_HUB_OFFLINE=1`:
+
+```sh
+/home/sumukha/reporadar-worker-venv/bin/python -m app.workers.archive refresh --sweep-buckets 1
+```
+
+- The command is manual only; no scheduler or API route starts it. A second invocation at the same due boundary resumes the same run. A completed boundary returns the stored summary instead of reprocessing.
+- `coverage: "partial"` with `stop_reason` (`quota`, `rate_limit`, `bytes`, `disk`, `credential`, `dependency`, `partition`, `incomplete`) means the run is unfinished. `last_completed_boundary` and the sweep index advance only on `finished`; retry later with the same command. `retry_at` is a Unix timestamp from the server's reset header or a bounded fallback.
+- Rollback: revert the worker code; there is no migration. Refresh rows/state live in the existing additive T17/T18 tables, and `payload_version: 2` metadata is an additive JSON object. Older code ignores the extra metadata keys and never uses the conditional-read path. Do not delete catalogue/vector rows to force a refresh; retry by numeric ID or leave the boundary incomplete.
+- No real refresh was run in this task. A real run needs the private catalogue, GPU Milvus, the cached E5 snapshot, the dedicated worker credential and owner approval; inspect the JSON summary and `archive_runs`/`archive_backfill_repositories` before accepting coverage.
+
+## T19b limits and deferred work
+
+- Conditional 304/ETag reuse, README removal, star-only updates and the sweep boundaries are fake-tested. No real GitHub request, Milvus write, model load or full refresh was performed.
+- The refresh does not delete stale, private, deleted, suppressed or expired repositories from the catalogue; T20 owns retention/removal. A known ID that becomes ineligible is reported as `skipped` and remains until that task.
+- The summary is operator JSON, not an API/status route. T23 owns host scheduling and operator status.
+- `payload_version: 2` stores selected scalar fields, not the full GitHub payload. A legacy v1 row pays one full read and is upgraded; a corrupt/inconsistent row is treated the same way.
+- No parallel workers, token rotation, `pushed_at`-only hash, search-absence deletion or whole-corpus re-embedding was added. Schema version remains 6.
+
+## T19a (merged as `393726f`)
+
+### T19a scope delivered
 
 - Chunk IDs now carry a per-publication generation. `persist_revision` reuses the generation of an existing document row or allocates `max(generation over that repository's documents and tasks) + 1`; `archive_index.with_generation` salts the chunk identity hash only for generations above 1.
 - Generation 1 keeps the original unsalted IDs. Existing catalogues, active revisions and pending replays therefore remain valid without re-embedding or rewriting vectors.
@@ -18,7 +108,7 @@ Status: **T19a awaiting review.** This PR delivers only the T17 follow-up safe g
 - Migration 6 is additive: it appends `generation INTEGER NOT NULL DEFAULT 1 CHECK (generation >= 1)` to `archive_documents` and `archive_tasks`. Existing rows become generation 1. Previous code refuses schema 6 exactly as it refuses any newer version.
 - No scheduler, refresh command, GitHub request, Milvus start, model load, token rotation or parallel worker was added.
 
-## RED / GREEN evidence
+### T19a RED / GREEN evidence
 
 Platform: WSL, `/home/sumukha/reporadar-worker-venv/bin/python`, Python 3.11.17, SQLite 3.53.1. Fake HTTP, fake model and fake Milvus only.
 
@@ -59,7 +149,7 @@ GREEN (all archive, backfill and hybrid-runtime suites):
 # exit 0: 580 passed, 1 skipped
 ```
 
-## Full verification
+### T19a full verification
 
 | Check | Command | Result |
 | --- | --- | --- |
@@ -74,14 +164,14 @@ Changed production files: `backend/app/core/archive_store.py`, `backend/app/serv
 
 Required GitHub CI passed on the pushed branch at `2f1c1986cbaf2c369cf9f90a63ab8cf5c41d797b` ([CI 42780740297](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/42780740297)): Backend quality, Quality gate, Mobile quality and E2E, Dependency audit, Secret scan and GitGuardian all passed. The commit after it is documentation-only.
 
-## Migration compatibility evidence
+### T19a migration compatibility evidence
 
 - `test_existing_v5_catalogue_upgrades_to_v6_with_generation_defaults` builds a v5 catalogue, inserts a repository and document, then opens it with the new code. It asserts `user_version = 6`, `generation = 1` for the existing document, and the new `archive_tasks.generation` column.
 - `test_previous_code_refuses_the_v6_generation_schema` monkeypatches the migration tuple back to the five v5 migrations and confirms the old code refuses a v6 catalogue with `Archive catalogue schema version is newer than this code`, leaving the file bytes unchanged.
 - `test_migration_is_idempotent_and_preserves_stable_ids`, the v1→current upgrade test, the failed-migration rollback test and the existing future-schema refusal test all pass at schema 6.
 - The real production migration was not run on the owner's laptop in this task. The migration is exercised by the SQLite catalogue tests on the WSL worker runtime; no real catalogue was opened, copied or changed.
 
-## Operator and rollback notes
+### T19a operator and rollback notes
 
 - Deploy the new worker code with the existing private catalogue. `ArchiveStore` applies migration 6 automatically on the first worker connection; stop other catalogue consumers first and take a consistent SQLite backup as for earlier migrations.
 - Migration 6 is forward-only. Reverting only the code after migration makes the older code refuse schema 6, so keep the new code or restore a pre-upgrade consistent snapshot. Do not edit migration 1, delete the catalogue or move a live WAL database to bypass the version check.
@@ -89,9 +179,9 @@ Required GitHub CI passed on the pushed branch at `2f1c1986cbaf2c369cf9f90a63ab8
 - If a republish is interrupted, retry the same numeric repository ID. The persisted document row keeps its allocated generation, so the replay is idempotent. A same-generation `cleanup` tombstone still refuses reuse; investigate and complete reconciliation before forcing anything.
 - No real refresh run, Docker/Milvus start, model load or GitHub request was performed. The reviewer runs any real refresh on the laptop.
 
-## Limits and deferred work
+### T19a limits and deferred work
 
-- T19b is not implemented: there is no `refresh` command, no known-ID reconciliation loop, no recent-discovery boundary, no rotating full-window sweep, no conditional ETag/If-None-Match reuse, no metadata-only star update, no removed-README handling and no last-attempt/last-complete status. Those remain the next PR.
-- A returning revision is re-embedded in T19a because its semantic hash changed from the intervening revision. Content-aware reuse and zero-embedding 304 handling belong to T19b.
-- The `WriterBusy` misleading “Archive storage failed” message from the T18 real run is unchanged (T30 item); T19a does not share that refresh path.
+- T19b (this PR) adds the `refresh` command, known-ID reconciliation, recent discovery, the rotating sweep, conditional reads, metadata-only star updates, removed-README handling and attempt/complete status. The T19a statements below describe the earlier PR only.
+- A returning A→B→A revision still re-embeds because its semantic hash changed from the intervening revision. T19b adds zero-embedding reuse for unchanged 304 responses; it does not reuse vectors across different semantic revisions.
+- The `WriterBusy` misleading “Archive storage failed” message from the T18 real run is unchanged (T30 item); the refresh path uses the same run/lease store.
 - `stars:` band splits remain fake-tested only; no real GitHub coverage is claimed.

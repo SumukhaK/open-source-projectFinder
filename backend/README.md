@@ -293,6 +293,16 @@ A retired revision keeps a `cleanup` tombstone in `archive_tasks` because a time
 
 Operator limits: no bulk crawl, scheduler, public ingestion API or corpus acquisition before policy approval. Run it only against an explicitly approved public repository and licence, with `HF_HUB_OFFLINE=1` and private `ARCHIVE_GITHUB_TOKEN`/`MILVUS_TOKEN`. Before activation, stopping the command leaves the previous published revision serving; after activation, stopping it does not undo the new revision. Retry failures by the same numeric ID without deleting catalogue/content/vector data. Evidence: [T09 evidence](../execution-plans/hybrid-search/T09_EVIDENCE.md).
 
+## Manual weekly refresh (T19b, awaiting review)
+
+`python -m app.workers.archive refresh [--sweep-buckets N]` is one manual, serial weekly refresh. It is not an API route or scheduler. The run identity is the most recent Saturday 22:00 UTC boundary, so re-running the same boundary resumes unfinished work and a completed boundary returns its stored summary without reprocessing. Every known numeric ID is reconciled; recent discovery covers the last completed boundary minus 48 hours (the first run uses the preceding week), and one 28-day bucket of the rolling 365-day window is swept per run by default. `--sweep-buckets` accepts 1-14; the bucket index advances only after a completed run, so partial runs do not skip coverage.
+
+Metadata and README reads are conditional. The catalogue stores `payload_version: 2` with ETag/Last-Modified validators, description/topics/language, stars and the existing scalar fields. A `304` reuses the cached body, and a README `304` never fetches the blob. Legacy metadata rows fall back to one full read and are upgraded. Unchanged semantic content makes zero embedding calls; a star-only or other scalar change updates metadata in place without embedding. A changed description/topics, model revision or chunker version re-embeds; a removed README publishes the metadata-only overview and retires the old chunks through the existing safe publication path.
+
+Output is one sanitized JSON summary: `coverage` (`complete`/`partial`), `stop_reason`, `last_attempt_at`, `last_complete_at`, `last_completed_boundary`, known/discovered/repository counts, published/unchanged/failed/pending counts, skipped reasons, bytes and separate search/REST request counts. `last_completed_boundary` and the sweep index advance only on `finished`; quota/rate-limit pauses store a server-derived `retry_at`. A revision superseded during publication triggers one bounded reconcile and retry; if it still cannot publish, the repository stays `pending` with reason `superseded` and the run is partial, never a `dependency` failure.
+
+Run it from `backend/` with the WSL worker interpreter, private `ARCHIVE_GITHUB_TOKEN`/`MILVUS_TOKEN` and `HF_HUB_OFFLINE=1`. Rollback is a code revert: there is no migration, refresh rows use the existing additive run/state tables, and older code ignores the extra metadata keys. No real refresh was run in T19b; T20 owns retention/removal and T23 owns host scheduling. See [T19 evidence](../execution-plans/hybrid-search/T19_EVIDENCE.md).
+
 ## API
 
 - `POST /auth/github/start`: app PKCE challenge and exact allowlisted return URI; returns GitHub authorization URL and state.

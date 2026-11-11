@@ -40,7 +40,8 @@ def prepare(adapter, readme=None, **changes):
 
 def test_with_generation_salts_chunk_ids_but_keeps_the_revision(adapter):
     prepared = prepare(adapter)
-    assert with_generation(prepared, 1) is prepared
+    assert with_generation(prepared, 1) == prepared
+    assert with_generation(prepared, 1).chunks == prepared.chunks
     salted = with_generation(prepared, 2)
     assert salted.semantic_hash == prepared.semantic_hash
     assert salted.chunks != prepared.chunks

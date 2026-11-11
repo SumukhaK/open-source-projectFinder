@@ -22,6 +22,8 @@ from app.core.config import ARCHIVE_BACKFILL_LICENSES, MILVUS_TEXT_BYTES, Settin
 from app.integrations.archive_github import (
     ArchiveGitHubError,
     ArchiveGitHubReader,
+    ArchiveResponse,
+    ReadmeDocument,
     RepositoryMetadata,
 )
 from app.integrations.milvus import (
@@ -35,6 +37,7 @@ from app.services.archive_content import (
     ArchiveContentStore,
     ContentError,
     persist_revision,
+    upsert_repository_metadata,
 )
 from app.services.archive_index import (
     PreparedRepository,
@@ -75,6 +78,115 @@ class IngestRuntime:
     vectors: MilvusAdapter
     content: ArchiveContentStore
     connect: Callable
+
+
+@dataclass(frozen=True)
+class CachedRepository:
+    """Validated conditional-read state for one known repository."""
+
+    metadata: RepositoryMetadata
+    readme: ReadmeDocument | None
+    readme_raw: bytes | None
+
+
+def load_cached_repository(connect, content, repo_id):
+    """Rebuild conditional-read state from the catalogue, or return None.
+
+    Only metadata written by this version (payload version 2) is trusted. A
+    legacy or inconsistent row falls back to unconditional acquisition.
+    """
+    if type(repo_id) is not int or repo_id <= 0:
+        return None
+    with connect() as db:
+        repo = db.execute(
+            "SELECT full_name, metadata_json FROM archive_repositories WHERE repo_id=?",
+            (repo_id,),
+        ).fetchone()
+        if repo is None:
+            return None
+        document = db.execute(
+            "SELECT d.raw_path, d.raw_sha256, d.blob_sha, d.etag, "
+            "d.last_modified, d.source_endpoint FROM archive_repositories AS r "
+            "JOIN archive_documents AS d "
+            "ON d.repo_id = r.repo_id AND d.revision = r.active_revision "
+            "WHERE r.repo_id = ? AND d.state = 'published'",
+            (repo_id,),
+        ).fetchone()
+    try:
+        stored = json.loads(repo["metadata_json"])
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if (
+        not isinstance(stored, dict)
+        or stored.get("payload_version") != 2
+        or stored.get("id") != repo_id
+        or stored.get("full_name") != repo["full_name"]
+    ):
+        return None
+    body = json.dumps(
+        {
+            "id": repo_id,
+            "full_name": stored["full_name"],
+            "description": stored.get("description"),
+            "topics": stored.get("topics") or [],
+            "language": stored.get("language"),
+            "stargazers_count": stored.get("stargazers_count") or 0,
+        }
+    ).encode("utf-8")
+    response = ArchiveResponse(
+        status=200,
+        url=f"https://api.github.com/repositories/{repo_id}",
+        headers={},
+        body=body,
+        request_id=None,
+        etag=stored.get("metadata_etag"),
+        last_modified=stored.get("metadata_last_modified"),
+        retry_at=None,
+        encoded_bytes=len(body),
+        decoded_bytes=len(body),
+    )
+    metadata = RepositoryMetadata(
+        repo_id=repo_id,
+        full_name=stored["full_name"],
+        default_branch=stored.get("default_branch"),
+        visibility=stored.get("visibility"),
+        archived=bool(stored.get("archived")),
+        fork=bool(stored.get("fork")),
+        license_spdx=stored.get("license_spdx"),
+        pushed_at=stored.get("pushed_at"),
+        response=response,
+    )
+    readme = None
+    readme_raw = None
+    if document is not None and document["raw_path"] is not None:
+        if document["blob_sha"] is None or document["raw_sha256"] is None:
+            return None
+        try:
+            readme_raw = content.read(document["raw_path"], document["raw_sha256"])
+        except (ContentError, OSError):
+            return None
+        readme_response = ArchiveResponse(
+            status=200,
+            url=document["source_endpoint"] or response.url,
+            headers={},
+            body=b"",
+            request_id=None,
+            etag=document["etag"],
+            last_modified=document["last_modified"],
+            retry_at=None,
+            encoded_bytes=0,
+            decoded_bytes=0,
+        )
+        readme = ReadmeDocument(
+            repo_id=repo_id,
+            path="README.md",
+            blob_sha=document["blob_sha"],
+            text=None,
+            size=len(readme_raw),
+            inline=False,
+            response=readme_response,
+        )
+    return CachedRepository(metadata=metadata, readme=readme, readme_raw=readme_raw)
 
 
 def _safe_error(error):
@@ -147,10 +259,12 @@ def _check_disk(path, minimum):
         )
 
 
-def ingest_one(runtime, repo_id, *, now=None, lease=None, progress=None):
+def ingest_one(runtime, repo_id, *, now=None, lease=None, progress=None, cached=None):
     """Acquire, prepare, persist and publish one repository; return a summary."""
     if type(repo_id) is not int or not 0 < repo_id < 2**63:
         raise IngestError("repository id must be a positive integer")
+    if cached is not None and not isinstance(cached, CachedRepository):
+        raise IngestError("cached repository state is invalid")
     if lease is not None:
         with runtime.connect() as db:
             check_lease(db, lease)
@@ -160,7 +274,15 @@ def ingest_one(runtime, repo_id, *, now=None, lease=None, progress=None):
     started = time.perf_counter()
 
     step = time.perf_counter()
-    metadata = runtime.reader.fetch_metadata_by_id(repo_id).metadata
+    if cached is None:
+        metadata = runtime.reader.fetch_metadata_by_id(repo_id).metadata
+    else:
+        metadata = runtime.reader.fetch_metadata_by_id(
+            repo_id,
+            etag=cached.metadata.response.etag,
+            last_modified=cached.metadata.response.last_modified,
+            cached=cached.metadata,
+        ).metadata
     if metadata is None or metadata.repo_id != repo_id:
         raise IngestError("numeric repository identity did not match")
     timings["acquire"] = _elapsed(step)
@@ -180,8 +302,26 @@ def ingest_one(runtime, repo_id, *, now=None, lease=None, progress=None):
     )
 
     step = time.perf_counter()
-    readme = runtime.reader.fetch_readme(metadata).readme
-    raw, readme = _readme_bytes(runtime.reader, metadata, readme)
+    if cached is None:
+        readme_result = runtime.reader.fetch_readme(metadata)
+    else:
+        readme_result = runtime.reader.fetch_readme(
+            metadata,
+            etag=cached.readme.response.etag if cached.readme is not None else None,
+            last_modified=(
+                cached.readme.response.last_modified
+                if cached.readme is not None
+                else None
+            ),
+            cached=cached.readme,
+        )
+    readme = readme_result.readme
+    cached_raw = (
+        cached.readme_raw
+        if cached is not None and readme_result.response.status == 304
+        else None
+    )
+    raw, readme = _readme_bytes(runtime.reader, metadata, readme, cached_raw=cached_raw)
     confirmed = runtime.reader.fetch_metadata_by_id(repo_id).metadata
     if (
         confirmed is None
@@ -203,6 +343,10 @@ def ingest_one(runtime, repo_id, *, now=None, lease=None, progress=None):
         "prepared", {"revision": prepared.semantic_hash, "chunks": len(prepared.chunks)}
     )
     if _active_revision(runtime.connect, repo_id) == prepared.semantic_hash:
+        with runtime.connect(write=True) as db:
+            if lease is not None:
+                check_lease(db, lease)
+            upsert_repository_metadata(db, metadata=metadata, payload=payload)
         timings["total"] = _elapsed(started)
         return {
             **summary,
@@ -224,6 +368,7 @@ def ingest_one(runtime, repo_id, *, now=None, lease=None, progress=None):
             prepared=prepared,
             readme=readme,
             raw=raw,
+            metadata_payload=payload,
         )
     prepared = with_generation(prepared, stored.generation)
     timings["persist"] = _elapsed(step)
@@ -321,9 +466,13 @@ def _utc(now):
     return moment.astimezone(timezone.utc)
 
 
-def _readme_bytes(reader, metadata, readme):
+def _readme_bytes(reader, metadata, readme, *, cached_raw=None):
     if readme is None:
         return None, None
+    if cached_raw is not None:
+        if not isinstance(cached_raw, bytes):
+            raise IngestError("cached README content is invalid")
+        return cached_raw, readme
     if readme.text is not None:
         return readme.text.encode("utf-8"), readme
     result = reader.fetch_blob(metadata, readme.blob_sha)
@@ -401,6 +550,14 @@ def _backfill_cap(value):
     return int(value)
 
 
+def _sweep_buckets(value):
+    if not value.isascii() or not value.isdigit() or not 1 <= int(value) <= 14:
+        raise argparse.ArgumentTypeError(
+            "--sweep-buckets must be an integer from 1 through 14"
+        )
+    return int(value)
+
+
 def backfill_license_policy_ok(settings):
     """The approved SPDX set, order-insensitive and without duplicates."""
     values = settings.archive_license_allowlist
@@ -437,13 +594,24 @@ def main(argv=None):
         "backfill", help="Resume the bounded local archive pilot"
     )
     backfill.add_argument("--cap", type=_backfill_cap, default=1000)
+    refresh = commands.add_parser(
+        "refresh", help="Run one manual weekly archive refresh"
+    )
+    refresh.add_argument("--sweep-buckets", type=_sweep_buckets, default=1)
     args = parser.parse_args(argv)
 
     started = time.perf_counter()
     runtime = None
     try:
         settings = Settings()
-        if args.command == "backfill":
+        if args.command == "refresh":
+            runtime = build_runtime(settings)
+            from app.workers.refresh import Refresh
+
+            summary = Refresh(runtime, clock=time.time).run(
+                sweep_buckets=args.sweep_buckets
+            )
+        elif args.command == "backfill":
             if not backfill_license_policy_ok(settings):
                 raise IngestError(
                     "ARCHIVE_LICENSE_ALLOWLIST must equal the approved backfill policy"
