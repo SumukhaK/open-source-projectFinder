@@ -201,7 +201,7 @@ def test_all_migrations_replay_on_existing_v3(tmp_path):
     store = ArchiveStore(settings)
     store.migrate()
     with store.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert db.execute("PRAGMA user_version").fetchone()[0] == len(MIGRATIONS)
         assert (
             db.execute("SELECT repo_id FROM archive_repositories").fetchone()[0] == 42
         )

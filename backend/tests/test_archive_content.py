@@ -85,6 +85,8 @@ def db(tmp_path):
             connection.execute(statement)
     connection.execute(f"PRAGMA user_version={len(archive_store.MIGRATIONS)}")
     connection.execute(f"PRAGMA application_id={archive_store.APPLICATION_ID}")
+    # Migration 7 copies rows, which opens an implicit transaction here.
+    connection.commit()
     yield connection
     connection.close()
 

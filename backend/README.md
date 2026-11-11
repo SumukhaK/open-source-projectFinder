@@ -303,6 +303,19 @@ Output is one sanitized JSON summary: `coverage` (`complete`/`partial`), `stop_r
 
 Run it from `backend/` with the WSL worker interpreter, private `ARCHIVE_GITHUB_TOKEN`/`MILVUS_TOKEN` and `HF_HUB_OFFLINE=1`. Rollback is a code revert: there is no migration, refresh rows use the existing additive run/state tables, and older code ignores the extra metadata keys. No real refresh was run in T19b; T20 owns retention/removal and T23 owns host scheduling. See [T19 evidence](../execution-plans/hybrid-search/T19_EVIDENCE.md).
 
+## Suppression and retirement sweep (T20, awaiting review)
+
+`python -m app.workers.archive retire [--limit N] [--remove-repo-id ID ...]` is the manual daily privacy/removal sweep (D4). It is not an API route or scheduler; T23 owns scheduling. Like `backfill` and `refresh`, it refuses to start unless `ARCHIVE_LICENSE_ALLOWLIST` is exactly the approved D2 list, because a wrong allowlist would otherwise suppress every repository as `licence`.
+
+- Suppression is logical first. A row in `archive_suppressions` stops serving immediately (T10 already filters on it). Reasons are `not_public`, `archived`, `not_found` (ambiguous 404: private, transferred or deleted, never recorded as "deleted"), `identity_mismatch`, `licence`, `blocked` (451) and `operator` (owner removal). Ingest refuses a suppressed repository.
+- Every decision is also appended to `suppression-ledger.jsonl`, an fsynced, private (0600), content-free file beside the catalogue: ID, action, reason, time and format version only. It is not part of the SQLite file, so a historical backup never carries or rolls it back. Each sweep starts by reapplying it to the catalogue; T22 will do the same after a restore.
+- Purge is bounded and idempotent. It clears the active revision and records cleanup tombstones (keeping the T19a generation high-water mark), then deletes vectors, then the content files no other repository references, then the catalogue rows. Any step can fail and be retried. A purge re-checks its decision inside the write transaction, so a stale decision cannot remove a newer safe revision.
+- The sweep finishes purging already-suppressed repositories. It then re-checks each known repository by numeric ID: private/not-found/identity/archived/451 and licence changes are suppressed and purged; past the 365-day window, or a fork, is purged without suppression. Finally it re-checks suppressed IDs and lifts any that are public and eligible again, except `operator`.
+- Credential failures, quota/5xx and a broad 403 stop the sweep with nothing removed.
+- Retention (D3): content files no document references are deleted after 30 days. Content-free run history older than 90 days is compacted, keeping the run that holds `MAX(fence)` and backfill runs (their cap lives in the run) and re-pointing repository tombstones to the kept run.
+
+Run it from `backend/` with the WSL worker interpreter, private `ARCHIVE_GITHUB_TOKEN`/`MILVUS_TOKEN` and `HF_HUB_OFFLINE=1`. Migration 7 rebuilds `archive_suppressions` with the wider reason set and keeps its rows; previous code refuses schema 7. Rollback after migration means restoring the pre-upgrade snapshot. Purges are not reversible: a purged repository returns only through a new ingest after its suppression is lifted. Offline backups are not erased by a purge; T21/T22 reapply the ledger on restore.
+
 ## API
 
 - `POST /auth/github/start`: app PKCE challenge and exact allowlisted return URI; returns GitHub authorization URL and state.

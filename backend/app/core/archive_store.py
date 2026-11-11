@@ -147,6 +147,21 @@ MIGRATIONS = (
         """ALTER TABLE archive_tasks ADD COLUMN generation INTEGER NOT NULL
             DEFAULT 1 CHECK (generation >= 1)""",
     ),
+    (
+        # T20 widens the content-free suppression reasons; SQLite cannot alter a
+        # CHECK constraint, so the table is rebuilt with its rows preserved.
+        """CREATE TABLE archive_suppressions_v7 (
+            repo_id INTEGER PRIMARY KEY CHECK (repo_id > 0),
+            reason TEXT NOT NULL CHECK (reason IN (
+                'not_public', 'archived', 'not_found', 'identity_mismatch',
+                'licence', 'blocked', 'operator')),
+            observed_at REAL NOT NULL CHECK (observed_at >= 0)
+        ) STRICT""",
+        "INSERT INTO archive_suppressions_v7 SELECT repo_id, reason, observed_at "
+        "FROM archive_suppressions",
+        "DROP TABLE archive_suppressions",
+        "ALTER TABLE archive_suppressions_v7 RENAME TO archive_suppressions",
+    ),
 )
 
 
