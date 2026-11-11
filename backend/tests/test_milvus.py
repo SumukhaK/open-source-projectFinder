@@ -467,3 +467,73 @@ def test_sdk_legacy_rate_limit_remains_retryable(adapter):
     )
     with pytest.raises(MilvusUnavailable):
         adapter.upsert([chunk()])
+
+
+@pytest.mark.parametrize("maximum", [4, 10])
+def test_ordinal_follows_archive_max_chunks(adapter, monkeypatch, maximum):
+    monkeypatch.setattr(
+        "app.integrations.milvus.ARCHIVE_MAX_CHUNKS", maximum, raising=False
+    )
+    adapter.client.upsert.return_value = {"upsert_count": 1, "ids": ["a" * 64]}
+    assert adapter.upsert([chunk(ordinal=maximum - 1)]) == 1
+    adapter.client.upsert.reset_mock()
+
+    with pytest.raises(MilvusContractError):
+        adapter.upsert([chunk(ordinal=maximum)])
+    adapter.client.upsert.assert_not_called()
+
+
+@pytest.fixture
+def different_dimensions(adapter, monkeypatch):
+    manifest = replace(ModelManifest.load(), dimensions=3)
+    monkeypatch.setattr(ModelManifest, "load", lambda: manifest)
+    result = MilvusAdapter(settings(), manifest, adapter.client)
+    info = result.client.describe_collection.return_value
+    info["description"] = "reporadar-chunks-v1:" + result.generation
+    next(f for f in info["fields"] if f["name"] == "vector")["params"]["dim"] = 3
+    return result
+
+
+def test_schema_follows_manifest_dimensions(different_dimensions):
+    fields = different_dimensions._schema().to_dict()["fields"]
+    assert next(f for f in fields if f["name"] == "vector")["params"]["dim"] == 3
+
+
+@pytest.mark.parametrize("operation", ["upsert", "search", "ready"])
+def test_vector_operations_follow_manifest_dimensions(different_dimensions, operation):
+    adapter = different_dimensions
+    value = chunk(vector=(1.0, 0.0, 0.0))
+    adapter.client.upsert.return_value = {"upsert_count": 1, "ids": [value.chunk_id]}
+    adapter.client.search.return_value = [[]]
+    adapter.client.get.return_value = [
+        {**vars(value), "generation": adapter.generation}
+    ]
+
+    if operation == "search":
+        assert adapter.search(value.vector) == []
+        with pytest.raises(MilvusContractError):
+            adapter.search((1.0,) + (0.0,) * 383)
+        assert adapter.client.search.call_count == 1
+    else:
+        result = getattr(adapter, operation)([value])
+        if operation == "ready":
+            assert result is True
+        else:
+            assert result == 1
+        with pytest.raises(MilvusContractError):
+            getattr(adapter, operation)([chunk()])
+        if operation == "ready":
+            adapter.client.get.return_value[0]["vector"] = (1.0, 0.0)
+            assert adapter.ready([value]) is False
+
+
+def test_close_without_a_client_is_a_noop():
+    adapter = MilvusAdapter(settings(), ModelManifest.load(), None)
+    assert adapter.close() is None
+    assert adapter.close() is None
+
+
+def test_pinned_generation_fingerprint_is_unchanged(adapter):
+    assert adapter.generation == (
+        "df9cf05b1daae6801246d15bd9655a33b91241a686acc5cdef8e95a9a901ad7c"
+    )

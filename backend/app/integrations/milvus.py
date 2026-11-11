@@ -8,7 +8,12 @@ import re
 import time
 from dataclasses import asdict, dataclass, field
 
-from app.core.config import MILVUS_MAX_TOP_K, MILVUS_TEXT_BYTES, Settings
+from app.core.config import (
+    ARCHIVE_MAX_CHUNKS,
+    MILVUS_MAX_TOP_K,
+    MILVUS_TEXT_BYTES,
+    Settings,
+)
 from app.services.embeddings import PREFIXES, ModelManifest
 from grpc import RpcError, StatusCode
 from pymilvus import DataType, MilvusClient
@@ -97,7 +102,8 @@ class MilvusAdapter:
         return result
 
     def close(self):
-        self.client.close()
+        if self.client is not None:
+            self.client.close()
 
     def __init__(self, settings: Settings, manifest: ModelManifest, client):
         if manifest != ModelManifest.load():
@@ -166,7 +172,7 @@ class MilvusAdapter:
             )
         for name in ("repo_id", "pushed_at", "ordinal"):
             schema.add_field(name, DataType.INT64)
-        schema.add_field("vector", DataType.FLOAT_VECTOR, dim=384)
+        schema.add_field("vector", DataType.FLOAT_VECTOR, dim=self.manifest.dimensions)
         return schema
 
     def _check_collection(self, deadline):
@@ -251,7 +257,7 @@ class MilvusAdapter:
                 raise MilvusContractError("Upsert requires VectorChunk records")
             row = asdict(chunk)
             _metadata(row, self.manifest)
-            _vector(row["vector"])
+            _vector(row["vector"], self.manifest.dimensions)
             rows.append({**row, "generation": self.generation})
         if len({row["chunk_id"] for row in rows}) != len(rows):
             raise MilvusContractError("Duplicate chunk IDs within one batch")
@@ -300,7 +306,7 @@ class MilvusAdapter:
             if any(value.get(k) != v for k, v in expected.items() if k != "vector"):
                 return False
             vector = value.get("vector", [])
-            if len(vector) != 384 or not all(
+            if len(vector) != self.manifest.dimensions or not all(
                 math.isclose(a, b, rel_tol=1e-5, abs_tol=1e-7)
                 for a, b in zip(vector, expected["vector"], strict=True)
             ):
@@ -308,7 +314,7 @@ class MilvusAdapter:
         return True
 
     def search(self, vector, *, limit=200, filters=None):
-        _vector(vector)
+        _vector(vector, self.manifest.dimensions)
         _integer(limit, 1, MILVUS_MAX_TOP_K)
         filters = ScalarFilters() if filters is None else filters
         if not isinstance(filters, ScalarFilters):
@@ -405,16 +411,16 @@ def _metadata(row, manifest):
         _text(row[name], MILVUS_TEXT_BYTES[name])
     _integer(row["repo_id"], 1, 2**63 - 1)
     _integer(row["pushed_at"], 0, 2**63 - 1)
-    _integer(row["ordinal"], 0, 7)
+    _integer(row["ordinal"], 0, ARCHIVE_MAX_CHUNKS - 1)
 
 
-def _vector(values):
+def _vector(values, dimensions):
     if (
         not isinstance(values, (list, tuple))
-        or len(values) != 384
+        or len(values) != dimensions
         or any(type(v) not in (int, float) or not math.isfinite(v) for v in values)
     ):
-        raise MilvusContractError("Expected 384 finite vector components")
+        raise MilvusContractError(f"Expected {dimensions} finite vector components")
     norm = math.hypot(*values)
     if not math.isclose(norm, 1, rel_tol=1e-4):
         raise MilvusContractError("Inner product requires a unit-normalized vector")

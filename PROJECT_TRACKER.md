@@ -1644,3 +1644,7 @@ U10 implementation request (verbatim):
 > - tampered or expired cursors are still rejected;
 > - digests stay stable for the same input and differ from cursor signatures;
 > - no raw idea text is persisted or logged.
+
+## T30 U1-U3 Milvus adapter fixes merged — 2026-11-11
+
+[PR #90](https://github.com/SumukhaK/open-source-projectFinder/pull/90) was reviewed by Claude and squash-merged as `f4983e7`. The adapter now derives the chunk-ordinal bound from `ARCHIVE_MAX_CHUNKS` and the vector size from the embedding manifest, and `close()` is safe without a client. The generation fingerprint is unchanged, so no re-ingest is needed. Open T30 backlog: U4-U9, U11, U12 and U15-U18.
