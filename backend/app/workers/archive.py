@@ -558,6 +558,14 @@ def _sweep_buckets(value):
     return int(value)
 
 
+def _refresh_cap(value):
+    if not value.isascii() or not value.isdigit() or not 0 <= int(value) <= 1000:
+        raise argparse.ArgumentTypeError(
+            "--cap must be an integer from 0 through 1000 (0 means no new admissions)"
+        )
+    return int(value)
+
+
 def backfill_license_policy_ok(settings):
     """The approved SPDX set, order-insensitive and without duplicates."""
     values = settings.archive_license_allowlist
@@ -598,6 +606,7 @@ def main(argv=None):
         "refresh", help="Run one manual weekly archive refresh"
     )
     refresh.add_argument("--sweep-buckets", type=_sweep_buckets, default=1)
+    refresh.add_argument("--cap", type=_refresh_cap, default=0)
     args = parser.parse_args(argv)
 
     started = time.perf_counter()
@@ -605,11 +614,15 @@ def main(argv=None):
     try:
         settings = Settings()
         if args.command == "refresh":
+            if not backfill_license_policy_ok(settings):
+                raise IngestError(
+                    "ARCHIVE_LICENSE_ALLOWLIST must equal the approved backfill policy"
+                )
             runtime = build_runtime(settings)
             from app.workers.refresh import Refresh
 
             summary = Refresh(runtime, clock=time.time).run(
-                sweep_buckets=args.sweep_buckets
+                sweep_buckets=args.sweep_buckets, refresh_cap=args.cap
             )
         elif args.command == "backfill":
             if not backfill_license_policy_ok(settings):

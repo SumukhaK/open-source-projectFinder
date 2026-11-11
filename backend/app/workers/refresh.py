@@ -42,11 +42,13 @@ from app.workers.archive import (
     ingest_one,
     load_cached_repository,
 )
+from app.workers.backfill import finish_completed_parents
 
-RECENT_OVERLAP = timedelta(hours=48)
-SWEEP_DAYS = 28
 SWEEP_BUCKETS = 14
 _WEEK = timedelta(days=7)
+RECENT_OVERLAP = timedelta(hours=48)
+SWEEP_DAYS = 28
+REFRESH_CAP_DEFAULT = 0
 
 
 def due_boundary(now):
@@ -86,11 +88,13 @@ class Refresh:
             shutil.disk_usage(self.runtime.content.root).free,
         )
 
-    def run(self, *, sweep_buckets=1):
+    def run(self, *, sweep_buckets=1, refresh_cap=REFRESH_CAP_DEFAULT):
         if type(sweep_buckets) is not int or not 1 <= sweep_buckets <= SWEEP_BUCKETS:
             raise ValueError(
                 f"--sweep-buckets must be an integer from 1 through {SWEEP_BUCKETS}"
             )
+        if type(refresh_cap) is not int or not 0 <= refresh_cap <= 1000:
+            raise ValueError("--cap must be an integer from 0 through 1000")
         due = due_boundary(datetime.fromtimestamp(self.clock(), timezone.utc))
         run_id = self.store.create_run("refresh", due)
         self._run_id, self._stop, self._retry_at = run_id, None, None
@@ -98,6 +102,7 @@ class Refresh:
         self.bytes = int(state.get("bytes") or 0)
         self.known_ids = self._count_repositories()
         self.discovered = set()
+        self._cap = refresh_cap
         saved = state.get("requests") or {}
         self.requests = {
             "search": int(saved.get("search") or 0),
@@ -126,6 +131,10 @@ class Refresh:
             index = self._sweep_index(run_id, state)
             previous = self._previous_boundary(run_id, due)
             self._known_ids(run_id, lease, due)
+            if self._cap == 0 and not self._stop:
+                # No new admissions approved: known IDs are reconciled, but
+                # discovery has not run, so the boundary stays unfinished.
+                self._stop = "cap"
             if not self._stop:
                 recent = DiscoveryPartition(previous - RECENT_OVERLAP, due)
                 self._discover_and_ingest(run_id, lease, recent, due)
@@ -137,6 +146,8 @@ class Refresh:
             if not self._stop and self._unresolved(run_id):
                 self._stop = "incomplete"
             completed = not self._stop
+            # Watermarks and the sweep index advance only when every partition
+            # of this run was read; a capped or partial run resumes in place.
             if completed:
                 self._save_state(
                     run_id,
@@ -221,50 +232,126 @@ class Refresh:
                 self._ingest_repo(run_id, lease, repo_id, boundary=due)
 
     def _discover_and_ingest(self, run_id, lease, partition, due):
-        for repo_id in self._discover(partition):
+        """Walk one discovery root through durable partition/task/page checkpoints."""
+        self._ensure_partition(run_id, lease, partition)
+        while not self._stop:
+            task = self._next_discovery_task(run_id)
+            if task is None:
+                if finish_completed_parents(self.runtime, self.store, run_id, lease):
+                    continue
+                break
+            self._process_discovery_page(run_id, lease, task, due)
+
+    def _ensure_partition(self, run_id, lease, partition):
+        """Add a discovery partition if it doesn't exist."""
+        with self.runtime.connect() as db:
+            exists = db.execute(
+                "SELECT 1 FROM archive_partitions WHERE run_id=? AND partition_key=?",
+                (run_id, partition.key),
+            ).fetchone()
+        if not exists:
+            self.store.add_partition(lease, partition)
+
+    def _next_discovery_task(self, run_id):
+        """Get the next pending discovery task (partition + page)."""
+        with self.runtime.connect() as db:
+            row = db.execute(
+                "SELECT p.partition_key,p.record,t.page,t.stage FROM archive_partitions p "
+                "JOIN archive_tasks t USING(run_id,partition_key) "
+                "WHERE p.run_id=? AND p.state='pending' AND (t.retry_at IS NULL OR t.retry_at<=?) "
+                "AND t.stage NOT IN ('split','unresolved') ORDER BY p.partition_key LIMIT 1",
+                (run_id, self.clock()),
+            ).fetchone()
+        if row is None:
+            return None
+        return (
+            row["partition_key"],
+            DiscoveryPartition.from_record(json.loads(row["record"])),
+            row["page"],
+        )
+
+    def _process_discovery_page(self, run_id, lease, task, due):
+        """Read (or reuse) one durable search page, then split or ingest it."""
+        key, partition, page = task
+        self._lease = lease
+        if self.disk_free() < self.runtime.settings.archive_min_free_bytes:
+            self._stop = "disk"
+            return
+        with self.runtime.connect() as db:
+            row = db.execute(
+                "SELECT record_json FROM archive_backfill_pages "
+                "WHERE run_id=? AND partition_key=? AND page=?",
+                (run_id, key, page),
+            ).fetchone()
+        if row is not None:
+            # A page saved before a stop is reused, so a resume repeats no search.
+            record = json.loads(row["record_json"])
+        else:
+            result = self.runtime.reader.search_repositories(partition.query, page=page)
+            record = {
+                "query": partition.query,
+                "total_count": result.total_count,
+                "incomplete_results": result.incomplete,
+                "pages_read": page,
+                "ids_returned": list(result.ids),
+                "decision": "page",
+            }
+            self._replace_page(run_id, key, page, record)
+        total, ids = record["total_count"], record["ids_returned"]
+        if needs_split(total, record["incomplete_results"]):
+            split = split_partition(
+                partition,
+                reported_count=total,
+                incomplete=record["incomplete_results"],
+            )
+            record["decision"] = split.reason or "split"
+            if split.unresolved or (
+                self._partition_count(run_id) + len(split.children)
+                > self.runtime.settings.archive_backfill_partition_limit
+            ):
+                record["decision"] = split.reason or "unresolved"
+                self._replace_page(run_id, key, page, record)
+                self.store.checkpoint(lease, key, page=page, stage="unresolved")
+                self._stop = "partition"
+                return
+            self._replace_page(run_id, key, page, record)
+            self.store.add_split(lease, split)
+            self.store.checkpoint(lease, key, page=page, stage="split")
+            return
+        self.discovered.update(ids)
+        for repo_id in ids:
             if self._stop:
                 return
-            if self._claim_repo(run_id, repo_id):
+            if self._claim_repo(run_id, repo_id, new_allowed=True):
                 self._ingest_repo(run_id, lease, repo_id, boundary=due)
+        if self._stop:
+            return
+        done = len(ids) < 100 or page >= 10 or page * 100 >= total
+        self.store.checkpoint(
+            lease,
+            key,
+            page=page if done else page + 1,
+            stage="page_finished",
+            completed=done,
+        )
 
-    def _discover(self, partition):
-        ids, seen = [], set()
-        self._walk(partition, ids, seen)
-        self.discovered.update(ids)
-        return ids
+    def _replace_page(self, run_id, key, page, record):
+        with self.runtime.connect(write=True) as db:
+            db.execute(
+                "INSERT OR REPLACE INTO archive_backfill_pages VALUES(?,?,?,?)",
+                (run_id, key, page, json.dumps(record, sort_keys=True)),
+            )
+
+    def _partition_count(self, run_id):
+        with self.runtime.connect() as db:
+            return db.execute(
+                "SELECT count(*) FROM archive_partitions WHERE run_id=?",
+                (run_id,),
+            ).fetchone()[0]
 
     def _count_repositories(self):
         with self.runtime.connect() as db:
             return db.execute("SELECT count(*) FROM archive_repositories").fetchone()[0]
-
-    def _walk(self, partition, ids, seen):
-        if self._stop:
-            return
-        result = self.runtime.reader.search_repositories(partition.query, page=1)
-        if needs_split(result.total_count, result.incomplete):
-            split = split_partition(
-                partition,
-                reported_count=result.total_count,
-                incomplete=result.incomplete,
-            )
-            if split.unresolved:
-                self._stop = "partition"
-                return
-            for child in split.children:
-                if self._stop:
-                    return
-                self._walk(child, ids, seen)
-            return
-        page = 1
-        while True:
-            for repo_id in result.ids:
-                if repo_id not in seen:
-                    seen.add(repo_id)
-                    ids.append(repo_id)
-            if len(result.ids) < 100 or page >= 10 or page * 100 >= result.total_count:
-                return
-            page += 1
-            result = self.runtime.reader.search_repositories(partition.query, page=page)
 
     def _ingest_repo(self, run_id, lease, repo_id, *, boundary):
         for attempt in range(2):
@@ -341,27 +428,53 @@ class Refresh:
             self._stop = "incomplete"
             return False
 
-    def _claim_repo(self, run_id, repo_id):
+    def _claim_repo(self, run_id, repo_id, *, new_allowed=False):
+        """Claim one repository for this run; new IDs count against the cap.
+
+        The admission count lives in the run state and is updated in the same
+        transaction as the claim, so a resume can never exceed the cap. A row
+        left ``failed`` by an earlier invocation is retried on every resume.
+        """
         with self.runtime.connect(write=True) as db:
-            db.execute(
-                "INSERT INTO archive_backfill_repositories(run_id,repo_id,status) "
-                "VALUES(?,?, 'pending') ON CONFLICT DO NOTHING",
-                (run_id, repo_id),
-            )
-            status = db.execute(
+            row = db.execute(
                 "SELECT status FROM archive_backfill_repositories "
                 "WHERE run_id=? AND repo_id=?",
                 (run_id, repo_id),
-            ).fetchone()[0]
-            if status == "failed":
-                # A resumed run retries transient failures once more.
+            ).fetchone()
+            if row is not None:
+                if row[0] == "failed":
+                    db.execute(
+                        "UPDATE archive_backfill_repositories "
+                        "SET status='pending',reason=NULL WHERE run_id=? AND repo_id=?",
+                        (run_id, repo_id),
+                    )
+                    return True
+                return row[0] == "pending"
+            known = db.execute(
+                "SELECT 1 FROM archive_repositories WHERE repo_id=?", (repo_id,)
+            ).fetchone()
+            if known is None:
+                if not new_allowed:
+                    return False
+                admitted = db.execute(
+                    "SELECT COALESCE(json_extract(state_json,'$.admitted'),0) "
+                    "FROM archive_backfill_state WHERE run_id=?",
+                    (run_id,),
+                ).fetchone()[0]
+                if admitted >= self._cap:
+                    self._stop = "cap"
+                    return False
                 db.execute(
-                    "UPDATE archive_backfill_repositories SET status='pending',reason=NULL "
-                    "WHERE run_id=? AND repo_id=?",
-                    (run_id, repo_id),
+                    "UPDATE archive_backfill_state SET state_json=json_set("
+                    "state_json,'$.admitted',?) WHERE run_id=?",
+                    (admitted + 1, run_id),
                 )
-                return True
-            return status == "pending"
+            db.execute(
+                "INSERT INTO archive_backfill_repositories(run_id,repo_id,status) "
+                "VALUES(?,?,'pending')",
+                (run_id, repo_id),
+            )
+            return True
 
     def _outcome(self, run_id, repo_id, status, reason):
         with self.runtime.connect(write=True) as db:
@@ -397,8 +510,14 @@ class Refresh:
         return due - _WEEK
 
     def _sweep_index(self, run_id, state):
-        if "sweep_index" in state:
-            return int(state["sweep_index"]) % SWEEP_BUCKETS
+        """Pick this run's first sweep bucket.
+
+        A resumed run keeps its bucket. A new run continues after the latest
+        finished run, or retries the bucket of an unfinished (capped/partial)
+        run so its unread partitions are not skipped.
+        """
+        if "sweep_start" in state:
+            return int(state["sweep_start"]) % SWEEP_BUCKETS
         with self.runtime.connect() as db:
             row = db.execute(
                 "SELECT s.state_json FROM archive_runs AS r "
@@ -407,12 +526,16 @@ class Refresh:
                 "ORDER BY r.due_period DESC LIMIT 1",
                 (run_id,),
             ).fetchone()
+        index = 0
         if row is not None:
             try:
-                return int(json.loads(row[0]).get("sweep_index") or 0) % SWEEP_BUCKETS
+                saved = json.loads(row[0])
+                index = int(saved.get("sweep_index", saved.get("sweep_start", 0)))
             except (TypeError, ValueError, json.JSONDecodeError):
-                return 0
-        return 0
+                index = 0
+        index %= SWEEP_BUCKETS
+        self._save_state(run_id, {"sweep_start": index})
+        return index
 
     @staticmethod
     def _sweep_bucket(due, index):
@@ -464,6 +587,19 @@ class Refresh:
                 skipped[row["reason"]] = skipped.get(row["reason"], 0) + 1
             elif row["status"] in counts:
                 counts[row["status"]] += 1
+        with self.runtime.connect() as db:
+            admitted = db.execute(
+                "SELECT COALESCE(json_extract(state_json,'$.admitted'),0) "
+                "FROM archive_backfill_state WHERE run_id=?",
+                (run_id,),
+            ).fetchone()
+            unread = db.execute(
+                "SELECT count(*) FROM archive_partitions AS p "
+                "JOIN archive_tasks AS t USING(run_id,partition_key) "
+                "WHERE p.run_id=? AND p.state='pending' "
+                "AND t.stage NOT IN ('split','unresolved')",
+                (run_id,),
+            ).fetchone()[0]
         return {
             "run_id": run_id,
             "due_period": due.isoformat(),
@@ -478,6 +614,9 @@ class Refresh:
             "stop_reason": stop_reason,
             "coverage": "complete" if stop_reason == "finished" else "partial",
             "sweep_buckets": sweep_buckets,
+            "cap": self._cap,
+            "admitted": admitted[0] if admitted else 0,
+            "unread_partitions": unread,
             **status,
         }
 
