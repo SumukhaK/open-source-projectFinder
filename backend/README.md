@@ -316,7 +316,7 @@ Run it from `backend/` with the WSL worker interpreter, private `ARCHIVE_GITHUB_
 
 Run it from `backend/` with the WSL worker interpreter, private `ARCHIVE_GITHUB_TOKEN`/`MILVUS_TOKEN` and `HF_HUB_OFFLINE=1`. Migration 7 rebuilds `archive_suppressions` with the wider reason set and keeps its rows; previous code refuses schema 7. Rollback after migration means restoring the pre-upgrade snapshot. Purges are not reversible: a purged repository returns only through a new ingest after its suppression is lifted. Offline backups are not erased by a purge; T21/T22 reapply the ledger on restore.
 
-## Encrypted backups (T21, awaiting review)
+## Encrypted backups (T21)
 
 `python -m app.workers.archive backup` exports one encrypted restic snapshot of the archive. `backup --verify` restores the latest snapshot into a private temporary folder, checks every manifest hash plus `restic check`, and deletes the restore. Neither command runs on a schedule; T23 owns scheduling.
 
