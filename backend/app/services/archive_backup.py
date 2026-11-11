@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import stat
@@ -36,6 +37,7 @@ MANIFEST_VERSION = 1
 RETENTION = "7d"  # D5: encrypted backups are kept at most 7 days
 TAG = "reporadar-archive"
 RESTIC_TIMEOUT_SECONDS = 3600
+_PLAINTEXT = re.compile(r"backup-(staging|verify)-[0-9a-f]{32}")
 
 
 class BackupError(Exception):
@@ -183,44 +185,73 @@ def _referenced(db):
 def export_backup(
     connect, content, settings, *, now, restic=None, disk_free=None, device=_device
 ):
-    """Create one encrypted restic snapshot and expire old ones; return a summary."""
+    """Create one encrypted restic snapshot and expire old ones; return a summary.
+
+    The whole run holds the writer lock, so nothing publishes or purges
+    mid-copy and no other backup run can remove this run's staging tree.
+    """
     restic = restic or Restic.from_settings(settings)
     catalogue = _catalogue_path(connect)
     _check_destination(settings, catalogue, content.root, restic, device)
+    with publication_writer(connect):
+        _remove_stale_plaintext(catalogue.parent)
+        return _export(connect, content, settings, now, restic, disk_free, catalogue)
+
+
+def _remove_stale_plaintext(parent):
+    """Delete plaintext staging/verify trees a killed run left behind.
+
+    Only exact ``backup-staging-<hex>`` / ``backup-verify-<hex>`` entries
+    directly in ``parent`` are touched; a symlink is removed as a link and
+    never followed. Callers hold the writer lock, so no live run owns them.
+    """
+    removed = 0
+    with os.scandir(parent) as entries:
+        for entry in entries:
+            if not _PLAINTEXT.fullmatch(entry.name):
+                continue
+            if entry.is_symlink() or not entry.is_dir(follow_symlinks=False):
+                os.unlink(entry.path)
+            else:
+                shutil.rmtree(entry.path)
+            removed += 1
+    return removed
+
+
+def _export(connect, content, settings, now, restic, disk_free, catalogue):
     staging = catalogue.parent / f"backup-staging-{uuid.uuid4().hex}"
     staging.mkdir(mode=0o700)
     try:
-        with publication_writer(connect):
+        with connect() as db:
+            referenced = _referenced(db)
+        needed = sum(
+            os.path.getsize(content.root / path)
+            for path, _ in referenced
+            if (content.root / path).is_file()
+        ) + sum(
+            os.path.getsize(path)
+            for path in (catalogue, Path(str(catalogue) + "-wal"))
+            if path.exists()
+        )
+        free = (disk_free or (lambda: shutil.disk_usage(staging).free))()
+        if free - needed < settings.archive_min_free_bytes:
+            raise BackupError("not enough free disk to stage the backup")
+        copy = staging / "catalogue.sqlite3"
+        target = sqlite3.connect(copy)
+        try:
+            # The backup API copies a consistent snapshot, WAL included.
             with connect() as db:
-                referenced = _referenced(db)
-            needed = sum(
-                os.path.getsize(content.root / path)
-                for path, _ in referenced
-                if (content.root / path).is_file()
-            ) + sum(
-                os.path.getsize(path)
-                for path in (catalogue, Path(str(catalogue) + "-wal"))
-                if path.exists()
-            )
-            free = (disk_free or (lambda: shutil.disk_usage(staging).free))()
-            if free - needed < settings.archive_min_free_bytes:
-                raise BackupError("not enough free disk to stage the backup")
-            copy = staging / "catalogue.sqlite3"
-            target = sqlite3.connect(copy)
-            try:
-                # The backup API copies a consistent snapshot, WAL included.
-                with connect() as db:
-                    db.backup(target)
-                files = []
-                for path, sha256 in _referenced(target):
-                    data = content.read(path, sha256)  # verifies the hash
-                    destination = staging / "content" / path
-                    destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-                    destination.write_bytes(data)
-                    files.append({"path": path, "sha256": sha256, "bytes": len(data)})
-                version = target.execute("PRAGMA user_version").fetchone()[0]
-            finally:
-                target.close()
+                db.backup(target)
+            files = []
+            for path, sha256 in _referenced(target):
+                data = content.read(path, sha256)  # verifies the hash
+                destination = staging / "content" / path
+                destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                destination.write_bytes(data)
+                files.append({"path": path, "sha256": sha256, "bytes": len(data)})
+            version = target.execute("PRAGMA user_version").fetchone()[0]
+        finally:
+            target.close()
         manifest = {
             "version": MANIFEST_VERSION,
             "created_at": now.isoformat(),
@@ -240,23 +271,41 @@ def export_backup(
         if (staging / LEDGER_NAME).exists():
             raise BackupError("the suppression ledger must never enter a backup")
         snapshot = restic.backup(staging)
-        restic.forget_expired()
-        return {
+        summary = {
             "result": "exported",
             "snapshot": snapshot,
             "files": len(files),
             "bytes": manifest["catalogue"]["bytes"] + sum(f["bytes"] for f in files),
             "schema_version": version,
+            "expiry": "done",
         }
+        try:
+            restic.forget_expired()
+        except BackupError:
+            # The snapshot exists; report it, and let the CLI fail for expiry.
+            summary["expiry"] = "failed"
+        return summary
     finally:
         # Never keep plaintext: the staging tree goes on success and failure.
         shutil.rmtree(staging, ignore_errors=True)
 
 
-def verify_backup(settings, scratch_parent, *, restic=None):
-    """Restore the latest snapshot privately and check every manifest hash."""
+def verify_backup(settings, scratch_parent, *, restic=None, connect=None):
+    """Restore the latest snapshot privately and check every manifest hash.
+
+    With ``connect`` (the CLI passes the catalogue's) the run holds the writer
+    lock and first removes plaintext a killed run left in ``scratch_parent``.
+    """
     restic = restic or Restic.from_settings(settings)
-    target = Path(scratch_parent) / f"backup-verify-{uuid.uuid4().hex}"
+    if connect is None:
+        return _verify(restic, Path(scratch_parent))
+    with publication_writer(connect):
+        _remove_stale_plaintext(scratch_parent)
+        return _verify(restic, Path(scratch_parent))
+
+
+def _verify(restic, scratch_parent):
+    target = scratch_parent / f"backup-verify-{uuid.uuid4().hex}"
     target.mkdir(mode=0o700)
     try:
         restic.check()

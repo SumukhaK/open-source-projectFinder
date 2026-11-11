@@ -85,6 +85,23 @@ Windows, Python 3.11.9:
 - That count includes `test_real_restic_round_trip_is_encrypted_and_verifiable`. It ran against the installed restic 0.19.1 with a temporary repository and a throwaway password in the pytest temp folder: `restic init`, export, `verify_backup` (`restic check`, restore, every hash matched). It also asserted that neither the README text nor the repository name appears in plaintext anywhere in the repository files.
 - The full Windows suite, ruff, format, bandit (no findings) and `git diff --check` results are in the PR description. The required Linux CI run is authoritative; restic is not installed on CI, so the real round-trip test is skipped there.
 
+## Review fixes (2026-11-11)
+
+An independent review of `3256d62` requested one blocking fix and one optional one. Both are fixed on this branch, with no rebase.
+
+1. **Plaintext left by a killed run (blocking).** `backup-staging-*` and `backup-verify-*` were removed only in `finally`, so a hard kill, power loss or WSL shutdown could leave a plaintext copy of the catalogue and READMEs indefinitely, outside T20's purge.
+   - `export_backup` and the CLI's `verify_backup` now hold the writer lock for the whole run. Before creating their own folder, they delete any leftover `backup-staging-<32 hex>` / `backup-verify-<32 hex>` entry directly in that folder.
+   - Only those exact names are touched. A symlink is removed as a link and never followed. Nothing outside that parent is touched.
+   - Holding the lock for the whole run also means one backup run can never delete another live run's staging. Ingest, refresh and purge wait while a backup runs, which takes seconds at the current archive size.
+2. **Expiry failure after a snapshot (optional).** If `restic forget --prune` fails after a successful snapshot, the summary now reports `result: "exported"` with the snapshot ID and `expiry: "failed"`, and the CLI exits 1. A successful run reports `expiry: "done"`.
+
+RED before the fixes (`pytest backend/tests/test_archive_backup.py -k "killed_run or failed_expiry"`): 3 failed.
+- The export left both stale trees in place (`assert not True`).
+- `verify_backup` had no catalogue lock or cleanup (`unexpected keyword argument 'connect'`).
+- A failed `forget` raised instead of reporting the snapshot.
+
+GREEN: `test_archive_backup.py` 21 passed, 1 skipped (the POSIX permission test), including the real restic round trip.
+
 ## Real export: pending owner steps
 
 The catalogue lives on WSL's Linux filesystem and the destination is `D:`. The simplest safe route, proposed to the owner and **not done**:

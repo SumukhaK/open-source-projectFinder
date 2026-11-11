@@ -652,7 +652,9 @@ def main(argv=None):
 
             if args.verify:
                 summary = verify_backup(
-                    settings, settings.archive_database_path.expanduser().parent
+                    settings,
+                    settings.archive_database_path.expanduser().parent,
+                    connect=ArchiveStore(settings).connect,
                 )
             else:
                 summary = export_backup(
@@ -757,6 +759,8 @@ def main(argv=None):
         summary["timings_ms"] = {"total": _elapsed(started)}
     summary["timings_ms"]["total"] = _elapsed(started)
     print(json.dumps(summary, sort_keys=True))
+    if summary.get("expiry") == "failed":
+        return 1
     return (
         0
         if summary["result"]

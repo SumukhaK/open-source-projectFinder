@@ -369,3 +369,54 @@ def test_repository_inside_the_archive_tree_is_refused(tmp_path, inside):
         )
 
     assert restic.snapshots == []
+
+
+def stale(parent, kind):
+    folder = parent / f"backup-{kind}-{'a' * 32}"
+    (folder / "content" / "raw").mkdir(parents=True)
+    (folder / "content" / "raw" / "readme").write_text("Private README", "utf-8")
+    return folder
+
+
+def test_export_removes_plaintext_left_by_a_killed_run(tmp_path):
+    state = configured(tmp_path)
+    parent = state.settings.archive_database_path.parent
+    leftovers = [stale(parent, "staging"), stale(parent, "verify")]
+    unrelated = parent / "backup-staging-notes"
+    unrelated.mkdir()
+
+    export(state, FakeRestic())
+
+    assert not any(path.exists() for path in leftovers)
+    assert unrelated.exists()
+
+
+def test_verify_removes_plaintext_left_by_a_killed_run(tmp_path):
+    state = configured(tmp_path)
+    parent = state.settings.archive_database_path.parent
+    leftover = stale(parent, "verify")
+
+    class Restored(FakeRestic):
+        def check(self):
+            raise backup.BackupError("restic check failed (exit 1)")
+
+    with pytest.raises(backup.BackupError):
+        backup.verify_backup(
+            state.settings, parent, restic=Restored(), connect=state.connect
+        )
+
+    assert not leftover.exists()
+
+
+def test_failed_expiry_after_a_snapshot_reports_both(tmp_path, monkeypatch, capsys):
+    state = configured(tmp_path)
+
+    class ExpiryFails(FakeRestic):
+        def forget_expired(self):
+            raise backup.BackupError("restic forget failed (exit 1)")
+
+    summary = export(state, ExpiryFails())
+
+    assert summary["result"] == "exported" and summary["snapshot"] == "snap1"
+    assert summary["expiry"] == "failed"
+    assert staging_dirs(state) == []
