@@ -75,3 +75,64 @@ An independent trusted reviewer must accept the exact current PR head of each sl
 ## Do not do
 
 Do not start T30 before T29 merges, fold unrelated refactors into it, or treat a "Verify closed" row as T30's implementation work. Do not persist user ideas, weaken validation, add security exceptions or install paid services.
+
+## U1-U3 execution — 2026-11-11
+
+Owner-authorized early slice before T29. Base main:
+`18b8632a137ce27079bb06869117a4c87ae1a7d9`.
+Branch: `codex/hybrid-t30-u1-u3-milvus-nits`, isolated worktree.
+Reverified all three on main: literal ordinal 7; dimension 384 in schema,
+input validation and readiness; unguarded client close. None already fixed.
+Plan: RED for changed chunk bound, manifest dimension and absent client; minimum
+adapter-only fixes; focused and full fake-only quality checks; one PR then stop.
+Keep pinned generation, collection, index and field names unchanged. No changes
+to worker/publication/content/index files or other T30 items.
+
+### U1-U3 verification and compatibility
+
+2026-11-11, Windows Python 3.11.9 / SQLite 3.45.1. Existing interpreter:
+`E:/OpenSourceProjectFinder/backend/.venv/Scripts/python.exe` (`python` below),
+`PYTHONPATH=backend`. The owner's explicit file scope takes precedence over the
+usual root tracker update: this plan/evidence stays in T30 and hybrid TRACKER.
+
+Original [PR #28 review](https://github.com/SumukhaK/open-source-projectFinder/pull/28#pullrequestreview-5665207748)
+and [re-review](https://github.com/SumukhaK/open-source-projectFinder/pull/28#pullrequestreview-5665285392)
+confirm these three nits were deferred. T07 merged as
+`21e6db3260e7e6368afd5d5bbfd54387b71fa4f8`; [T07 evidence](../T07_EVIDENCE.md)
+was read. All three are fixed here, none skipped as already fixed.
+
+- Baseline: `python -m pytest backend/tests/test_milvus.py -q` -> 74 passed.
+- RED before adapter edits:
+  `python -m pytest backend/tests/test_milvus.py -q -k "follows_archive or follows_manifest or follow_manifest or without_a_client or fingerprint"`
+  -> 7 failed, 1 passed, 74 deselected. U1: a cap of 4 allowed ordinal 4,
+  a cap of 10 refused ordinal 9. U2: a test-pinned 3-dimensional manifest still
+  produced a 384-dimensional schema and refused vectors on upsert/search/ready.
+  U3: closing an adapter without a client raised AttributeError. The original
+  generation fingerprint test passed before and after the fix.
+- GREEN: `python -m pytest backend/tests/test_milvus.py -q` -> 82 passed.
+  Wrong-length inputs still fail; wrong-length read-back returns false. Existing
+  manifest pinning, index/field/schema checks and connected-client close pass.
+- `python -m ruff check backend scripts` -> passed.
+- `python -m ruff format --check backend scripts` -> passed, 78 files.
+- `python -m bandit -r backend/app -q` -> passed, no findings.
+- `git diff --check` -> passed.
+
+Only the adapter and its tests change behavior. `ARCHIVE_MAX_CHUNKS` remains 8,
+the production manifest remains 384-dimensional, and the generation fingerprint
+remains `df9cf05b1daae6801246d15bd9655a33b91241a686acc5cdef8e95a9a901ad7c`.
+Collection/index/field names and settings are untouched. The alternate manifest
+is test-only; arbitrary production manifests are still rejected. No migration,
+re-ingestion or collection rebuild is needed. Rollback is a code revert; preserve
+all collections and volumes. No dependencies, configuration or gates changed.
+
+Fakes only. No Docker, server, WSL, model, application provider calls or app closure.
+Real CPU/GPU integration and Linux-only catalogue behavior are not claimed locally.
+This is not a model migration or acceptance of another upkeep item.
+
+Full regression (2026-11-11):
+`python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch --cov-report=json:reports/backend-coverage.json`
+-> **1120 passed, 67 skipped**, exit 0, 90.21 s; one existing Starlette/httpx
+warning. `python scripts/quality.py coverage reports/backend-coverage.json` ->
+**92.5% combined / 89.4% branches**, exit 0, unchanged gate passed. Skips include
+platform/runtime restrictions and opt-in integration tests; Linux/real-server
+checks were not run locally, as required by this fake-only slice.
