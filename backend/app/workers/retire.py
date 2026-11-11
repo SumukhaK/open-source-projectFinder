@@ -34,6 +34,7 @@ from app.services.archive_retirement import (
     suppress,
     sweep_unreferenced_files,
 )
+from app.services.archive_runs import WriterBusy, publication_writer
 from app.workers.archive import (
     ELIGIBILITY_DAYS,
     IneligibleRepository,
@@ -49,6 +50,47 @@ _SUPPRESS = {
 # Not unsafe: content is purged but nothing is suppressed, so a repository
 # that becomes eligible again can return through an ordinary ingest.
 _PURGE_ONLY = frozenset({"stale", "fork"})
+
+
+# Each pair reads the next window after the saved cursor, then wraps around.
+_KNOWN = (
+    "SELECT r.repo_id, r.active_revision FROM archive_repositories AS r "
+    "WHERE NOT EXISTS (SELECT 1 FROM archive_suppressions AS s "
+    "WHERE s.repo_id=r.repo_id) AND r.repo_id > ? ORDER BY r.repo_id LIMIT ?",
+    "SELECT r.repo_id, r.active_revision FROM archive_repositories AS r "
+    "WHERE NOT EXISTS (SELECT 1 FROM archive_suppressions AS s "
+    "WHERE s.repo_id=r.repo_id) AND r.repo_id <= ? ORDER BY r.repo_id LIMIT ?",
+)
+_SUPPRESSED = (
+    "SELECT repo_id, reason FROM archive_suppressions WHERE observed_at < ? "
+    "AND repo_id > ? ORDER BY repo_id LIMIT ?",
+    "SELECT repo_id, reason FROM archive_suppressions WHERE observed_at < ? "
+    "AND repo_id <= ? ORDER BY repo_id LIMIT ?",
+)
+
+
+def _rotation(connect, name, queries, limit, params):
+    """Return up to ``limit`` rows after the saved cursor, wrapping once."""
+    with connect() as db:
+        row = db.execute(
+            "SELECT cursor FROM archive_sweep_state WHERE name=?", (name,)
+        ).fetchone()
+        cursor = row[0] if row else 0
+        rows = db.execute(queries[0], (*params, cursor, limit)).fetchall()
+        if len(rows) < limit:
+            rows += db.execute(
+                queries[1], (*params, cursor, limit - len(rows))
+            ).fetchall()
+    return rows
+
+
+def _advance(connect, name, repo_id):
+    with connect(write=True) as db:
+        db.execute(
+            "INSERT INTO archive_sweep_state(name, cursor) VALUES(?, ?) "
+            "ON CONFLICT(name) DO UPDATE SET cursor=excluded.cursor",
+            (name, repo_id),
+        )
 
 
 class _Stop(Exception):
@@ -81,11 +123,15 @@ def sweep(runtime, *, now, limit=1000, remove_ids=()):
         _purge_suppressed(runtime, summary)
         _check_known(runtime, ledger, now, limit, summary)
         _recheck_suppressed(runtime, ledger, now, limit, summary)
+        # Retention takes the writer lock and a fenced lease, so it never runs
+        # while a refresh/backfill owns a live lease and could reuse a file.
+        with publication_writer(connect):
+            summary["files"] = sweep_unreferenced_files(connect, runtime.content, at)
+            summary["runs"] = compact_runs(connect, at)
     except _Stop as stop:
         summary["stop_reason"] = stop.reason
-        return summary
-    summary["files"] = sweep_unreferenced_files(connect, runtime.content, at)
-    summary["runs"] = compact_runs(connect, at)
+    except WriterBusy:
+        summary["stop_reason"] = "busy"
     return summary
 
 
@@ -107,6 +153,10 @@ def _purge(runtime, repo_id, summary, **guard):
         purge_repository(
             runtime.connect, runtime.vectors, runtime.content, repo_id, **guard
         )
+    except WriterBusy:
+        # Another writer owns a live lease; serving is already blocked by the
+        # suppression row, so stop and let the next sweep finish the purge.
+        raise _Stop("busy") from None
     except PurgeAborted:
         summary["issues"] += 1
         return
@@ -142,14 +192,9 @@ def _fetch(runtime, repo_id):
 def _check_known(runtime, ledger, now, limit, summary):
     cutoff = now - timedelta(days=ELIGIBILITY_DAYS)
     allowlist = runtime.settings.archive_license_allowlist
-    with runtime.connect() as db:
-        rows = db.execute(
-            "SELECT r.repo_id, r.active_revision FROM archive_repositories AS r "
-            "WHERE NOT EXISTS (SELECT 1 FROM archive_suppressions AS s "
-            "WHERE s.repo_id=r.repo_id) ORDER BY r.repo_id LIMIT ?",
-            (limit,),
-        ).fetchall()
+    rows = _rotation(runtime.connect, "known", _KNOWN, limit, ())
     for repo_id, active in rows:
+        _advance(runtime.connect, "known", repo_id)
         summary["checked"] += 1
         result = _fetch(runtime, repo_id)
         if result is None:
@@ -179,14 +224,12 @@ def _suppress_and_purge(runtime, ledger, repo_id, reason, now, summary):
 
 def _recheck_suppressed(runtime, ledger, now, limit, summary):
     cutoff = now - timedelta(days=ELIGIBILITY_DAYS)
-    with runtime.connect() as db:
-        rows = db.execute(
-            # Decisions made earlier in this sweep are not re-checked at once.
-            "SELECT repo_id, reason FROM archive_suppressions WHERE observed_at < ? "
-            "ORDER BY observed_at, repo_id LIMIT ?",
-            (now.timestamp(), limit),
-        ).fetchall()
+    # Decisions made earlier in this sweep are not re-checked at once.
+    rows = _rotation(
+        runtime.connect, "suppressed", _SUPPRESSED, limit, (now.timestamp(),)
+    )
     for repo_id, reason in rows:
+        _advance(runtime.connect, "suppressed", repo_id)
         if reason in STICKY_REASONS:
             continue
         result = _fetch(runtime, repo_id)

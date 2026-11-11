@@ -343,9 +343,10 @@ def compact_runs(connect, now):
     """Delete content-free run history older than 90 days.
 
     Keeps the run holding the catalogue-wide MAX(fence) so fences never go
-    backwards, keeps backfill runs (their admission cap lives in the run),
-    skips live leases, and re-points repository tombstones to the kept run so
-    no generation high-water mark is lost.
+    backwards, backfill runs (their admission cap lives in the run), and the
+    latest refresh run plus the latest completed one (T19b reads its boundary
+    and sweep rotation from them); skips live leases; and re-points repository
+    tombstones to the kept run so no generation high-water mark is lost.
     """
     cutoff = now - RUN_HISTORY_DAYS * _DAY
     with connect(write=True) as db:
@@ -359,7 +360,12 @@ def compact_runs(connect, now):
             for row in db.execute(
                 "SELECT run_id FROM archive_runs WHERE run_id<>? AND kind<>'backfill' "
                 "AND COALESCE(heartbeat_at, 0) < ? "
-                "AND (expires_at IS NULL OR expires_at <= ?)",
+                "AND (expires_at IS NULL OR expires_at <= ?) "
+                "AND run_id NOT IN (SELECT run_id FROM archive_runs "
+                "WHERE kind='refresh' ORDER BY due_period DESC LIMIT 1) "
+                "AND run_id NOT IN (SELECT run_id FROM archive_runs "
+                "WHERE kind='refresh' AND completed=1 "
+                "ORDER BY due_period DESC LIMIT 1)",
                 (keep[0], cutoff, now),
             )
         ]

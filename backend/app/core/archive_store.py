@@ -161,6 +161,12 @@ MIGRATIONS = (
         "FROM archive_suppressions",
         "DROP TABLE archive_suppressions",
         "ALTER TABLE archive_suppressions_v7 RENAME TO archive_suppressions",
+        # Content-free rotation cursors so a bounded daily sweep eventually
+        # re-checks every known and every suppressed repository.
+        """CREATE TABLE archive_sweep_state (
+            name TEXT PRIMARY KEY CHECK (name IN ('known', 'suppressed')),
+            cursor INTEGER NOT NULL CHECK (cursor >= 0)
+        ) STRICT""",
     ),
 )
 

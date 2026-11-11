@@ -71,6 +71,30 @@ New migration tests in `test_archive_store.py`: v6→v7 keeps suppression rows a
 
 Windows baseline: the full Windows suite has 4 failures unrelated to T20 (`test_archive_reader_requires_its_own_credential`, `test_worker_settings_refuse_bad_limits_and_have_no_implicit_licences`, `test_favourite_limit_missing_repository_and_provider_failure`, `test_workers_ai_profile_fails_closed_without_credentials`). They fail identically on unmodified `origin/main` code with the same command and interpreter, and pass in WSL, so they are an environment artefact of this Windows host.
 
+## Review fixes (2026-11-11)
+
+An independent review of `26c4f37` requested two blockers and one coverage fix. All three are fixed on this branch with no rebase:
+
+1. **Retention under the writer lock.** `sweep_unreferenced_files` and `compact_runs` now run inside `publication_writer`, so they never run while a refresh or backfill holds a live lease. Without that, an ingest could reuse a content-addressed file the sweep was about to delete. A `WriterBusy` from that step, or from any per-repository purge, now ends the sweep with `stop_reason: "busy"` and returns the summary instead of raising. Suppressions already recorded still hide the repository from serving, and the next sweep finishes the purge.
+2. **Compaction keeps T19b's watermarks.** Besides the `MAX(fence)` run and backfill runs, it keeps the latest refresh run and the latest completed refresh run, with their `archive_backfill_state`. Under `--cap 0` the last completed refresh can easily be older than 90 days. Deleting it would silently move the recent-discovery boundary and reset the sweep rotation.
+3. **Rotation.** Migration 7 also adds `archive_sweep_state`, two content-free cursors (`known` and `suppressed`). Each phase reads the next `--limit` repository IDs after its cursor, wraps around, and saves the cursor after every repository. So more than `--limit` known or suppressed repositories are all re-checked over successive days, and an interrupted sweep resumes where it stopped.
+
+RED before the fixes (Windows, `pytest backend/tests/test_archive_retirement.py -k "busy or wait or latest_completed or rotate"`): **5 failed**.
+- The live-lease test reported `'finished' == 'busy'`.
+- The purge-busy test raised `WriterBusy: another catalogue writer owns a live lease`.
+- The compaction test lost both refresh runs (`{4, 5} <= {2}`).
+- Known rotation repeated `[[1, 2], [1, 2], [1, 2]]` instead of `[[1, 2], [3, 4], [4242, 1]]`.
+- Suppressed rotation re-checked `[11]` every day instead of `[11], [12], [13]`.
+
+GREEN:
+- T20 tests: 32 passed.
+- Full Windows suite: 1148 passed, 69 skipped, plus the same 4 environmental baseline failures listed below.
+- ruff, format, bandit and `git diff --check` clean.
+
+WSL refused to start this time (`ERROR_NO_SYSTEM_RESOURCES`, T30 U18), so the required Linux CI run on this PR is the authoritative full-suite and coverage check for this head.
+
+Fail-closed note (non-blocking): if a torn final ledger line is later followed by another append, that line is no longer final, so `current()` raises `LedgerError` and the sweep stops before changing anything. That fails closed. The operator must inspect the ledger and remove only the torn fragment, never a complete decision.
+
 ## Operator and rollback notes
 
 ```sh
@@ -82,6 +106,7 @@ Windows baseline: the full Windows suite has 4 failures unrelated to T20 (`test_
 - `stop_reason`:
   - `finished`: the sweep completed.
   - `credential`, `rate_limit`, `forbidden`: stopped with nothing removed; fix the cause and rerun.
+  - `busy`: another writer holds a live lease; rerun after it finishes.
 - `issues` counts aborted purges and non-decisive responses.
 - Each phase reads at most `--limit` repositories, so one sweep makes at most twice that many metadata requests.
 - The sweep builds the normal worker runtime (embedding adapter and Milvus), because purges delete vectors.

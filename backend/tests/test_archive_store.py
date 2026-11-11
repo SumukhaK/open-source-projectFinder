@@ -247,6 +247,7 @@ def test_existing_v6_catalogue_upgrades_to_v7_keeping_suppressions(tmp_path):
 
     with store.connect(write=True) as db:
         assert db.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert db.execute("SELECT count(*) FROM archive_sweep_state").fetchone()[0] == 0
         assert db.execute(
             "SELECT reason, observed_at FROM archive_suppressions WHERE repo_id=101"
         ).fetchone()[:] == ("not_found", 5.0)

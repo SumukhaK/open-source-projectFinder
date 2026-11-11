@@ -515,3 +515,129 @@ def test_eligibility_suppression_reaches_the_ledger(tmp_path):
     service._suppress(REPO_ID, "archived", NOW)
 
     assert ledger(state).current()[REPO_ID][0] == "not_public"
+
+
+def stale_orphan(state):
+    path = state.runtime.content.root / "raw" / "ef" / ("ef" + "0" * 62)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"unreferenced")
+    old = NOW.timestamp() - 31 * 86400
+    os.utime(path, (old, old))
+    return path
+
+
+def live_refresh_lease(state):
+    store = RunStore(state.connect)
+    run_id = store.create_run("refresh", NOW)
+    return store.claim(run_id, "live-refresh")
+
+
+def test_live_writer_lease_makes_file_sweep_and_compaction_wait(tmp_path):
+    state = published(tmp_path)
+    orphan = stale_orphan(state)
+    live_refresh_lease(state)
+    with state.connect() as db:
+        runs = {row[0] for row in db.execute("SELECT run_id FROM archive_runs")}
+
+    summary, _ = run_sweep(state, make_snapshot())
+
+    assert summary["stop_reason"] == "busy"
+    assert orphan.exists()
+    with state.connect() as db:
+        # Nothing compacted (a refused writer attempt may add an unused row).
+        assert runs <= {row[0] for row in db.execute("SELECT run_id FROM archive_runs")}
+
+
+def test_writer_busy_during_a_purge_returns_a_busy_summary(tmp_path):
+    state = published(tmp_path)
+    live_refresh_lease(state)
+
+    summary, _ = run_sweep(state, RepositoryNotPublic("private"))
+
+    assert summary["stop_reason"] == "busy"
+    assert summary["suppressed"] == {"not_public": 1}
+    with state.connect() as db:
+        # T10 serving excludes suppressed IDs, so it is hidden before the purge.
+        assert (
+            db.execute(
+                "SELECT reason FROM archive_suppressions WHERE repo_id=?", (REPO_ID,)
+            ).fetchone()[0]
+            == "not_public"
+        )
+
+
+def add_refresh_run(db, due, *, completed, state):
+    run_id = db.execute(
+        "INSERT INTO archive_runs(kind, due_period, completed, heartbeat_at) "
+        "VALUES('refresh', ?, ?, 0)",
+        (due, int(completed)),
+    ).lastrowid
+    db.execute(
+        "INSERT INTO archive_backfill_state(run_id, state_json) VALUES(?, ?)",
+        (run_id, json.dumps(state)),
+    )
+    return run_id
+
+
+def test_compaction_keeps_the_latest_completed_and_latest_refresh_runs(tmp_path):
+    state = published(tmp_path)
+    with state.connect(write=True) as db:
+        oldest = add_refresh_run(
+            db, "2025-12-06T22:00:00+00:00", completed=True, state={"sweep_index": 4}
+        )
+        completed = add_refresh_run(
+            db, "2026-01-03T22:00:00+00:00", completed=True, state={"sweep_index": 5}
+        )
+        latest = add_refresh_run(
+            db, "2026-02-07T22:00:00+00:00", completed=False, state={"sweep_start": 5}
+        )
+        db.execute("UPDATE archive_runs SET heartbeat_at=0, expires_at=0")
+
+    retirement.compact_runs(state.connect, NOW.timestamp())
+
+    with state.connect() as db:
+        kept = {row[0] for row in db.execute("SELECT run_id FROM archive_runs")}
+        states = {
+            row[0] for row in db.execute("SELECT run_id FROM archive_backfill_state")
+        }
+    assert {completed, latest} <= kept and {completed, latest} <= states
+    assert oldest not in kept
+
+
+def add_known(state, *repo_ids):
+    with state.connect(write=True) as db:
+        db.executemany(
+            "INSERT INTO archive_repositories(repo_id, full_name) VALUES(?, ?)",
+            [(repo_id, f"acme/r{repo_id}") for repo_id in repo_ids],
+        )
+
+
+def test_known_repository_checks_rotate_beyond_the_limit(tmp_path):
+    state = published(tmp_path)
+    add_known(state, 1, 2, 3, 4)
+    seen = []
+
+    for day in range(3):
+        reader = SweepReader(make_snapshot())
+        runtime = replace(state.runtime, reader=reader)
+        sweep(runtime, now=NOW + timedelta(days=day), limit=2)
+        seen.append(reader.requested)
+
+    assert seen == [[1, 2], [3, 4], [REPO_ID, 1]]
+
+
+def test_suppressed_rechecks_rotate_beyond_the_limit(tmp_path):
+    state = published(tmp_path)
+    for repo_id in (11, 12, 13):
+        retirement.suppress(state.connect, ledger(state), repo_id, "not_found", 1.0)
+    seen = []
+
+    for day in range(3):
+        reader = SweepReader(make_snapshot(), RepositoryNotFound("still gone"))
+        runtime = replace(state.runtime, reader=reader)
+        sweep(runtime, now=NOW + timedelta(days=day), limit=1)
+        seen.append(
+            [repo_id for repo_id in reader.requested if repo_id in (11, 12, 13)]
+        )
+
+    assert seen == [[11], [12], [13]]
