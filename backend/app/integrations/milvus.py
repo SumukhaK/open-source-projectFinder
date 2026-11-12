@@ -26,6 +26,10 @@ class MilvusContractError(ValueError):
     """The selected collection or input violates the embedding contract."""
 
 
+class MilvusCollectionMissing(MilvusContractError):
+    """The collection or its index is absent; the operator init step creates it."""
+
+
 class MilvusUnavailable(RuntimeError):
     """The operation can be retried using the same stable IDs."""
 
@@ -216,12 +220,25 @@ class MilvusAdapter:
         if self._call(deadline, "get_load_state").get("state") != LoadState.Loaded:
             raise MilvusUnavailable("Milvus collection is not loaded")
 
-    def ensure_collection(self):
-        """Explicit worker setup; never drop, replace, or redirect an existing collection."""
-        deadline = time.monotonic() + self.settings.milvus_build_timeout
+    def _check_server(self, deadline):
         if not self._call(deadline, "get_server_version").startswith(("2.6.", "2.6-")):
             raise MilvusContractError("Milvus server must match the pinned 2.6 family")
-        if not self._call(deadline, "has_collection"):
+
+    def _load(self, deadline):
+        self._check_index(deadline)
+        self._call(deadline, "load_collection")
+        self._check_loaded(deadline)
+
+    def ensure_collection(self):
+        """Operator init step: create a missing collection/index, then verify and load.
+
+        Never drops, replaces or redirects an existing collection. Workers call
+        ``verify_collection`` instead, so a misconfigured run cannot create one.
+        """
+        deadline = time.monotonic() + self.settings.milvus_build_timeout
+        self._check_server(deadline)
+        collection_created = not self._call(deadline, "has_collection")
+        if collection_created:
             self._call(
                 deadline,
                 "create_collection",
@@ -229,7 +246,8 @@ class MilvusAdapter:
                 consistency_level="Strong",
             )
         self._check_collection(deadline)
-        if "vector_index" not in self._call(deadline, "list_indexes"):
+        index_created = "vector_index" not in self._call(deadline, "list_indexes")
+        if index_created:
             params = MilvusClient.prepare_index_params()
             params.add_index(
                 field_name="vector",
@@ -245,9 +263,22 @@ class MilvusAdapter:
                 },
             )
             self._call(deadline, "create_index", index_params=params)
-        self._check_index(deadline)
-        self._call(deadline, "load_collection")
-        self._check_loaded(deadline)
+        self._load(deadline)
+        return {
+            "collection_created": collection_created,
+            "index_created": index_created,
+        }
+
+    def verify_collection(self):
+        """Worker preflight: check and load an initialized collection; never create."""
+        deadline = time.monotonic() + self.settings.milvus_build_timeout
+        self._check_server(deadline)
+        if not self._call(deadline, "has_collection"):
+            raise MilvusCollectionMissing("Milvus collection is missing")
+        self._check_collection(deadline)
+        if "vector_index" not in self._call(deadline, "list_indexes"):
+            raise MilvusCollectionMissing("Milvus vector index is missing")
+        self._load(deadline)
 
     def _rows(self, chunks):
         self._batch(chunks)

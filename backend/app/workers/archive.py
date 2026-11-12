@@ -28,6 +28,7 @@ from app.integrations.archive_github import (
 )
 from app.integrations.milvus import (
     MilvusAdapter,
+    MilvusCollectionMissing,
     MilvusContractError,
     MilvusOperationError,
     MilvusUnavailable,
@@ -52,7 +53,7 @@ from app.services.archive_publication import (
     reconcile,
 )
 from app.services.archive_runs import check_lease
-from app.services.embeddings import EmbeddingAdapter, EmbeddingError
+from app.services.embeddings import EmbeddingAdapter, EmbeddingError, ModelManifest
 from pydantic import ValidationError
 from pydantic_settings import SettingsError
 
@@ -195,6 +196,11 @@ def _safe_error(error):
         return (
             "preflight: pinned embedding model unavailable; verify the offline E5 cache"
         )
+    if isinstance(error, MilvusCollectionMissing):
+        return (
+            "preflight: Milvus collection or index is missing; check "
+            "MILVUS_COLLECTION, then run the init-collection command once"
+        )
     if isinstance(error, MilvusContractError):
         return "preflight: verify the pinned 2.6 family, collection and index contract"
     if isinstance(error, (MilvusUnavailable, MilvusOperationError)):
@@ -243,8 +249,9 @@ def _build_runtime(settings):
     adapter = EmbeddingAdapter.load(batch_size=settings.milvus_batch_size, warm=False)
     vectors = MilvusAdapter.connect(settings, adapter.manifest)
     try:
-        # Verifies the 2.6 server, collection/index contract and loaded state.
-        vectors.ensure_collection()
+        # Verifies the 2.6 server, collection/index contract and loaded state;
+        # never creates them (T30 U6: that is the init-collection step).
+        vectors.verify_collection()
     except Exception:
         vectors.close()
         raise
@@ -609,6 +616,10 @@ def main(argv=None):
         description="Local archive ingestion worker (one repository at a time)",
     )
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser(
+        "init-collection",
+        help="Operator setup: create and load the configured Milvus collection once",
+    )
     ingest = commands.add_parser(
         "ingest", help="Ingest one approved public repository by numeric id"
     )
@@ -655,9 +666,19 @@ def main(argv=None):
 
     started = time.perf_counter()
     runtime = None
+    vectors = None
     try:
         settings = Settings()
-        if args.command == "backup":
+        if args.command == "init-collection":
+            # T30 U6: the only path that creates a collection. It needs Milvus
+            # and the pinned manifest, not the model, GitHub token or catalogue.
+            vectors = MilvusAdapter.connect(settings, ModelManifest.load())
+            summary = {
+                "result": "initialized",
+                "collection": settings.milvus_collection,
+                **vectors.ensure_collection(),
+            }
+        elif args.command == "backup":
             from app.services.archive_backup import export_backup, verify_backup
 
             if args.verify:
@@ -781,8 +802,10 @@ def main(argv=None):
         )
     finally:
         if runtime is not None:
+            vectors = runtime.vectors
+        if vectors is not None:
             try:
-                runtime.vectors.close()
+                vectors.close()
             except Exception:
                 summary = _failure(
                     getattr(args, "repo_id", None),
@@ -813,6 +836,7 @@ def main(argv=None):
             "verified",
             "quarantined",
             "activated",
+            "initialized",
         )
         else 1
     )

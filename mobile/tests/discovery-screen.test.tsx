@@ -551,6 +551,7 @@ test('a licence conflict shows the live licence and hides the archive snippet', 
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
   expect(screen.getByText('Licence MIT')).toBeTruthy();
   expect(screen.queryByText('Archive excerpt that must not be shown')).toBeNull();
+  expect(screen.queryByText('README excerpt')).toBeNull();
 });
 
 test('archive cards show their excerpt, licence and source label', async () => {
@@ -565,6 +566,9 @@ test('archive cards show their excerpt, licence and source label', async () => {
   await search(screen);
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
   expect(screen.getByText('Feature excerpt from the archive')).toBeTruthy();
+  // U5: the archive text is a partial README passage and is labelled as one.
+  expect(screen.getByText('README excerpt')).toBeTruthy();
+  expect(screen.getByLabelText('README excerpt: Feature excerpt from the archive')).toBeTruthy();
   expect(screen.getByText('Licence Apache-2.0')).toBeTruthy();
   expect(screen.getByText('Source: Archive')).toBeTruthy();
 });

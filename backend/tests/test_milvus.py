@@ -6,6 +6,7 @@ import pytest
 from app.core.config import Settings
 from app.integrations.milvus import (
     MilvusAdapter,
+    MilvusCollectionMissing,
     MilvusContractError,
     MilvusUnavailable,
     ScalarFilters,
@@ -411,6 +412,79 @@ def test_sdk_uses_custom_primary_key_outside_entity(adapter):
         ]
     ]
     assert adapter.search(chunk().vector)[0]["chunk_id"] == "a" * 64
+
+
+# U6: worker preflight only verifies; creation is the operator's init step.
+def _assert_nothing_created(client):
+    client.create_collection.assert_not_called()
+    client.create_index.assert_not_called()
+    client.drop_collection.assert_not_called()
+
+
+def test_preflight_refuses_a_missing_collection_without_creating_it(adapter):
+    adapter.client.has_collection.return_value = False
+    adapter.client.list_indexes.return_value = []
+    with pytest.raises(MilvusCollectionMissing):
+        adapter.verify_collection()
+    _assert_nothing_created(adapter.client)
+    adapter.client.load_collection.assert_not_called()
+
+
+def test_preflight_refuses_a_missing_index_without_creating_it(adapter):
+    adapter.client.list_indexes.return_value = []
+    with pytest.raises(MilvusCollectionMissing):
+        adapter.verify_collection()
+    _assert_nothing_created(adapter.client)
+    adapter.client.load_collection.assert_not_called()
+
+
+def test_a_missing_collection_is_still_a_contract_error():
+    assert issubclass(MilvusCollectionMissing, MilvusContractError)
+
+
+def test_preflight_loads_and_checks_an_initialized_collection(adapter):
+    adapter.client.list_indexes.return_value = ["vector_index"]
+    adapter.verify_collection()
+    _assert_nothing_created(adapter.client)
+    adapter.client.load_collection.assert_called_once()
+    adapter.client.get_load_state.assert_called()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda c: c.get_server_version.configure_mock(return_value="3.0.0"),
+        lambda c: c.describe_collection.return_value.update(auto_id=True),
+        lambda c: c.describe_index.return_value.update(metric_type="COSINE"),
+        lambda c: c.get_load_state.configure_mock(
+            return_value={"state": LoadState.NotLoad}
+        ),
+    ],
+)
+def test_preflight_keeps_every_contract_check(adapter, change):
+    adapter.client.list_indexes.return_value = ["vector_index"]
+    change(adapter.client)
+    with pytest.raises((MilvusContractError, MilvusUnavailable)):
+        adapter.verify_collection()
+    _assert_nothing_created(adapter.client)
+
+
+def test_operator_init_reports_what_it_created(adapter):
+    adapter.client.has_collection.return_value = False
+    adapter.client.list_indexes.return_value = []
+    assert adapter.ensure_collection() == {
+        "collection_created": True,
+        "index_created": True,
+    }
+    adapter.client.has_collection.return_value = True
+    adapter.client.list_indexes.return_value = ["vector_index"]
+    adapter.client.create_collection.reset_mock()
+    adapter.client.create_index.reset_mock()
+    assert adapter.ensure_collection() == {
+        "collection_created": False,
+        "index_created": False,
+    }
+    _assert_nothing_created(adapter.client)
 
 
 def test_incompatible_server_is_rejected_without_creating(adapter):

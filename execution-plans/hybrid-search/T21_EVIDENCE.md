@@ -11,7 +11,7 @@ In plain terms: `backup` makes one encrypted copy of our local archive (the cata
 ## Decisions and tool identity
 
 - D5: encrypted backups are kept at most 7 days; a restore reapplies the current ledger. D6: restic.
-- **Owner-approved D6 change (2026-11-11):** the destination is a subfolder of the owner's Google Drive for desktop sync folder on `D:` (for example `D:\khali-ragebait-drive-backup\RepoRadar-backup`). The owner signed in and chose the folder. This replaces the offline external drive with an encrypted, off-site sync folder. restic encrypts everything before Drive syncs it. Caveats:
+- **Owner-approved D6 change (2026-11-11):** the destination is a subfolder of the owner's Google Drive for desktop sync folder on `D:` (for example `D:\<drive-sync-folder>\RepoRadar-backup`). The owner signed in and chose the folder. This replaces the offline external drive with an encrypted, off-site sync folder. restic encrypts everything before Drive syncs it. Caveats:
   - Drive Trash keeps deleted pack files for 30 days, so the 7-day expiry is fully effective only once the Trash empties.
   - A synced folder can propagate ransomware; Drive version history mitigates this.
   - The Google account is not recorded anywhere, and nothing else in that folder was read or listed.
@@ -108,7 +108,7 @@ On the owner's explicit instruction ("cant u do these urself, please go ahead an
 
 - **Linux restic:** the official `restic_0.19.1_linux_amd64.bz2` from the v0.19.1 GitHub release, checked against the release's `SHA256SUMS` (`sha256sum -c`: OK), decompressed with Python's `bz2` and installed to `/home/sumukha/.local/bin/restic` (0755, no sudo). `restic version`: `restic 0.19.1 compiled with go1.26.4 on linux/amd64`. SHA-256 of the installed binary: `20d4142678d0d95ec11a4759def1b73fd9190abc9ca19e4b62d067c0b387e639`.
 - **Password file:** `/home/sumukha/.config/reporadar/restic-password`, written straight from `/dev/urandom` (32 random bytes, base64) with `umask 077`. The directory is 0700. Checked by `stat` only: `-rw------- 45 bytes`. Its contents were never read or printed. The owner copies it into their password manager themselves.
-- **Repository:** `restic init` at `/mnt/d/khali-ragebait-drive-backup/RepoRadar-backup` (the owner's Google Drive for desktop sync folder) created repository `29f37fd072`. The ignored `backend/.env` of the worker checkout holds only paths: catalogue, content, repository, password file, restic binary.
+- **Repository:** `restic init` at `/mnt/d/<drive-sync-folder>/RepoRadar-backup` (the owner's Google Drive for desktop sync folder) created repository `29f37fd072`. The ignored `backend/.env` of the worker checkout holds only paths: catalogue, content, repository, password file, restic binary.
 - **First `backup`:** snapshot `896c6682`, 3.608 MiB of data. The command then crashed while printing its result (`KeyError: 'stop_reason'`, fixed below). The snapshot itself was complete, and no `backup-staging-*` folder was left.
 - **`backup --verify`**, after the fix: `{"result": "verified", "files": 405, "schema_version": 7}`, exit 0, about 4.3 s (restic check, private restore, every hash matched, ledger absent).
 - **Second `backup`:** `{"result": "exported", "expiry": "done", "files": 405, "bytes": 3697878, "schema_version": 7, "snapshot": "7265e6f5..."}`, exit 0, about 4.8 s. There are 2 snapshots; both are within the 7-day window, so expiry kept them.
@@ -126,7 +126,7 @@ On the owner's explicit instruction ("cant u do these urself, please go ahead an
 The catalogue lives on WSL's Linux filesystem and the destination is `D:`. The simplest safe route, proposed to the owner and **not done**:
 1. Install Linux restic inside WSL (needs owner approval).
 2. The owner creates a private password file inside WSL with a command that writes random bytes without echoing them (`umask 077`). The owner copies it into their password manager. No Claude session reads it.
-3. The owner runs `restic init` once for `/mnt/d/khali-ragebait-drive-backup/RepoRadar-backup`.
+3. The owner runs `restic init` once for `/mnt/d/<drive-sync-folder>/RepoRadar-backup`.
 4. Set `ARCHIVE_BACKUP_REPOSITORY` and `ARCHIVE_BACKUP_PASSWORD_FILE` in the ignored `.env`, run `backup`, then `backup --verify` once (D6's single restore check).
 
 The alternative, Windows restic reading a staged snapshot via `\\wsl$`, adds a cross-OS path hop. Neither the real repository nor the password file exists yet.
