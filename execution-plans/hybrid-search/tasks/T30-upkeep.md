@@ -236,3 +236,30 @@ environment or a renamed `MILVUS_COLLECTION` runs `init-collection` once. RED:
 12 tests failed; GREEN: full backend 1263 passed / 3 skipped, 93.3% / 90.4%;
 ruff, format, bandit and `git diff --check` clean. Not run: a real Milvus
 server.
+
+## U8 + U18 operator documentation — 2026-11-13
+
+Base `36a6953dac6370ccade1db3e921d2fafb6bceb31`; independent branch
+`codex/hybrid-t30-u8-u18-operator-docs`. Owner pulled this slice forward before T29.
+Read U8/U18, T09 credential evidence, T18 Phase B and PR #81. Main already had a
+brief RAM/Restart note and scheduler documentation named the worker `.env`;
+neither item was fully fixed: backend README lacked the single-copy/0600 rule,
+Fast Startup explanation, profile cleanup, owner-only WSL-limit changes and the
+open memory optimization decision. Retained the existing guidance and linked the
+expanded preflight instead of duplicating it.
+
+Plan/result: backend README now names the one authoritative ignored Linux worker
+`backend/.env` (0600); consolidation remains an operator action, not claimed done.
+Preflight covers heavy apps/free host RAM, Windows Restart rather than Fast
+Startup shutdown, only the needed Milvus profile and ordinary down afterwards,
+and no `.wslconfig` edits without the owner. Lower worker peak memory (such as
+smaller embedding batches) remains open before a separately approved 10k pilot.
+No secrets read/copied/printed, applications closed, services started, memory
+settings changed, or code modified. Documentation only; no TDD or runtime tests
+needed. Validate local link targets, fenced blocks and `git diff --check`.
+Rollback is a documentation revert. Operational advice follows the recorded T18
+incident; it is not new hardware or live-run evidence.
+
+Checks: 128 relative local link targets resolve across backend README, T30 and
+hybrid TRACKER; fenced code blocks balanced in all three. `git diff --check`
+passed. Runtime suites intentionally not repeated for this docs-only slice.
