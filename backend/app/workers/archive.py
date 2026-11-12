@@ -652,6 +652,16 @@ def main(argv=None):
         action="store_true",
         help="Restore the latest snapshot privately and check its manifest",
     )
+    restore = commands.add_parser(
+        "restore",
+        help="Restore a backup into quarantine, or activate a ready quarantine",
+    )
+    restore.add_argument("--snapshot", default="latest")
+    restore.add_argument(
+        "--activate",
+        action="store_true",
+        help="Rebuild vectors and swap a ready quarantine in (API stopped)",
+    )
     args = parser.parse_args(argv)
 
     started = time.perf_counter()
@@ -683,6 +693,33 @@ def main(argv=None):
                     ArchiveContentStore(settings),
                     settings,
                     now=datetime.now(timezone.utc),
+                )
+        elif args.command == "restore":
+            # The quarantine re-applies the D2 policy, so it needs the same list.
+            if not backfill_license_policy_ok(settings):
+                raise IngestError(
+                    "ARCHIVE_LICENSE_ALLOWLIST must equal the approved backfill policy"
+                )
+            from app.services import archive_restore
+
+            if args.activate:
+                runtime = build_runtime(settings)
+                summary = archive_restore.activate(
+                    runtime.connect,
+                    runtime.content,
+                    settings,
+                    now=datetime.now(timezone.utc),
+                    vectors=runtime.vectors,
+                    adapter=runtime.adapter,
+                )
+            else:
+                summary = archive_restore.restore_to_quarantine(
+                    ArchiveStore(settings).connect,
+                    ArchiveContentStore(settings),
+                    settings,
+                    now=datetime.now(timezone.utc),
+                    snapshot=args.snapshot,
+                    reader=ArchiveGitHubReader(settings=settings),
                 )
         elif args.command == "retire":
             # An empty or wrong allowlist would suppress every repository as
@@ -783,7 +820,7 @@ def main(argv=None):
         summary["timings_ms"] = {"total": _elapsed(started)}
     summary["timings_ms"]["total"] = _elapsed(started)
     print(json.dumps(summary, sort_keys=True))
-    if summary.get("expiry") == "failed":
+    if "failed" in (summary.get("expiry"), summary.get("orphan_vectors")):
         return 1
     return (
         0
@@ -797,6 +834,8 @@ def main(argv=None):
             "rate_limit",
             "exported",
             "verified",
+            "quarantined",
+            "activated",
             "initialized",
         )
         else 1

@@ -38,6 +38,7 @@ RETENTION = "7d"  # D5: encrypted backups are kept at most 7 days
 TAG = "reporadar-archive"
 RESTIC_TIMEOUT_SECONDS = 3600
 _PLAINTEXT = re.compile(r"backup-(staging|verify)-[0-9a-f]{32}")
+_SNAPSHOT = re.compile(r"latest|[0-9a-f]{8,64}")
 
 
 class BackupError(Exception):
@@ -111,7 +112,12 @@ class Restic:
         self._call("forget", "--tag", TAG, "--keep-within", RETENTION, "--prune")
 
     def restore_latest(self, target):
-        self._call("restore", "latest", "--tag", TAG, "--target", str(target))
+        self.restore("latest", target)
+
+    def restore(self, snapshot, target):
+        if not _SNAPSHOT.fullmatch(snapshot):
+            raise BackupError("snapshot must be 'latest' or a restic snapshot ID")
+        self._call("restore", snapshot, "--tag", TAG, "--target", str(target))
 
     def check(self):
         self._call("check")

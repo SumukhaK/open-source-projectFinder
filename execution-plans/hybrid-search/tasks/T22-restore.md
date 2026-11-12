@@ -1,6 +1,6 @@
 # T22: Restore into quarantine and reapply suppression
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Awaiting review ([evidence](../T22_EVIDENCE.md)). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
