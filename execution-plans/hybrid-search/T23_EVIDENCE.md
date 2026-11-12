@@ -86,3 +86,31 @@ Run by the reviewing Claude session on the owner's laptop with the owner's appro
 ## Operator and rollback notes
 
 See [infra/scheduler/README.md](../../infra/scheduler/README.md) for import, dry run, enable/disable, status, retry and credentials. No migration. Rollback: `Unregister-ScheduledTask` both tasks and revert the code; `schedule-log.jsonl` and `schedule.lock` can be deleted.
+
+## Follow-up: the jobs start and stop Milvus (2026-11-12)
+
+On the owner's decision (the laptop normally keeps Docker Desktop and Milvus stopped to save RAM), `schedule run` now manages the stack for the steps that need it (`refresh`, `retire`; not `backup`):
+- It first checks Milvus: connect and `verify_collection`, which also loads the collection. If Milvus is ready, the job uses it and leaves it running.
+- Otherwise it runs `ARCHIVE_SCHEDULE_MILVUS_UP`. If that fails (inside WSL the `docker` CLI is missing or fails while Docker Desktop is stopped), it runs `ARCHIVE_SCHEDULE_DOCKER_START` and retries `up` once. It then polls every 10 s up to `ARCHIVE_SCHEDULE_MILVUS_READY_SECONDS` (default 300).
+- If Milvus never becomes ready, the Milvus steps are logged `milvus_unavailable` and skipped, `backup` still runs, and the job exits 1.
+- At the end it runs `..._MILVUS_DOWN` only if it ran `up`, and `..._DOCKER_STOP` only if it started Desktop. A failed stop fails the job.
+- The log gets `milvus` / `milvus_stop` lines with `milvus_started`, `docker_started`, `milvus_ready_s` and fixed error messages; command output is never captured into it. `status` shows the last check per job.
+- Settings validation: each command is a JSON argument list with an absolute program path first, at most 32 bounded arguments, run without a shell. `-v`, `--volumes` and `--rmi` are refused, so a stop can never delete the Milvus volumes. Empty (the default) means check only, never start.
+
+Production files: `backend/app/workers/schedule.py`, `backend/app/core/config.py`. Also changed: the `backend/.env.example` placeholders and the runbook section "Starting and stopping Milvus".
+
+Tests are fakes only: a fake runner, probe, clock and sleep, plus `Settings` validation. They cover:
+- Milvus already healthy (left running);
+- stopped Milvus started, waited for and stopped after the whole job;
+- Docker CLI failure, then Desktop start, then retry, then both stopped;
+- never ready (refresh skipped, backup run, Milvus stopped, exit 1);
+- Docker start failure;
+- no start command configured (nothing started or stopped);
+- failed stop fails the job;
+- the status `milvus` block;
+- the probe returning False on a Milvus error;
+- unsafe commands rejected.
+
+Mutation check: 8 defects were each reintroduced and each failed the suite. They were: stopping when Milvus was healthy at start, no Docker fallback, running refresh without Milvus, skipping backup after a Milvus failure, never stopping what was started, skipping the health probe, allowing `down -v`, and allowing a PATH lookup. `tests/test_archive_schedule.py`: 41 passed; full suite 1,347 passed / 3 skipped, coverage 93.4% / 90.4%; ruff, format, bandit and `git diff --check` clean.
+
+Not run: Docker Desktop start from WSL (`docker.exe desktop start`, Desktop 4.37+) and the real compose up/down through Task Scheduler. The reviewer will check them on the laptop. Both tasks stay Disabled.

@@ -4,8 +4,10 @@ import json
 import os
 import subprocess
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
+from app.core.config import Settings
 from app.workers import schedule
 from app.workers.refresh import due_boundary
 
@@ -392,11 +394,303 @@ def test_worker_that_cannot_start_or_prints_bad_json_fails(tmp_path):
     assert backup["result"] == "unreadable" and backup["state"] == "failed"
 
 
-def test_cli_run_uses_the_catalogue_directory(tmp_path, monkeypatch):
+def test_cli_run_uses_the_catalogue_directory_and_settings(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr(schedule, "_directory", lambda: tmp_path)
+    marker = object()
+    monkeypatch.setattr(schedule, "_settings", lambda: marker)
+    monkeypatch.setattr(schedule, "_directory", lambda settings=None: tmp_path)
     monkeypatch.setattr(
-        schedule, "run_job", lambda job, directory: calls.append((job, directory)) or 1
+        schedule,
+        "run_job",
+        lambda job, directory, settings: calls.append((job, directory, settings)) or 1,
     )
     assert schedule.main(["run", "daily"]) == 1
-    assert calls == [("daily", tmp_path)]
+    assert calls == [("daily", tmp_path, marker)]
+
+
+# --- Milvus stack ------------------------------------------------------------
+
+UP = ("/usr/bin/docker", "compose", "--profile", "gpu", "up", "-d", "--wait")
+DOWN = ("/usr/bin/docker", "compose", "--profile", "gpu", "down")
+DOCKER_START = ("/mnt/c/docker/docker.exe", "desktop", "start")
+DOCKER_STOP = ("/mnt/c/docker/docker.exe", "desktop", "stop")
+
+
+def stack_settings(**overrides):
+    values = {
+        "archive_schedule_milvus_up": list(UP),
+        "archive_schedule_milvus_down": list(DOWN),
+        "archive_schedule_docker_start": list(DOCKER_START),
+        "archive_schedule_docker_stop": list(DOCKER_STOP),
+        "archive_schedule_milvus_ready_seconds": 300,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+class StackRunner:
+    """Archive steps by name; stack commands by argument list (default exit 0)."""
+
+    def __init__(self, steps, commands=None):
+        self.steps = steps
+        self.commands = {tuple(k): list(v) for k, v in (commands or {}).items()}
+        self.calls = []
+
+    def __call__(self, command, **kwargs):
+        assert "shell" not in kwargs
+        if command[1:3] == ["-m", "app.workers.archive"]:
+            self.calls.append(command[3])
+            code, stdout = self.steps[command[3]]
+            return subprocess.CompletedProcess(command, code, stdout, "")
+        self.calls.append(" ".join(command[1:]))
+        outcomes = self.commands.get(tuple(command), [])
+        outcome = outcomes.pop(0) if outcomes else 0
+        if isinstance(outcome, Exception):
+            raise outcome
+        return subprocess.CompletedProcess(command, outcome, "secret output", "")
+
+
+def probe_after(ready_on_call):
+    calls = []
+
+    def probe():
+        calls.append(1)
+        return len(calls) >= ready_on_call
+
+    return probe
+
+
+def sleeping(clock):
+    def sleep(seconds):
+        clock.now += seconds
+
+    return sleep
+
+
+WEEKLY_STEPS = {
+    "refresh": (0, line(result="cap", coverage="partial")),
+    "backup": (0, line(result="exported", snapshot="a")),
+}
+
+
+@posix_only
+def test_healthy_milvus_is_used_and_left_running(tmp_path):
+    clock = Clock(WEEKLY_DUE)
+    runner = StackRunner(WEEKLY_STEPS)
+    code = schedule.run_job(
+        "weekly",
+        tmp_path,
+        settings=stack_settings(),
+        runner=runner,
+        clock=clock,
+        sleep=sleeping(clock),
+        probe=lambda: True,
+    )
+    assert code == 0
+    assert runner.calls == ["refresh", "backup"]
+    milvus, refresh, backup = records(tmp_path)
+    assert milvus["step"] == "milvus" and milvus["result"] == "ready"
+    assert milvus["milvus_started"] is False and milvus["milvus_ready_s"] <= 1
+
+
+@posix_only
+def test_stopped_milvus_is_started_waited_for_and_stopped_again(tmp_path):
+    clock = Clock(WEEKLY_DUE)
+    runner = StackRunner(WEEKLY_STEPS)
+    code = schedule.run_job(
+        "weekly",
+        tmp_path,
+        settings=stack_settings(),
+        runner=runner,
+        clock=clock,
+        sleep=sleeping(clock),
+        probe=probe_after(4),
+    )
+    assert code == 0
+    up, down = " ".join(UP[1:]), " ".join(DOWN[1:])
+    # Milvus comes up before refresh and goes down only after the whole job.
+    assert runner.calls == [up, "refresh", "backup", down]
+    milvus, refresh, backup, stop = records(tmp_path)
+    assert milvus["milvus_started"] is True and milvus["docker_started"] is False
+    assert milvus["milvus_ready_s"] >= 2 * schedule.MILVUS_POLL
+    assert stop["step"] == "milvus_stop" and stop["result"] == "stopped"
+    assert "secret output" not in (tmp_path / schedule.LOG_NAME).read_text()
+
+
+@posix_only
+def test_docker_desktop_is_started_when_the_docker_cli_fails(tmp_path):
+    # In WSL the docker CLI disappears or fails while Docker Desktop is stopped.
+    clock = Clock(DAILY_DUE)
+    runner = StackRunner(
+        {"retire": (0, line(result="finished"))},
+        {UP: [OSError("no such file"), 0]},
+    )
+    code = schedule.run_job(
+        "daily",
+        tmp_path,
+        settings=stack_settings(),
+        runner=runner,
+        clock=clock,
+        sleep=sleeping(clock),
+        probe=probe_after(2),
+    )
+    assert code == 0
+    up = " ".join(UP[1:])
+    assert runner.calls == [
+        up,
+        " ".join(DOCKER_START[1:]),
+        up,
+        "retire",
+        " ".join(DOWN[1:]),
+        " ".join(DOCKER_STOP[1:]),
+    ]
+    milvus, retire, stop = records(tmp_path)
+    assert milvus["docker_started"] is True and milvus["milvus_started"] is True
+    assert retire["state"] == "complete" and stop["result"] == "stopped"
+
+
+@posix_only
+def test_milvus_never_ready_skips_refresh_but_backs_up_and_stops(tmp_path):
+    clock = Clock(WEEKLY_DUE)
+    runner = StackRunner(WEEKLY_STEPS)
+    code = schedule.run_job(
+        "weekly",
+        tmp_path,
+        settings=stack_settings(),
+        runner=runner,
+        clock=clock,
+        sleep=sleeping(clock),
+        probe=lambda: False,
+    )
+    assert code == 1
+    assert "refresh" not in runner.calls and "backup" in runner.calls
+    assert runner.calls[-1] == " ".join(DOWN[1:])
+    milvus, refresh, backup, stop = records(tmp_path)
+    assert milvus["state"] == "failed"
+    assert milvus["error"] == "Milvus was not ready within 300 s"
+    assert milvus["milvus_ready_s"] >= 300
+    assert refresh["result"] == "milvus_unavailable" and refresh["state"] == "failed"
+    assert backup["state"] == "complete"
+    assert stop["result"] == "stopped"
+
+
+@posix_only
+def test_docker_start_failure_is_logged_and_retire_skipped(tmp_path):
+    clock = Clock(DAILY_DUE)
+    runner = StackRunner(
+        {"retire": (0, line(result="finished"))},
+        {UP: [1], DOCKER_START: [subprocess.TimeoutExpired(["x"], 1)]},
+    )
+    code = schedule.run_job(
+        "daily",
+        tmp_path,
+        settings=stack_settings(),
+        runner=runner,
+        clock=clock,
+        sleep=sleeping(clock),
+        probe=lambda: False,
+    )
+    assert code == 1
+    assert "retire" not in runner.calls
+    milvus, retire, stop = records(tmp_path)
+    assert milvus["error"] == "Docker start command failed"
+    assert retire["result"] == "milvus_unavailable"
+    assert stop["result"] == "stopped"
+
+
+@posix_only
+def test_no_start_command_fails_without_starting_or_stopping(tmp_path):
+    clock = Clock(DAILY_DUE)
+    runner = StackRunner({"retire": (0, line(result="finished"))})
+    settings = stack_settings(
+        archive_schedule_milvus_up=[], archive_schedule_docker_start=[]
+    )
+    code = schedule.run_job(
+        "daily",
+        tmp_path,
+        settings=settings,
+        runner=runner,
+        clock=clock,
+        sleep=sleeping(clock),
+        probe=lambda: False,
+    )
+    assert code == 1
+    assert runner.calls == []
+    milvus, retire = records(tmp_path)
+    assert milvus["error"] == "Milvus is not ready and no start command is configured"
+    assert milvus["milvus_started"] is False
+
+
+@posix_only
+def test_failed_stop_fails_the_job(tmp_path):
+    clock = Clock(DAILY_DUE)
+    runner = StackRunner({"retire": (0, line(result="finished"))}, {DOWN: [1]})
+    code = schedule.run_job(
+        "daily",
+        tmp_path,
+        settings=stack_settings(),
+        runner=runner,
+        clock=clock,
+        sleep=sleeping(clock),
+        probe=probe_after(2),
+    )
+    assert code == 1
+    stop = records(tmp_path)[-1]
+    assert stop["state"] == "failed" and stop["error"] == "Milvus stop command failed"
+
+
+def test_status_reports_the_last_milvus_check(tmp_path):
+    write_log(
+        tmp_path,
+        entry(
+            "daily",
+            "milvus",
+            DAILY_DUE,
+            DAILY_DUE,
+            "complete",
+            result="ready",
+            milvus_started=True,
+            milvus_ready_s=42,
+        ),
+        entry("daily", "retire", DAILY_DUE, DAILY_DUE, "complete"),
+        entry(
+            "daily", "milvus_stop", DAILY_DUE, DAILY_DUE, "complete", result="stopped"
+        ),
+    )
+    daily = schedule.status(tmp_path, DAILY_DUE + timedelta(hours=1))["jobs"]["daily"]
+    assert daily["milvus"]["milvus_started"] is True
+    assert daily["milvus"]["milvus_ready_s"] == 42
+    assert daily["milvus"]["last_stop"] == "stopped"
+    assert daily["last_state"] == "complete"
+
+
+def test_probe_reports_not_ready_on_any_milvus_error(monkeypatch):
+    from app.integrations import milvus
+
+    def refuse(settings, manifest):
+        raise milvus.MilvusUnavailable("Could not connect to local Milvus")
+
+    monkeypatch.setattr(milvus.MilvusAdapter, "connect", refuse)
+    assert schedule._milvus_ready(SimpleNamespace()) is False
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["docker", "compose", "up"],
+        ["/usr/bin/docker", "compose", "down", "-v"],
+        ["/usr/bin/docker", "compose", "down", "--volumes"],
+        ["/usr/bin/docker", ""],
+    ],
+)
+def test_settings_reject_unsafe_schedule_commands(command):
+    with pytest.raises(ValueError):
+        Settings(archive_schedule_milvus_down=command)
+
+
+def test_settings_accept_fixed_schedule_commands():
+    settings = Settings(
+        archive_schedule_milvus_up=UP, archive_schedule_milvus_down=DOWN
+    )
+    assert settings.archive_schedule_milvus_up == list(UP)
+    assert Settings().archive_schedule_milvus_up == []

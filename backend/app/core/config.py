@@ -168,6 +168,13 @@ class Settings(BaseSettings):
     archive_backup_repository: str = ""
     archive_backup_password_file: str = ""
     archive_backup_restic: str = "restic"
+    # T23 scheduled jobs: fixed argument lists (no shell) that bring the local
+    # Docker/Milvus stack up for steps that need it and down again afterwards.
+    archive_schedule_docker_start: list[str] = Field(default_factory=list)
+    archive_schedule_docker_stop: list[str] = Field(default_factory=list)
+    archive_schedule_milvus_up: list[str] = Field(default_factory=list)
+    archive_schedule_milvus_down: list[str] = Field(default_factory=list)
+    archive_schedule_milvus_ready_seconds: int = Field(default=300, ge=10, le=1800)
     milvus_uri: str = "http://127.0.0.1:19530"
     milvus_token: SecretStr = Field(default=SecretStr(""), repr=False)
     milvus_profile: Literal["cpu", "gpu"] = "gpu"
@@ -297,6 +304,30 @@ class Settings(BaseSettings):
                 raise ValueError("Archive license allowlist entries must be bounded")
             cleaned.append(item)
         return cleaned
+
+    @field_validator(
+        "archive_schedule_docker_start",
+        "archive_schedule_docker_stop",
+        "archive_schedule_milvus_up",
+        "archive_schedule_milvus_down",
+    )
+    @classmethod
+    def fixed_schedule_commands(cls, value):
+        if not value:
+            return value
+        if len(value) > 32 or any(
+            not isinstance(item, str) or not item or len(item) > 512 or "\x00" in item
+            for item in value
+        ):
+            raise ValueError("Schedule commands must be short argument lists")
+        if not value[0].startswith("/"):
+            raise ValueError(
+                "Schedule commands must start with an absolute program path"
+            )
+        # Never let a scheduled stop delete the Milvus volumes.
+        if any(item in ("-v", "--volumes", "--rmi") for item in value):
+            raise ValueError("Schedule commands must not remove volumes or images")
+        return value
 
     @model_validator(mode="after")
     def separate_archive_paths(self):
