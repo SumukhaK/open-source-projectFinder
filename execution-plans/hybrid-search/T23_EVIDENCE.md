@@ -1,6 +1,6 @@
 # T23 weekly host scheduling and operator status
 
-Status: **Awaiting review.** Implemented by Claude on the owner's instruction (2026-11-12). It needs an independent review before merge. **No scheduled task has been imported or enabled, and no real scheduled run has happened**; see "Not run".
+Status: **Merged** as `9667ea5` ([PR #105](https://github.com/SumukhaK/open-source-projectFinder/pull/105)), after an independent Claude review (changes requested at `b7b73d7`, approved at `f7d09a6`). Both tasks are registered on the laptop **disabled**; one real daily run passed through Task Scheduler (see "Real Windows evidence"). Enabling the schedule needs the owner's separate approval.
 
 In plain terms: two Windows Task Scheduler templates start the archive worker in WSL. Every Sunday at 03:30 India time it runs the weekly refresh and then the encrypted backup; every evening at 22:00 it runs the privacy/removal sweep. If the laptop was off, the job runs when it is next on. Only one job runs at a time. `status` shows what last succeeded, what was partial, and when the next run is due. The templates import switched off; switching them on needs the owner's OK.
 
@@ -58,10 +58,21 @@ The independent review of `b7b73d7` requested one blocking change. After a misse
 
 RED: the 7 new tests were run against the reviewed `schedule.py` and failed, exit 1. The failing tests were: wait then run, overlap only after the bounded wait, overlap-only not attempted, and 4 withheld-error cases. GREEN: `tests/test_archive_schedule.py` passed 27; full suite 1,333 passed / 3 skipped, coverage 93.4% / 90.4%; ruff, format, bandit and `git diff --check` clean.
 
+## Real Windows evidence (2026-11-12)
+
+Run by the reviewing Claude session on the owner's laptop with the owner's approval, from a worker clone at `f7d09a6`:
+- Both templates registered under `\RepoRadar\`; both showed **Disabled**.
+- `archive-daily` was enabled, started and disabled again at once, so it ran through the real Task Scheduler -> `wsl.exe` -> `schedule run daily` path: **LastTaskResult 0** in 3 min 9 s. Both tasks ended Disabled. `archive-weekly` has never run.
+- Log line: `state: complete`, `result: finished`, `due_period 2026-11-11T16:30:00+00:00` (the 22:00 IST boundary), `waited_s: 0`, `checked: 204`, `purged: 2`, `issues: 0`; counts and timings only.
+- `status`: daily complete with `next_due` 16:30Z; weekly `missed: true` (never run, as expected).
+- Live catalogue: 206 -> 204 repositories, 1,157 -> 1,141 chunks; 2 `archived` suppressions reapplied from the ledger; the ledger did not grow.
+- `schedule-log.jsonl`, `schedule.lock` and the ledger are all 0600.
+
+**Operator note:** the registered tasks point at `/home/sumukha/reporadar-t23-worker`, which was checked out at the PR branch. Switch that checkout to `main` (now containing `9667ea5`) before anyone enables the tasks.
+
 ## Not run
 
-- **No Windows import, dry run or enable.** This session has no Windows host. The templates were checked as XML only, not by Task Scheduler. The handbook's GREEN step (a bounded manual launch and a scheduler dry run on the laptop) is pending and needs the owner: import disabled, run the dry-run command from the runbook, read `status`, then decide on enabling.
-- No real refresh, retire or backup was run by the scheduler. The archive commands themselves are unchanged.
+- The weekly job (`refresh` + `backup`) has not run through Task Scheduler; the tasks were not left enabled.
 
 ## Limits
 
