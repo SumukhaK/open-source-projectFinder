@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess  # nosec B404 - fixed argument list, no shell
 import sys
 import time
@@ -35,6 +36,11 @@ TIMEOUTS = {"refresh": 6 * 3600, "backup": 3600, "retire": 2 * 3600}
 LOG_NAME = "schedule-log.jsonl"
 LOCK_NAME = "schedule.lock"
 LOG_KEEP = 400  # about a year of daily and weekly records
+# After a missed window both tasks start together at logon; the second waits
+# for the first instead of being lost until its next trigger. Task Scheduler's
+# ExecutionTimeLimit covers this wait plus the job's own step timeouts.
+LOCK_WAIT = 150 * 60
+LOCK_POLL = 30
 
 COMPLETE = {"finished", "exported", "verified"}
 PARTIAL = {"cap", "quota", "rate_limit"}
@@ -78,6 +84,9 @@ KEPT = {
     "timings_ms",
 }
 MAX_TEXT = 200
+# CLI errors are already sanitized; this is a second guard so a future message
+# carrying a path, URL or token-like string never reaches the log.
+UNSAFE_ERROR = re.compile(r"[/\\]|://|[A-Za-z0-9_\-]{32,}")
 
 
 def _check(job, now):
@@ -123,6 +132,8 @@ def _sanitize(summary):
             }
         elif not _value(value):
             continue
+        elif key == "error" and isinstance(value, str) and UNSAFE_ERROR.search(value):
+            value = "error withheld from the log"
         kept[key] = value
     return kept
 
@@ -164,17 +175,23 @@ def _run_step(step, runner):
 
 
 @contextmanager
-def _single_instance(directory):
+def _single_instance(directory, clock, sleep):
+    """Yield the seconds waited for the lock, or None after LOCK_WAIT."""
     import fcntl  # POSIX only: the worker runs in WSL
 
     fd = os.open(directory / LOCK_NAME, os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            yield False
-            return
-        yield True
+        start = clock()
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if clock() - start >= LOCK_WAIT:
+                    yield None
+                    return
+                sleep(LOCK_POLL)
+        yield round(clock() - start)
     finally:
         os.close(fd)
 
@@ -198,20 +215,22 @@ def _append(directory, record):
         os.replace(temporary, path)
 
 
-def run_job(job, directory, *, runner=subprocess.run, clock=time.time):
+def run_job(
+    job, directory, *, runner=subprocess.run, clock=time.time, sleep=time.sleep
+):
     """Run one job's steps in order; return 0 only if every step exited 0."""
     launched = clock()
     due = last_due(job, datetime.fromtimestamp(launched, timezone.utc))
     base = {"job": job, "due_period": due.isoformat(), "launched_at": _iso(launched)}
-    with _single_instance(directory) as acquired:
-        if not acquired:
+    with _single_instance(directory, clock, sleep) as waited:
+        if waited is None:
             _append(
                 directory,
                 {
                     **base,
                     "step": "launch",
                     "started_at": _iso(launched),
-                    "finished_at": _iso(launched),
+                    "finished_at": _iso(clock()),
                     "exit_code": None,
                     "result": "overlap",
                     "state": "failed",
@@ -235,6 +254,7 @@ def run_job(job, directory, *, runner=subprocess.run, clock=time.time):
                     "finished_at": _iso(clock()),
                     "exit_code": code,
                     "state": state,
+                    "waited_s": waited,
                 },
             )
             if code != 0:
@@ -290,7 +310,11 @@ def status(directory, now):
     for job, steps in JOBS.items():
         due = last_due(job, now)
         rows = [row for row in records if row["job"] == job]
-        attempted = any(row.get("due_period") == due.isoformat() for row in rows)
+        # An overlap-only launch ran no step, so it does not count as attempted.
+        attempted = any(
+            row.get("due_period") == due.isoformat() and row.get("step") in steps
+            for row in rows
+        )
         jobs[job] = {
             "current_due": due.isoformat(),
             "missed": not attempted,

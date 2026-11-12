@@ -18,8 +18,8 @@ Docs: `infra/scheduler/README.md` (runbook), `backend/README.md`, this file, tra
 
 Behaviour:
 - **Periods.** Weekly = `refresh.due_boundary` (Saturday 22:00 UTC = Sunday 03:30 IST), so scheduler, catch-up and manual runs in one week share one `refresh` run. Daily = 16:30 UTC (22:00 IST). Both fixed in UTC; Asia/Kolkata has no DST. `retire` needs no durable run of its own: it is idempotent, and the daily period is recorded only in the job log.
-- **Steps.** Weekly runs `refresh` then `backup`; daily runs `retire`. Each is `python -m app.workers.archive <step>` with its defaults, so `refresh` keeps `--cap 0` (D1). Backup still runs after a failed refresh (it is a consistent export on its own); the job exits 1 if any step exited non-zero. Per-step timeouts: refresh 6 h, backup 1 h, retire 2 h; Task Scheduler's limits are 8 h / 3 h.
-- **One instance.** Task Scheduler `IgnoreNew` per task, plus a private `schedule.lock` (`flock`, non-blocking) beside the catalogue across both tasks. An overlapping launch runs nothing, logs `overlap` and exits 1. The archive writer lease is unchanged and still guards manual commands.
+- **Steps.** Weekly runs `refresh` then `backup`; daily runs `retire`. Each is `python -m app.workers.archive <step>` with its defaults, so `refresh` keeps `--cap 0` (D1). Backup still runs after a failed refresh (it is a consistent export on its own); the job exits 1 if any step exited non-zero. Per-step timeouts: refresh 6 h, backup 1 h, retire 2 h; Task Scheduler's limits are 10 h / 5 h (step timeouts plus the 2.5 h lock wait).
+- **One instance.** Task Scheduler `IgnoreNew` per task, plus a private `schedule.lock` (`flock`, non-blocking) beside the catalogue across both tasks. A second launch (both tasks firing at logon after a missed window) waits for the lock, polling every 30 s for up to 2.5 h, then runs and logs `waited_s`; only after that wait does it run nothing, log `overlap` and exit 1. The archive writer lease is unchanged and still guards manual commands.
 - **Catch-up.** `StartWhenAvailable=true`, `WakeToRun=false`, runs only while the owner is signed in (`InteractiveToken`, least privilege, no stored password), not stopped on battery.
 - **Status and log.** Each step's JSON summary is reduced to an allowlist of counts, timings, stop reasons, run/snapshot IDs and short sanitized errors, then appended (fsynced) to `schedule-log.jsonl` (0600, last 400 lines). Non-JSON output is logged only as `unreadable`; stderr is never logged. `status` reads only this log and prints, per job, `current_due`, `missed`, `next_due` (`"now"` when missed), `last_state` (`complete`/`partial`/`failed` for the last launch), and per step the last attempt/state/result/success, `stop_reason`, `retry_at`, `error`.
 
@@ -49,6 +49,15 @@ Mutation check after GREEN (each defect reintroduced, then reverted); every one 
 - `ruff check backend scripts` passed; `ruff format --check backend scripts` clean; `bandit -r backend/app` 0 findings; `git diff --check` clean. Both XML templates parse.
 - Secret inspection of the diff: no tokens, passwords or private paths beyond the already-documented worker interpreter path.
 
+## Review fixes (2026-11-12)
+
+The independent review of `b7b73d7` requested one blocking change. After a missed window, both tasks start at logon (`StartWhenAvailable`). The loser logged `overlap`, exited 1 and was never relaunched, so the weekly refresh and backup could be lost for a week. Fixes:
+- **Blocking: bounded lock wait.** `run_job` now polls the lock every 30 s for up to `LOCK_WAIT` (2.5 h) and runs once it is free. It logs `overlap` only on timeout. The Task Scheduler limits were raised to 10 h weekly and 5 h daily to cover the wait.
+- `status` counts a period as attempted only if a real step ran, so an overlap-only launch leaves it `missed`.
+- `error` gets a second guard: a value containing a path separator, a URL or a token-like run of 32 or more characters is replaced by `error withheld from the log`.
+
+RED: the 7 new tests were run against the reviewed `schedule.py` and failed, exit 1. The failing tests were: wait then run, overlap only after the bounded wait, overlap-only not attempted, and 4 withheld-error cases. GREEN: `tests/test_archive_schedule.py` passed 27; full suite 1,333 passed / 3 skipped, coverage 93.4% / 90.4%; ruff, format, bandit and `git diff --check` clean.
+
 ## Not run
 
 - **No Windows import, dry run or enable.** This session has no Windows host. The templates were checked as XML only, not by Task Scheduler. The handbook's GREEN step (a bounded manual launch and a scheduler dry run on the laptop) is pending and needs the owner: import disabled, run the dry-run command from the runbook, read `status`, then decide on enabling.
@@ -59,6 +68,7 @@ Mutation check after GREEN (each defect reintroduced, then reverted); every one 
 - A sleeping, switched-off or signed-out laptop does not run the jobs; they catch up when Windows is next up and the owner is signed in.
 - The jobs do not start Docker Desktop or the GPU Milvus stack. `refresh` and `retire` fail with a sanitized error if Milvus is down; `backup` does not need it. Keeping Milvus running for the 22:00 daily sweep costs host RAM (T18 saw `vmmem` at the 6 GB cap); the owner may prefer to start Milvus only for the weekly window, which would leave the daily sweep failing on other days. This needs an owner decision before enabling.
 - With `--cap 0`, every weekly refresh ends `partial` (`cap`) by design.
+- A launch still locked out after 2.5 h (for example, the daily sweep behind a refresh that runs longer than that) logs `overlap` and stays `missed` until its next trigger or a manual rerun.
 - `status` reflects only scheduled (or `schedule run`) launches, not commands run directly with `app.workers.archive`.
 - Trigger times are local; the runbook checks the Windows time zone is India Standard Time. The run identity is UTC-pinned either way.
 

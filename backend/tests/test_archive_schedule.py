@@ -170,16 +170,55 @@ def test_timeout_and_unreadable_output_are_failures(tmp_path):
     assert "private" not in json.dumps(backup)
 
 
-@posix_only
-def test_overlapping_launch_runs_nothing(tmp_path):
+def hold_lock(directory):
     import fcntl
 
-    fd = os.open(tmp_path / schedule.LOCK_NAME, os.O_CREAT | os.O_RDWR, 0o600)
+    fd = os.open(directory / schedule.LOCK_NAME, os.O_CREAT | os.O_RDWR, 0o600)
     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    return fd
+
+
+@posix_only
+def test_second_launch_waits_for_the_first_then_runs(tmp_path):
+    # Both tasks fire at logon after a missed window: the weekly job must not
+    # be lost because the daily one holds the lock.
+    fd = hold_lock(tmp_path)
+    clock = Clock(WEEKLY_DUE + timedelta(days=1))
+    sleeps = []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        clock.now += seconds
+        if len(sleeps) == 3:
+            os.close(fd)  # the first job finishes
+
+    runner = FakeRunner(
+        {
+            "refresh": (0, line(result="cap", coverage="partial")),
+            "backup": (0, line(result="exported", snapshot="a")),
+        }
+    )
+    code = schedule.run_job("weekly", tmp_path, runner=runner, clock=clock, sleep=sleep)
+    assert code == 0
+    assert [call[0][3] for call in runner.calls] == ["refresh", "backup"]
+    assert sleeps == [schedule.LOCK_POLL] * 3
+    refresh, backup = records(tmp_path)
+    assert refresh["waited_s"] >= 3 * schedule.LOCK_POLL
+    assert refresh["due_period"] == WEEKLY_DUE.isoformat()
+
+
+@posix_only
+def test_overlap_is_logged_only_after_the_bounded_wait(tmp_path):
+    fd = hold_lock(tmp_path)
+    clock = Clock(DAILY_DUE)
+
+    def sleep(seconds):
+        clock.now += seconds
+
     runner = FakeRunner({"retire": (0, line(result="finished"))})
     try:
         code = schedule.run_job(
-            "daily", tmp_path, runner=runner, clock=Clock(DAILY_DUE)
+            "daily", tmp_path, runner=runner, clock=clock, sleep=sleep
         )
     finally:
         os.close(fd)
@@ -187,10 +226,47 @@ def test_overlapping_launch_runs_nothing(tmp_path):
     assert runner.calls == []
     (record,) = records(tmp_path)
     assert record["result"] == "overlap" and record["state"] == "failed"
+    assert clock.now - DAILY_DUE.timestamp() >= schedule.LOCK_WAIT
     # Once the first instance exits, the next launch runs normally.
     assert (
         schedule.run_job("daily", tmp_path, runner=runner, clock=Clock(DAILY_DUE)) == 0
     )
+    # An overlap-only period is not an attempt; the retry above is.
+    assert (
+        schedule.status(tmp_path, DAILY_DUE + timedelta(hours=1))["jobs"]["daily"][
+            "missed"
+        ]
+        is False
+    )
+
+
+def test_status_does_not_count_overlap_only_as_attempted(tmp_path):
+    write_log(
+        tmp_path,
+        entry("daily", "launch", DAILY_DUE, DAILY_DUE, "failed", result="overlap"),
+    )
+    daily = schedule.status(tmp_path, DAILY_DUE + timedelta(hours=1))["jobs"]["daily"]
+    assert daily["missed"] is True and daily["next_due"] == "now"
+    assert daily["last_state"] == "failed"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "cannot open /home/someone/private/catalogue.sqlite3",
+        "failed at https://example.invalid/x",
+        "bad token ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+        "C:\\Users\\someone\\file",
+    ],
+)
+def test_error_with_path_url_or_token_is_withheld(error):
+    kept = schedule._sanitize({"result": "failed", "error": error})
+    assert kept["error"] == "error withheld from the log"
+
+
+def test_plain_sanitized_error_is_kept():
+    kept = schedule._sanitize({"result": "failed", "error": "Milvus is unreachable"})
+    assert kept["error"] == "Milvus is unreachable"
 
 
 @posix_only
