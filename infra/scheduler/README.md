@@ -23,25 +23,27 @@ Both tasks run one command, `python -m app.workers.schedule run weekly|daily`, f
 `refresh` and `retire` need the GPU Milvus stack (`infra/milvus`, `--profile gpu`); `backup` does not. On the laptop, Docker Desktop and Milvus are normally stopped to save RAM, so the job can bring them up itself:
 
 1. Before the first step that needs Milvus, the job checks whether Milvus answers and the archive collection is loaded. If it is, the job uses it and leaves it running afterwards.
-2. If not, it runs the configured Milvus start command. Inside WSL, the `docker` CLI comes from Docker Desktop's WSL integration. While Desktop is stopped, that CLI is missing or fails, so the start command fails. In that case the job first runs the configured Docker status command. Only if Docker is down does it run the Docker Desktop start command. It then polls the status command every 10 s until Docker answers, within the same time limit, and runs the Milvus start command again. If Docker was already running, Desktop is neither started nor stopped and the Milvus failure is logged. Without a status command, the job never starts or stops Docker Desktop, and settings refuse Docker start/stop commands that have no status command.
+2. If not, it runs the configured Milvus start command. While Docker Desktop is stopped, the compose start command fails. In that case the job first runs the configured Docker status command. Only if Docker is down does it run the Docker Desktop start command. It then polls the status command every 10 s until Docker answers, within the same time limit, and runs the Milvus start command again. If Docker was already running, Desktop is neither started nor stopped and the Milvus failure is logged. Without a status command, the job never starts or stops Docker Desktop, and settings refuse Docker start/stop commands that have no status command.
 3. It then waits for Milvus to answer (checking every 10 s) for up to `ARCHIVE_SCHEDULE_MILVUS_READY_SECONDS` (default 300) from the first check.
 4. It runs the steps. If Milvus never becomes ready, `refresh`/`retire` are skipped and logged as `milvus_unavailable`, the job exits 1, and `backup` still runs.
 5. At the end it stops only what it started. Once the job has run the Milvus start command, it counts the Milvus stack as its own and stops it, even if that command failed or the stack was partly up, because a failed `up` can leave containers running and the `reporadar-t01` Compose project belongs to this archive alone. It stops Milvus if it ran the start command, and Docker Desktop only if Docker was down before and this job's Desktop start succeeded.
 
 The log gets one `milvus` line per job, with `milvus_started`, `docker_started`, `milvus_ready_s` and a fixed `error` message on failure. If it stopped anything, it also gets one `milvus_stop` line. Command output is never logged. `status` shows the last check under each job's `milvus` key.
 
-The commands are JSON argument lists in the worker checkout's ignored `backend/.env`. They run without a shell, the program must be an absolute path, and a command containing `-v`, `--volumes` or `--rmi` is refused, so a stop can never delete the Milvus volumes. Leave them empty (the default) to only check Milvus and never start it. Laptop values, assuming Docker Desktop 4.37 or later (for `docker desktop start`) and the checkout at `<worker-checkout>`:
+The commands are JSON argument lists in the worker checkout's ignored `backend/.env`. They run without a shell, the program must be an absolute path, and a command containing `-v`, `--volumes` or `--rmi` is refused, so a stop can never delete the Milvus volumes. Leave them empty (the default) to only check Milvus and never start it.
+
+On the laptop, everything goes through Docker Desktop's Windows `docker.exe`, which WSL runs through interop. WSL integration is off, so there is no `/usr/bin/docker` in the distro. Docker Desktop is a per-user install, so find the path with `Get-Command docker.exe` in PowerShell, or look under `C:\Users\<user>\AppData\Local\Programs\DockerDesktop\resources\bin\`, and write it as a `/mnt/c/...` path. `docker.exe` is a Windows program, so the compose file must be given as a **Windows path** (`E:\...`). A `/mnt/e/...` path is not translated. The live GPU Milvus stack is the `reporadar-t01` Compose project in the T01 checkout. Its private `.env`, which holds the Milvus and MinIO passwords, must sit in the same folder as `compose.yaml`, because Compose reads it from there.
 
 ```sh
-ARCHIVE_SCHEDULE_DOCKER_START=["/mnt/c/Program Files/Docker/Docker/resources/bin/docker.exe","desktop","start","--timeout","240"]
-ARCHIVE_SCHEDULE_DOCKER_STOP=["/mnt/c/Program Files/Docker/Docker/resources/bin/docker.exe","desktop","stop"]
-ARCHIVE_SCHEDULE_DOCKER_STATUS=["/mnt/c/Program Files/Docker/Docker/resources/bin/docker.exe","info"]
-ARCHIVE_SCHEDULE_MILVUS_UP=["/usr/bin/docker","compose","-f","/home/sumukha/<worker-checkout>/infra/milvus/compose.yaml","--profile","gpu","up","-d","--wait","--wait-timeout","240"]
-ARCHIVE_SCHEDULE_MILVUS_DOWN=["/usr/bin/docker","compose","-f","/home/sumukha/<worker-checkout>/infra/milvus/compose.yaml","--profile","gpu","down"]
+ARCHIVE_SCHEDULE_DOCKER_STATUS=["/mnt/c/Users/<user>/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe","info"]
+ARCHIVE_SCHEDULE_DOCKER_START=["/mnt/c/Users/<user>/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe","desktop","start"]
+ARCHIVE_SCHEDULE_DOCKER_STOP=["/mnt/c/Users/<user>/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe","desktop","stop"]
+ARCHIVE_SCHEDULE_MILVUS_UP=["/mnt/c/Users/<user>/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe","compose","-f","E:\\OpenSourceProjectFinder-t01\\infra\\milvus\\compose.yaml","--profile","gpu","up","-d","--wait","--wait-timeout","180"]
+ARCHIVE_SCHEDULE_MILVUS_DOWN=["/mnt/c/Users/<user>/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe","compose","-f","E:\\OpenSourceProjectFinder-t01\\infra\\milvus\\compose.yaml","--profile","gpu","down"]
 ARCHIVE_SCHEDULE_MILVUS_READY_SECONDS=300
 ```
 
-Check these on the laptop before enabling. Confirm the `docker.exe` path, that the status command exits non-zero while Docker Desktop is stopped and 0 once it is running, that `/usr/bin/docker` is the Desktop integration CLI inside the distro, and that `infra/milvus/.env` (the Milvus passwords Compose reads) sits beside `compose.yaml` in that checkout. Docker Desktop needs the signed-in session, which the task already requires. Starting Desktop and Milvus from cold takes a few minutes and uses about 6 GB of RAM while the job runs.
+Backslashes are doubled because the values are JSON. Never add `-v` to the stop command; settings refuse it anyway. Laptop timings (2026-11-12): `docker.exe info` fails after about 16 s while Desktop is stopped, `desktop start` takes about 3.6 s with the engine ready at once, and `desktop stop` takes about 12.7 s. Docker Desktop needs the signed-in session, which the task already requires. Milvus uses about 6 GB of RAM while the job runs.
 
 ## What it will not do
 
