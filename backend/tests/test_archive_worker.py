@@ -14,7 +14,11 @@ from app.integrations.archive_github import (
     ReadmeDocument,
     RepositoryMetadata,
 )
-from app.integrations.milvus import MilvusContractError, MilvusUnavailable
+from app.integrations.milvus import (
+    MilvusCollectionMissing,
+    MilvusContractError,
+    MilvusUnavailable,
+)
 from app.services.archive_content import ArchiveContentStore
 from app.services.archive_publication import load_active_chunks
 from app.services.embeddings import EmbeddingAdapter, EmbeddingError, ModelManifest
@@ -554,8 +558,11 @@ def test_wrong_milvus_server_closes_the_client_and_fails_preflight(
         def __init__(self):
             self.settings = settings
 
-        def ensure_collection(self):
+        def verify_collection(self):
             raise MilvusContractError("Milvus server must match the pinned 2.6 family")
+
+        def ensure_collection(self):
+            pytest.fail("worker preflight must never create the collection")
 
         def close(self):
             closed.append(True)
@@ -574,6 +581,109 @@ def test_wrong_milvus_server_closes_the_client_and_fails_preflight(
     with pytest.raises(worker.IngestError, match="pinned 2.6 family"):
         worker.build_runtime(settings)
     assert closed == [True]
+
+
+def _preflight_with(monkeypatch, tmp_path, vectors):
+    settings = make_settings(tmp_path)
+    monkeypatch.setattr(worker, "ArchiveStore", lambda _: SimpleNamespace())
+    monkeypatch.setattr(
+        worker.EmbeddingAdapter,
+        "load",
+        classmethod(lambda cls, **_: SimpleNamespace(manifest=ModelManifest.load())),
+    )
+    monkeypatch.setattr(
+        worker.MilvusAdapter, "connect", classmethod(lambda cls, *_: vectors)
+    )
+    return settings
+
+
+def test_missing_collection_fails_preflight_and_names_the_init_step(
+    monkeypatch, tmp_path
+):
+    closed = []
+
+    class Missing:
+        def verify_collection(self):
+            raise MilvusCollectionMissing("Milvus collection is missing")
+
+        def ensure_collection(self):
+            pytest.fail("worker preflight must never create the collection")
+
+        def close(self):
+            closed.append(True)
+
+    settings = _preflight_with(monkeypatch, tmp_path, Missing())
+    with pytest.raises(worker.IngestError, match="init-collection"):
+        worker.build_runtime(settings)
+    assert closed == [True]
+
+
+class InitVectors:
+    def __init__(self, result=None, error=None):
+        self.result = result or {"collection_created": True, "index_created": True}
+        self.error = error
+        self.closed = False
+
+    def ensure_collection(self):
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+    def close(self):
+        self.closed = True
+
+
+def _init_cli(monkeypatch, tmp_path, vectors, **settings):
+    seen = []
+    monkeypatch.setattr(worker, "Settings", lambda: make_settings(tmp_path, **settings))
+    monkeypatch.setattr(
+        worker.MilvusAdapter,
+        "connect",
+        classmethod(lambda cls, *args: seen.append(args) or vectors),
+    )
+    monkeypatch.setattr(
+        worker, "build_runtime", lambda _: pytest.fail("init needs no worker runtime")
+    )
+    monkeypatch.setattr(
+        worker.EmbeddingAdapter,
+        "load",
+        classmethod(lambda cls, **_: pytest.fail("init needs no embedding model")),
+    )
+    return seen
+
+
+def test_init_collection_is_an_explicit_operator_command(monkeypatch, capsys, tmp_path):
+    vectors = InitVectors()
+    # Collection setup needs no GitHub token or licence policy.
+    seen = _init_cli(
+        monkeypatch,
+        tmp_path,
+        vectors,
+        archive_github_token="",
+        archive_license_allowlist=[],
+    )
+
+    assert worker.main(["init-collection"]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["result"] == "initialized"
+    assert output["collection_created"] is True
+    assert output["index_created"] is True
+    assert output["collection"] == seen[0][0].milvus_collection
+    assert seen[0][1] == ModelManifest.load()
+    assert vectors.closed is True
+
+
+def test_init_collection_failure_is_sanitized_and_closes_the_client(
+    monkeypatch, capsys, tmp_path
+):
+    vectors = InitVectors(error=MilvusContractError(TOKEN))
+    _init_cli(monkeypatch, tmp_path, vectors)
+
+    assert worker.main(["init-collection"]) == 1
+    output = capsys.readouterr()
+    assert TOKEN not in output.out + output.err
+    assert json.loads(output.out)["result"] == "failed"
+    assert vectors.closed is True
 
 
 def test_cli_prints_sanitized_json_and_exits_nonzero_on_refusal(
