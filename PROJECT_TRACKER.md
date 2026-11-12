@@ -1664,3 +1664,7 @@ U10 implementation request (verbatim):
 ## T21 first real backup — 2026-11-12
 
 The first real encrypted backup ran into the owner's Google Drive sync folder and `backup --verify` matched all 405 files; the folder holds only encrypted restic files (about 1.8 MB). [PR #98](https://github.com/SumukhaK/open-source-projectFinder/pull/98) fixed a CLI crash after a successful backup and was merged as `37d056f`. Run `backup` after each weekly refresh until T23 automates it. T22 (restore) is next.
+
+## T30 U5 and U6 merged — 2026-11-12
+
+[PR #100](https://github.com/SumukhaK/open-source-projectFinder/pull/100) was squash-merged as `69e9cab` after an independent Claude review: archive snippets that were cut mid-word now end on a whole word with "…" when served, and the app labels them "README excerpt". Stored Milvus rows are unchanged, so no re-ingest is needed. [PR #101](https://github.com/SumukhaK/open-source-projectFinder/pull/101) was squash-merged as `85ee3cb` after an independent Claude review: the worker no longer creates a missing Milvus collection; a fresh environment runs `python -m app.workers.archive init-collection` once. Open T30 backlog: U4, U7-U9, U12 and U15-U18.
