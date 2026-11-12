@@ -243,6 +243,15 @@ def _milvus_ready(settings):
                 pass
 
 
+def _diagnostic(code, stderr):
+    """Exit code plus the last stderr line, only if it carries no path or token."""
+    lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
+    text = f"exit {code}"
+    if lines and not UNSAFE_ERROR.search(lines[-1]):
+        text += ": " + lines[-1]
+    return text[:MAX_TEXT]
+
+
 class MilvusStack:
     """Bring Docker/Milvus up for the steps that need it; stop only what we started.
 
@@ -256,15 +265,27 @@ class MilvusStack:
         self.ready = None  # None until a step that needs Milvus asks for it
         self.started = False
         self.docker_started = False
+        self.detail = None
 
     def _command(self, command, timeout):
+        """Run one stack command; on failure keep a short sanitized diagnostic."""
+        self.detail = None
         try:
             done = self.runner(
                 command, capture_output=True, text=True, timeout=timeout, check=False
             )
-        except (subprocess.TimeoutExpired, OSError):
+        except subprocess.TimeoutExpired:
+            self.detail = f"timed out after {timeout} s"
             return False
+        except OSError:
+            self.detail = "could not run"
+            return False
+        if done.returncode != 0:
+            self.detail = _diagnostic(done.returncode, done.stderr)
         return done.returncode == 0
+
+    def _failed(self, message, detail):
+        return f"{message} ({detail})"[:MAX_TEXT] if detail else message
 
     def _docker_running(self):
         status = self.settings.archive_schedule_docker_status
@@ -275,12 +296,13 @@ class MilvusStack:
         settings = self.settings
         if not settings.archive_schedule_docker_status:
             return False, "Docker start needs a status command"
+        up_detail = self.detail
         if self._docker_running():
-            return False, "Milvus start command failed"
+            return False, self._failed("Milvus start command failed", up_detail)
         if not self._command(
             settings.archive_schedule_docker_start, STACK_COMMAND_TIMEOUT
         ):
-            return False, "Docker start command failed"
+            return False, self._failed("Docker start command failed", self.detail)
         self.docker_started = True
         while not self._docker_running():
             if self.clock() - start >= limit:
@@ -318,7 +340,7 @@ class MilvusStack:
                 else:
                     self.ready = True
             elif error is None:
-                error = "Milvus start command failed"
+                error = self._failed("Milvus start command failed", self.detail)
         self.ready = bool(self.ready)
         record.update(
             milvus_started=self.started,
@@ -341,14 +363,14 @@ class MilvusStack:
         errors = []
         down = self.settings.archive_schedule_milvus_down
         if self.started and down and not self._command(down, STACK_COMMAND_TIMEOUT):
-            errors.append("Milvus stop command failed")
+            errors.append(self._failed("Milvus stop command failed", self.detail))
         docker_stop = self.settings.archive_schedule_docker_stop
         if (
             self.docker_started
             and docker_stop
             and not self._command(docker_stop, STACK_COMMAND_TIMEOUT)
         ):
-            errors.append("Docker stop command failed")
+            errors.append(self._failed("Docker stop command failed", self.detail))
         record = {
             "step": "milvus_stop",
             "result": "failed" if errors else "stopped",
@@ -357,7 +379,7 @@ class MilvusStack:
             "finished_at": _iso(self.clock()),
         }
         if errors:
-            record["error"] = "; ".join(errors)
+            record["error"] = "; ".join(errors)[:MAX_TEXT]
         return record
 
 

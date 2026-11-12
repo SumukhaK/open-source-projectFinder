@@ -449,7 +449,8 @@ class StackRunner:
         outcome = outcomes.pop(0) if outcomes else 0
         if isinstance(outcome, Exception):
             raise outcome
-        return subprocess.CompletedProcess(command, outcome, "secret output", "")
+        code, stderr = outcome if isinstance(outcome, tuple) else (outcome, "")
+        return subprocess.CompletedProcess(command, code, "secret output", stderr)
 
 
 def probe_after(ready_on_call):
@@ -604,7 +605,7 @@ def test_docker_start_failure_is_logged_and_retire_skipped(tmp_path):
     assert code == 1
     assert "retire" not in runner.calls
     milvus, retire, stop = records(tmp_path)
-    assert milvus["error"] == "Docker start command failed"
+    assert milvus["error"] == "Docker start command failed (timed out after 300 s)"
     # A start that failed is not "ours": Desktop is never stopped for it.
     assert milvus["docker_started"] is False
     assert " ".join(DOCKER_STOP[1:]) not in runner.calls
@@ -650,7 +651,10 @@ def test_failed_stop_fails_the_job(tmp_path):
     )
     assert code == 1
     stop = records(tmp_path)[-1]
-    assert stop["state"] == "failed" and stop["error"] == "Milvus stop command failed"
+    assert (
+        stop["state"] == "failed"
+        and stop["error"] == "Milvus stop command failed (exit 1)"
+    )
 
 
 def test_status_reports_the_last_milvus_check(tmp_path):
@@ -732,7 +736,7 @@ def test_running_docker_desktop_is_never_started_or_stopped(tmp_path):
     assert " ".join(DOCKER_STOP[1:]) not in runner.calls
     milvus, retire, stop = records(tmp_path)
     assert milvus["docker_started"] is False
-    assert milvus["error"] == "Milvus start command failed"
+    assert milvus["error"] == "Milvus start command failed (exit 1)"
 
 
 @posix_only
@@ -788,3 +792,54 @@ def test_settings_require_a_docker_status_command(field):
             "archive_schedule_docker_status": list(DOCKER_STATUS),
         }
     )
+
+
+def run_daily_with_failed_up(tmp_path, stderr):
+    clock = Clock(DAILY_DUE)
+    runner = StackRunner(
+        {"retire": (0, line(result="finished"))},
+        {UP: [(1, stderr)], DOCKER_STATUS: [0]},
+    )
+    schedule.run_job(
+        "daily",
+        tmp_path,
+        settings=stack_settings(),
+        runner=runner,
+        clock=clock,
+        sleep=sleeping(clock),
+        probe=lambda: False,
+    )
+    return records(tmp_path)[0]["error"]
+
+
+@posix_only
+def test_failed_stack_command_logs_exit_code_and_last_safe_stderr_line(tmp_path):
+    stderr = (
+        "Container reporadar-t01-etcd-1  Started\n"
+        "Error response from daemon: could not select device driver with capabilities: [[gpu]]\n"
+    )
+    error = run_daily_with_failed_up(tmp_path, stderr)
+    assert error == (
+        "Milvus start command failed (exit 1: Error response from daemon: "
+        "could not select device driver with capabilities: [[gpu]])"
+    )
+    assert "etcd" not in error
+
+
+@posix_only
+@pytest.mark.parametrize(
+    "last_line",
+    [
+        "open E:\\OpenSourceProjectFinder-t01\\infra\\milvus\\.env: denied",
+        "pull access denied for milvusdb/milvus",
+        "token ghp_abcdefghijklmnopqrstuvwxyz0123456789 rejected",
+    ],
+)
+def test_failed_stack_command_withholds_unsafe_stderr(tmp_path, last_line):
+    error = run_daily_with_failed_up(tmp_path, "starting\n" + last_line + "\n")
+    assert error == "Milvus start command failed (exit 1)"
+
+
+def test_diagnostic_is_bounded():
+    text = schedule._diagnostic(125, "x " * 500)
+    assert text.startswith("exit 125: ") and len(text) <= schedule.MAX_TEXT

@@ -131,3 +131,18 @@ RED: run against the reviewed `schedule.py`/`config.py`, the new and changed tes
 - 2 settings cases.
 
 GREEN: `tests/test_archive_schedule.py` passed 46.
+
+### Review fix: sanitized diagnostics for failed stack commands (2026-11-12)
+
+The reviewer ran a real end-to-end check of `a25c76b` on the laptop, with Docker Desktop stopped at the start. It failed safely:
+- The run exited 1 in 41 s. `docker_started` and `milvus_started` were true, and the error was `Milvus start command failed`.
+- `retire` was skipped as `milvus_unavailable`, and `milvus_stop` reported `stopped`.
+- Docker Desktop was stopped again afterwards, the catalogue was unchanged, and both tasks are still Disabled.
+- The second `compose up` failed after `desktop start` and `info` had succeeded.
+
+The cause could not be seen, because no command output was kept. Fix: a failed stack command now adds a short diagnostic to the fixed message:
+- the exit code, or `timed out after N s` / `could not run`;
+- plus the last non-empty stderr line, but only if that line passes the existing `UNSAFE_ERROR` guard (no path separator, URL or token-like run);
+- capped at `MAX_TEXT`.
+
+stdout is never kept. RED: 8 tests fail against `b592164`: 3 updated exact-message tests, the safe-line test, 3 withheld-line cases and the length bound. GREEN: `tests/test_archive_schedule.py` passes 51; full suite 1,357 passed / 3 skipped, coverage 93.4% / 90.5%. The root cause of the failed `up` is still being diagnosed on the laptop.
