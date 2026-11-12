@@ -24,8 +24,8 @@ At each post-merge tracker sync, the reviewer adds that task's non-blocking revi
 | ~~U2~~ (closed by [PR #90](https://github.com/SumukhaK/open-source-projectFinder/pull/90), merged as `f4983e7`) | T07, [PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28) | Vector dimension 384 is hard-coded in the adapter | Read it from the embedding manifest's `dimensions`; **fixed in PR #90, merged as `f4983e7`** |
 | ~~U3~~ (closed by [PR #90](https://github.com/SumukhaK/open-source-projectFinder/pull/90), merged as `f4983e7`) | T07, [PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28) | `close()` does not guard a client that was never created | Make `close()` a safe no-op when the client is `None`; **fixed in PR #90, merged as `f4983e7`** |
 | U4 | T05, [PR #20](https://github.com/SumukhaK/open-source-projectFinder/pull/20) | README chunking drops a whole paragraph that contains inline HTML | Keep the surrounding text. Changes prepared output: bump `CHUNKER_VERSION` and plan the re-ingest through T19's refresh; separate slice |
-| U5 | T09, [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34) | Milvus snippets are cut at 2,048 bytes, possibly mid-word | Truncate on a word/character boundary and confirm the app labels snippets as excerpts (if T15/T25 have not already) Since 2026-11-05: land this before voice V2 if the grounded summary quotes snippets, so the LLM never receives a mid-word cut. |
-| U6 | T09, [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34) | Worker preflight (`ensure_collection`) creates the Milvus collection on first run | Split creation into an explicit operator init step so a misconfigured run cannot silently create an empty collection |
+| ~~U5~~ (closed by [PR #100](https://github.com/SumukhaK/open-source-projectFinder/pull/100), merged as `69e9cab`) | T09, [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34) | Milvus snippets are cut at 2,048 bytes, possibly mid-word | Truncate on a word/character boundary and confirm the app labels snippets as excerpts (if T15/T25 have not already) Since 2026-11-05: land this before voice V2 if the grounded summary quotes snippets, so the LLM never receives a mid-word cut. **fixed in PR #100, merged as `69e9cab`**: cut at serving time on a word boundary with `…`; cards are labelled "README excerpt"; the summary receives only `full_names`, so no snippet reaches the LLM |
+| ~~U6~~ (closed by [PR #101](https://github.com/SumukhaK/open-source-projectFinder/pull/101), merged as `85ee3cb`) | T09, [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34) | Worker preflight (`ensure_collection`) creates the Milvus collection on first run | Split creation into an explicit operator init step so a misconfigured run cannot silently create an empty collection; **fixed in PR #101, merged as `85ee3cb`**: preflight calls `verify_collection()`, creation only through `python -m app.workers.archive init-collection` |
 | U7 | T11, [PR #38](https://github.com/SumukhaK/open-source-projectFinder/pull/38) | A GitHub 422 (rejected query) is reported as `failed`/`unavailable`; owner accepted this for now | If real logs show 422s, report a distinct `query_rejected` reason |
 | U8 | T09, [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34) | Operator: the worker token sits in two ignored `.env` files (main checkout and T09 worktree) | Keep one private copy; document its location in the operator runbook. No secret values in the repository |
 | U9 | T04, [PR #19](https://github.com/SumukhaK/open-source-projectFinder/pull/19) | Compressed-response burst bound is documented, not measured | Measure peak memory during T18/T19 runs; tighten only if pressure is observed |
@@ -195,3 +195,43 @@ Full regression: `python -m pytest backend/tests scripts/tests --cov=backend/app
 platform/runtime and opt-in integration skips unchanged. Coverage command
 `python scripts/quality.py coverage reports/backend-coverage.json` ->
 **92.6% combined / 89.4% branches**, unchanged gate passed (exit 0).
+
+## U5 and U6 execution — 2026-11-12
+
+Owner-authorized slices before T29, done by Claude in the project thread, one PR
+each from `origin/main` (U5 base `f273be6`, U6 base `69e9cab`). Both were
+re-verified on main first; neither was already fixed. Fakes only (Linux
+container, Python 3.13; CI on pinned Python 3.11.17 is the authority). Each PR
+was reviewed by a separate Claude session at its exact head and squash-merged on
+green.
+
+**U5** ([PR #100](https://github.com/SumukhaK/open-source-projectFinder/pull/100),
+reviewed at `6a5d46c`, merged as `69e9cab3b6994f424bebe846a171a3f7783646ed`,
+[CI 43164076387](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/43164076387)).
+`rank_fusion._excerpt` turns a stored snippet within 3 bytes of the 2,048-byte
+limit (the only lengths the worker's character-boundary cut produces) into an
+excerpt ending at the last whole word (any whitespace) plus `…`, still within
+the limit; text without whitespace keeps its character cut; shorter snippets are
+unchanged. It runs at serving time on purpose: the stored snippet is part of the
+fenced `payload_digest`, so changing the worker's cut would make replays of
+already-staged revisions fail. No re-ingest is needed. Known limit: a whole chunk
+that is itself 2,045-2,048 bytes loses its last word. The mobile card labels the
+text "README excerpt" (also for screen readers); licence-conflict cards still
+hide it. RED: 4 fusion tests and 1 mobile test failed; GREEN: full backend 1251
+passed / 3 skipped, 93.2% / 90.4%; mobile 207 passed / 1 skipped, typecheck and
+lint clean.
+
+**U6** ([PR #101](https://github.com/SumukhaK/open-source-projectFinder/pull/101),
+reviewed at `4da2bd1`, merged as `85ee3cbb3bea5eecdbbc9834c963369f6c5972ea`,
+[CI 43164551331](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/43164551331)).
+Worker preflight now calls `MilvusAdapter.verify_collection()`, which keeps
+every server, schema, index and load-state check and loads an existing
+collection, but raises `MilvusCollectionMissing` (a `MilvusContractError`)
+instead of creating a missing collection or index. `ensure_collection()` is the
+operator init step only and reports what it created; it runs through the new
+`python -m app.workers.archive init-collection` command, which needs only Milvus
+and the pinned manifest. Existing collections need no action; a fresh
+environment or a renamed `MILVUS_COLLECTION` runs `init-collection` once. RED:
+12 tests failed; GREEN: full backend 1263 passed / 3 skipped, 93.3% / 90.4%;
+ruff, format, bandit and `git diff --check` clean. Not run: a real Milvus
+server.

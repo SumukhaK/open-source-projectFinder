@@ -235,7 +235,7 @@ Rollback: migration 2 is forward-only. Reverting only the T06 code after upgrade
 
 ## Local vector collection adapter (T07, merged)
 
-`app/integrations/milvus.py` provides synchronous `MilvusAdapter`, `VectorChunk` and `ScalarFilters`. Nothing imports it from API startup. Create it explicitly with `MilvusAdapter.connect(Settings(), ModelManifest.load())`, then call `ensure_collection()` from the worker setup path; close the client in `finally`. Keep blocking SDK calls outside an async request loop. T13 implements request admission and the total hybrid deadline.
+`app/integrations/milvus.py` provides synchronous `MilvusAdapter`, `VectorChunk` and `ScalarFilters`. Nothing imports it from API startup. Create it explicitly with `MilvusAdapter.connect(Settings(), ModelManifest.load())`, then call `verify_collection()` from the worker setup path; it checks and loads the collection but never creates it. Only the operator `init-collection` command calls `ensure_collection()`, which creates a missing collection and index (never dropping or replacing one) and reports what it created. Close the client in `finally`. Keep blocking SDK calls outside an async request loop. T13 implements request admission and the total hybrid deadline.
 
 Use the already-pinned `pymilvus==2.6.17` and Milvus 2.6.26 from [the local runbook](../infra/milvus/README.md). Settings are `MILVUS_URI` (explicit HTTP 127.0.0.1 port), `MILVUS_TOKEN` (non-default `user:password`, at least 16 password characters), `MILVUS_PROFILE` (`gpu` default, or explicitly `cpu`), `MILVUS_COLLECTION` (`repo_chunks_e5small_v1`), `MILVUS_TIMEOUT` (10 seconds, >0 to 30), `MILVUS_BUILD_TIMEOUT` (120 seconds, >0 to 120), and `MILVUS_BATCH_SIZE` (64, 1-64). Secrets belong only in ignored environment files. Ordinary auth/search startup still needs no Milvus credentials/server.
 
@@ -270,10 +270,13 @@ Rollback: stop consumers and revert T07; auth and existing keyword search are un
 
 ```sh
 # Run from backend/ with the Linux/WSL worker interpreter and private env.
+# Once per fresh Milvus or renamed MILVUS_COLLECTION (T30 U6); needs only
+# Milvus and the pinned manifest. Existing collections need no action.
+python -m app.workers.archive init-collection
 python -m app.workers.archive ingest --repo-id 123456
 ```
 
-Preflight fails closed with a sanitized JSON error and non-zero exit when settings are invalid, `ARCHIVE_GITHUB_TOKEN` is missing, the pinned E5 model is not cached offline, Milvus is unreachable/not 2.6/mismatched/unloaded, the archive catalogue cannot open under the WAL gate, or free disk is below `ARCHIVE_MIN_FREE_BYTES` (default 2 GiB).
+Preflight fails closed with a sanitized JSON error and non-zero exit when settings are invalid, `ARCHIVE_GITHUB_TOKEN` is missing, the pinned E5 model is not cached offline, Milvus is unreachable/not 2.6/mismatched/unloaded, the configured collection or its index does not exist (run `init-collection`; the worker never creates one), the archive catalogue cannot open under the WAL gate, or free disk is below `ARCHIVE_MIN_FREE_BYTES` (default 2 GiB).
 
 Eligibility refuses non-public, archived and fork repositories, `pushed_at` older than the rolling UTC 365-day cutoff (the exact boundary is eligible), missing SPDX licences and licences outside `ARCHIVE_LICENSE_ALLOWLIST`. There is no built-in allowlist because the licence policy is not approved yet; an empty list refuses everything. A missing README still publishes the T05 metadata-only overview.
 
@@ -440,6 +443,10 @@ Equal-weight reciprocal rank fusion uses `k=60`: `rrf_score` is the sum of
 is score descending, then the best source rank, then numeric repository ID, so
 reversed input produces identical output. The score is a ranking value only, not
 a match probability or percentage.
+
+Snippets the worker cut at the 2,048-byte limit (within 3 bytes of it) are
+served as excerpts ending on a whole word with `…`; shorter snippets are whole
+chunks and pass unchanged (T30 U5).
 
 Current live metadata wins a card conflict; archive snippet/section/revision/
 chunk provenance is attached only for eligible, current `ArchiveEvidence`, and
