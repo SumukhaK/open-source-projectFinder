@@ -266,6 +266,28 @@ class MilvusStack:
             return False
         return done.returncode == 0
 
+    def _docker_running(self):
+        status = self.settings.archive_schedule_docker_status
+        return bool(status) and self._command(status, STACK_COMMAND_TIMEOUT)
+
+    def _start_docker(self, start, limit):
+        """Return (docker ready, error); mark docker_started only on a real start."""
+        settings = self.settings
+        if not settings.archive_schedule_docker_status:
+            return False, "Docker start needs a status command"
+        if self._docker_running():
+            return False, "Milvus start command failed"
+        if not self._command(
+            settings.archive_schedule_docker_start, STACK_COMMAND_TIMEOUT
+        ):
+            return False, "Docker start command failed"
+        self.docker_started = True
+        while not self._docker_running():
+            if self.clock() - start >= limit:
+                return False, f"Docker was not ready within {limit} s"
+            self.sleep(MILVUS_POLL)
+        return True, None
+
     def ensure(self):
         settings = self.settings
         start = self.clock()
@@ -282,13 +304,11 @@ class MilvusStack:
             ok = self._command(up, limit)
             if not ok and settings.archive_schedule_docker_start:
                 # Inside WSL the docker CLI fails while Docker Desktop is stopped.
-                self.docker_started = True
-                if self._command(
-                    settings.archive_schedule_docker_start, STACK_COMMAND_TIMEOUT
-                ):
+                # Start Desktop only when its status command says it is down,
+                # so a Desktop the owner already had running is never stopped.
+                ok, error = self._start_docker(start, limit)
+                if ok:
                     ok = self._command(up, limit)
-                else:
-                    error = "Docker start command failed"
             if ok:
                 while not self.probe():
                     if self.clock() - start >= limit:

@@ -172,6 +172,7 @@ class Settings(BaseSettings):
     # Docker/Milvus stack up for steps that need it and down again afterwards.
     archive_schedule_docker_start: list[str] = Field(default_factory=list)
     archive_schedule_docker_stop: list[str] = Field(default_factory=list)
+    archive_schedule_docker_status: list[str] = Field(default_factory=list)
     archive_schedule_milvus_up: list[str] = Field(default_factory=list)
     archive_schedule_milvus_down: list[str] = Field(default_factory=list)
     archive_schedule_milvus_ready_seconds: int = Field(default=300, ge=10, le=1800)
@@ -308,6 +309,7 @@ class Settings(BaseSettings):
     @field_validator(
         "archive_schedule_docker_start",
         "archive_schedule_docker_stop",
+        "archive_schedule_docker_status",
         "archive_schedule_milvus_up",
         "archive_schedule_milvus_down",
     )
@@ -328,6 +330,14 @@ class Settings(BaseSettings):
         if any(item in ("-v", "--volumes", "--rmi") for item in value):
             raise ValueError("Schedule commands must not remove volumes or images")
         return value
+
+    @model_validator(mode="after")
+    def docker_start_needs_status(self):
+        if (
+            self.archive_schedule_docker_start or self.archive_schedule_docker_stop
+        ) and not self.archive_schedule_docker_status:
+            raise ValueError("Docker start/stop commands need a Docker status command")
+        return self
 
     @model_validator(mode="after")
     def separate_archive_paths(self):

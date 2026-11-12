@@ -414,6 +414,7 @@ UP = ("/usr/bin/docker", "compose", "--profile", "gpu", "up", "-d", "--wait")
 DOWN = ("/usr/bin/docker", "compose", "--profile", "gpu", "down")
 DOCKER_START = ("/mnt/c/docker/docker.exe", "desktop", "start")
 DOCKER_STOP = ("/mnt/c/docker/docker.exe", "desktop", "stop")
+DOCKER_STATUS = ("/mnt/c/docker/docker.exe", "info")
 
 
 def stack_settings(**overrides):
@@ -422,6 +423,7 @@ def stack_settings(**overrides):
         "archive_schedule_milvus_down": list(DOWN),
         "archive_schedule_docker_start": list(DOCKER_START),
         "archive_schedule_docker_stop": list(DOCKER_STOP),
+        "archive_schedule_docker_status": list(DOCKER_STATUS),
         "archive_schedule_milvus_ready_seconds": 300,
     }
     values.update(overrides)
@@ -523,7 +525,7 @@ def test_docker_desktop_is_started_when_the_docker_cli_fails(tmp_path):
     clock = Clock(DAILY_DUE)
     runner = StackRunner(
         {"retire": (0, line(result="finished"))},
-        {UP: [OSError("no such file"), 0]},
+        {UP: [OSError("no such file"), 0], DOCKER_STATUS: [1, 1, 0]},
     )
     code = schedule.run_job(
         "daily",
@@ -536,9 +538,14 @@ def test_docker_desktop_is_started_when_the_docker_cli_fails(tmp_path):
     )
     assert code == 0
     up = " ".join(UP[1:])
+    status = " ".join(DOCKER_STATUS[1:])
+    # Down before the start, then polled until Desktop answers.
     assert runner.calls == [
         up,
+        status,
         " ".join(DOCKER_START[1:]),
+        status,
+        status,
         up,
         "retire",
         " ".join(DOWN[1:]),
@@ -579,7 +586,11 @@ def test_docker_start_failure_is_logged_and_retire_skipped(tmp_path):
     clock = Clock(DAILY_DUE)
     runner = StackRunner(
         {"retire": (0, line(result="finished"))},
-        {UP: [1], DOCKER_START: [subprocess.TimeoutExpired(["x"], 1)]},
+        {
+            UP: [1],
+            DOCKER_STATUS: [1],
+            DOCKER_START: [subprocess.TimeoutExpired(["x"], 1)],
+        },
     )
     code = schedule.run_job(
         "daily",
@@ -594,6 +605,9 @@ def test_docker_start_failure_is_logged_and_retire_skipped(tmp_path):
     assert "retire" not in runner.calls
     milvus, retire, stop = records(tmp_path)
     assert milvus["error"] == "Docker start command failed"
+    # A start that failed is not "ours": Desktop is never stopped for it.
+    assert milvus["docker_started"] is False
+    assert " ".join(DOCKER_STOP[1:]) not in runner.calls
     assert retire["result"] == "milvus_unavailable"
     assert stop["result"] == "stopped"
 
@@ -694,3 +708,83 @@ def test_settings_accept_fixed_schedule_commands():
     )
     assert settings.archive_schedule_milvus_up == list(UP)
     assert Settings().archive_schedule_milvus_up == []
+
+
+@posix_only
+def test_running_docker_desktop_is_never_started_or_stopped(tmp_path):
+    # Desktop was already up (status 0) but compose up failed: the job must not
+    # "start" Desktop (a no-op) and then stop the owner's running Desktop.
+    clock = Clock(DAILY_DUE)
+    runner = StackRunner(
+        {"retire": (0, line(result="finished"))}, {UP: [1], DOCKER_STATUS: [0]}
+    )
+    code = schedule.run_job(
+        "daily",
+        tmp_path,
+        settings=stack_settings(),
+        runner=runner,
+        clock=clock,
+        sleep=sleeping(clock),
+        probe=lambda: False,
+    )
+    assert code == 1
+    assert " ".join(DOCKER_START[1:]) not in runner.calls
+    assert " ".join(DOCKER_STOP[1:]) not in runner.calls
+    milvus, retire, stop = records(tmp_path)
+    assert milvus["docker_started"] is False
+    assert milvus["error"] == "Milvus start command failed"
+
+
+@posix_only
+def test_docker_is_not_started_without_a_status_command(tmp_path):
+    clock = Clock(DAILY_DUE)
+    runner = StackRunner({"retire": (0, line(result="finished"))}, {UP: [1]})
+    code = schedule.run_job(
+        "daily",
+        tmp_path,
+        settings=stack_settings(archive_schedule_docker_status=[]),
+        runner=runner,
+        clock=clock,
+        sleep=sleeping(clock),
+        probe=lambda: False,
+    )
+    assert code == 1
+    assert " ".join(DOCKER_START[1:]) not in runner.calls
+    assert " ".join(DOCKER_STOP[1:]) not in runner.calls
+    assert records(tmp_path)[0]["error"] == "Docker start needs a status command"
+
+
+@posix_only
+def test_docker_that_never_answers_is_stopped_after_the_bound(tmp_path):
+    clock = Clock(DAILY_DUE)
+    runner = StackRunner(
+        {"retire": (0, line(result="finished"))}, {UP: [1], DOCKER_STATUS: [1] * 100}
+    )
+    code = schedule.run_job(
+        "daily",
+        tmp_path,
+        settings=stack_settings(),
+        runner=runner,
+        clock=clock,
+        sleep=sleeping(clock),
+        probe=lambda: False,
+    )
+    assert code == 1
+    milvus = records(tmp_path)[0]
+    assert milvus["error"] == "Docker was not ready within 300 s"
+    assert milvus["docker_started"] is True
+    assert runner.calls[-1] == " ".join(DOCKER_STOP[1:])
+
+
+@pytest.mark.parametrize(
+    "field", ["archive_schedule_docker_start", "archive_schedule_docker_stop"]
+)
+def test_settings_require_a_docker_status_command(field):
+    with pytest.raises(ValueError):
+        Settings(**{field: list(DOCKER_START)})
+    Settings(
+        **{
+            field: list(DOCKER_START),
+            "archive_schedule_docker_status": list(DOCKER_STATUS),
+        }
+    )

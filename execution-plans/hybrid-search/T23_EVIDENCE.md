@@ -114,3 +114,20 @@ Tests are fakes only: a fake runner, probe, clock and sleep, plus `Settings` val
 Mutation check: 8 defects were each reintroduced and each failed the suite. They were: stopping when Milvus was healthy at start, no Docker fallback, running refresh without Milvus, skipping backup after a Milvus failure, never stopping what was started, skipping the health probe, allowing `down -v`, and allowing a PATH lookup. `tests/test_archive_schedule.py`: 41 passed; full suite 1,347 passed / 3 skipped, coverage 93.4% / 90.4%; ruff, format, bandit and `git diff --check` clean.
 
 Not run: Docker Desktop start from WSL (`docker.exe desktop start`, Desktop 4.37+) and the real compose up/down through Task Scheduler. The reviewer will check them on the laptop. Both tasks stay Disabled.
+
+### Review fix: never stop a Docker Desktop the owner had running (2026-11-12)
+
+Review of `9003e67` found one blocker. Any failed `up` set `docker_started`, and `docker desktop start` is a no-op when Desktop is already running. So `stop()` could shut down a Docker Desktop that the owner had open. Fix:
+- New `ARCHIVE_SCHEDULE_DOCKER_STATUS`, which exits 0 only while Docker runs. Settings now refuse `DOCKER_START`/`DOCKER_STOP` unless it is set.
+- After a failed `up`, the job checks status first. It starts Desktop only if Docker is down. `docker_started` is set only after a successful start. The job then polls status (10 s, within the same limit) before retrying `up`.
+- If Docker was already running, Desktop is neither started nor stopped. If the start command fails, Desktop is not stopped.
+
+RED: run against the reviewed `schedule.py`/`config.py`, the new and changed tests gave 7 failed, exit 1. They covered:
+- the Desktop-already-running case;
+- no status command;
+- Docker never answering within the bound;
+- a failed start not counted as ours;
+- the status polling order;
+- 2 settings cases.
+
+GREEN: `tests/test_archive_schedule.py` passed 46.
