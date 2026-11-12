@@ -102,7 +102,26 @@ RED before the fixes (`pytest backend/tests/test_archive_backup.py -k "killed_ru
 
 GREEN: `test_archive_backup.py` 21 passed, 1 skipped (the POSIX permission test), including the real restic round trip.
 
-## Real export: pending owner steps
+## Real export (2026-11-12)
+
+On the owner's explicit instruction ("cant u do these urself, please go ahead and do it"), Claude did the setup inside WSL. The owner keeps the password in their own password manager; no Claude session read, printed or copied it.
+
+- **Linux restic:** the official `restic_0.19.1_linux_amd64.bz2` from the v0.19.1 GitHub release, checked against the release's `SHA256SUMS` (`sha256sum -c`: OK), decompressed with Python's `bz2` and installed to `/home/sumukha/.local/bin/restic` (0755, no sudo). `restic version`: `restic 0.19.1 compiled with go1.26.4 on linux/amd64`. SHA-256 of the installed binary: `20d4142678d0d95ec11a4759def1b73fd9190abc9ca19e4b62d067c0b387e639`.
+- **Password file:** `/home/sumukha/.config/reporadar/restic-password`, written straight from `/dev/urandom` (32 random bytes, base64) with `umask 077`. The directory is 0700. Checked by `stat` only: `-rw------- 45 bytes`. Its contents were never read or printed. The owner copies it into their password manager themselves.
+- **Repository:** `restic init` at `/mnt/d/khali-ragebait-drive-backup/RepoRadar-backup` (the owner's Google Drive for desktop sync folder) created repository `29f37fd072`. The ignored `backend/.env` of the worker checkout holds only paths: catalogue, content, repository, password file, restic binary.
+- **First `backup`:** snapshot `896c6682`, 3.608 MiB of data. The command then crashed while printing its result (`KeyError: 'stop_reason'`, fixed below). The snapshot itself was complete, and no `backup-staging-*` folder was left.
+- **`backup --verify`**, after the fix: `{"result": "verified", "files": 405, "schema_version": 7}`, exit 0, about 4.3 s (restic check, private restore, every hash matched, ledger absent).
+- **Second `backup`:** `{"result": "exported", "expiry": "done", "files": 405, "bytes": 3697878, "schema_version": 7, "snapshot": "7265e6f5..."}`, exit 0, about 4.8 s. There are 2 snapshots; both are within the 7-day window, so expiry kept them.
+- **Destination contents:** only restic's layout (`config`, `data/`, `index/`, `keys/`, `locks/`, `snapshots/`), 10 files, 1.8 MB on disk. A byte search found neither a repository name from the catalogue nor an SQLite header, so nothing is stored in plaintext. No plaintext staging or verify folder remains beside the catalogue.
+
+### Bug found by the real run: CLI result for backup summaries
+
+`main()` treated every summary without `timings_ms` as a worker run and read `summary["stop_reason"]`. Backup summaries carry `result` instead, so a successful `backup` or `backup --verify` crashed after finishing its work. Fix: keep an existing `result` and fall back to `stop_reason`.
+- RED: `test_backup_cli_prints_its_result_and_exits_zero[backup|verify]` failed with `KeyError: 'stop_reason'`.
+- GREEN: both pass. The archive worker, backfill, refresh, retirement and backup suites give 159 passed, 1 skipped, plus 1 known Windows-only baseline failure that is unrelated.
+
+## Real export: original plan
+
 
 The catalogue lives on WSL's Linux filesystem and the destination is `D:`. The simplest safe route, proposed to the owner and **not done**:
 1. Install Linux restic inside WSL (needs owner approval).

@@ -754,7 +754,8 @@ def main(argv=None):
                 )
 
     if "timings_ms" not in summary:
-        summary["result"] = summary["stop_reason"]
+        # Backup summaries carry their own result; run summaries a stop_reason.
+        summary.setdefault("result", summary.get("stop_reason"))
         summary["repo_id"] = None
         summary["timings_ms"] = {"total": _elapsed(started)}
     summary["timings_ms"]["total"] = _elapsed(started)
