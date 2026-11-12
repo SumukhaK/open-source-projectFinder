@@ -236,3 +236,39 @@ environment or a renamed `MILVUS_COLLECTION` runs `init-collection` once. RED:
 12 tests failed; GREEN: full backend 1263 passed / 3 skipped, 93.3% / 90.4%;
 ruff, format, bandit and `git diff --check` clean. Not run: a real Milvus
 server.
+
+## U4 execution — 2026-11-13
+
+Base: `36a6953dac6370ccade1db3e921d2fafb6bceb31`; isolated branch
+`codex/hybrid-t30-u4-inline-html`. Owner pulled this slice forward before T29.
+Reverified paragraph-wide HTML rejection and sections-v1 on main. Read T05 evidence
+and PR #20 review 5648843576. Plan: RED prose/version-refresh regressions, remove
+only the paragraph rejection, bump to sections-v2, run fakes and quality gates.
+
+U4 verification (Windows Python 3.11.9, SQLite 3.45.1; `PYTHONPATH=backend`):
+- RED: `python -m pytest backend/tests/test_archive_index.py backend/tests/test_archive_refresh.py -q -k "inline_html or images_html or chunker_v2"`: 3 assertion failures, 90 deselected before production edits.
+- GREEN: `python -m pytest backend/tests/test_archive_index.py backend/tests/test_archive_refresh.py -q`: 93 passed. Real local SQL with fake HTTP/model/vectors publishes under sections-v1, re-embeds once under sections-v2, then the next weekly refresh reports unchanged with zero embedding calls and zero vector upserts.
+- Ruff check/format passed (87 files); Bandit passed with no findings (existing warnings about words in nosec comments); `git diff --check` passed.
+
+All byte, character, token, nesting and chunk limits remain unchanged. HTML tokens
+are ignored by the existing text-token allowlist, block HTML remains dropped, and
+inline content (including script-like text) stays inert plain text. No rendering,
+execution, link following or asset fetch. No new dependency or setting.
+
+Rollout cost: every archived repository (204 today, owner-supplied count) re-embeds
+once on its next real refresh because the chunker version participates in semantic
+identity, even if its README has no HTML. **That refresh needs an approved real run**;
+none was performed here. Existing published revisions serve until the normal T19
+publication/reconciliation flow replaces them. A rollback to v1 changes identities
+again and needs a separately approved refresh; preserve catalogue/content/vectors.
+Fakes only; no Docker, WSL, Milvus server, model or T26 integration edits.
+
+Full Windows gate: `python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch --cov-report=json:reports/backend-coverage.json`
+-> 21 failed / 1238 passed / 79 skipped (185.87 s). All failures are restore tests
+refused by SQLite 3.45.1's WAL gate. The unchanged base in a separate detached
+worktree reproduces the exact 21 failures (`test_archive_restore.py`: 21 failed,
+21 passed, 1 skipped). No new skip or runtime patch was added. The four environment
+failures mentioned by the owner did not occur. Coverage is 88.78% combined /
+85.39% branches: `python scripts/quality.py coverage reports/backend-coverage.json`
+**fails** the unchanged 90% combined gate. Full untouched-base coverage comparison
+is running; Linux CI is authoritative and local full verification is not green.
