@@ -1660,3 +1660,7 @@ U10 implementation request (verbatim):
 ## T21 encrypted backups merged — 2026-11-11
 
 [PR #96](https://github.com/SumukhaK/open-source-projectFinder/pull/96) was squash-merged as `5622403` after an independent review and one fix (leftover plaintext from a killed run is now cleaned up). The owner changed D6: backups go to an encrypted restic repository inside their Google Drive for desktop sync folder instead of an external drive. The first real export still needs restic installed inside WSL, plus the owner creating the password file and running `restic init`. T22 (restore) is next.
+
+## T21 first real backup — 2026-11-12
+
+The first real encrypted backup ran into the owner's Google Drive sync folder and `backup --verify` matched all 405 files; the folder holds only encrypted restic files (about 1.8 MB). [PR #98](https://github.com/SumukhaK/open-source-projectFinder/pull/98) fixed a CLI crash after a successful backup and was merged as `37d056f`. Run `backup` after each weekly refresh until T23 automates it. T22 (restore) is next.
