@@ -1,6 +1,6 @@
 # T22: Restore into quarantine and reapply suppression
 
-Status: Awaiting review ([evidence](../T22_EVIDENCE.md)). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged as `5bd2046` ([PR #102](https://github.com/SumukhaK/open-source-projectFinder/pull/102), [evidence](../T22_EVIDENCE.md)). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |

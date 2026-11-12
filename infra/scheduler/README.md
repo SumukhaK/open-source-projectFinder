@@ -22,6 +22,7 @@ Both tasks run one command, `python -m app.workers.schedule run weekly|daily`, f
 
 - **It will not run while the laptop sleeps, is off or nobody is signed in.** `WakeToRun` is off on purpose, and the task runs only while you are signed in, so Windows never stores your password. A sleeping laptop does not refresh weekly; it catches up when it next wakes and you sign in.
 - **It does not start Docker Desktop or Milvus.** `refresh` and `retire` need the GPU Milvus stack (`infra/milvus`, `--profile gpu`). If Milvus is down, the step fails with a sanitized error and `status` shows it. `backup` does not need Milvus.
+- **A daily launch queued behind a long weekly refresh gives up after 2.5 hours.** It logs `overlap`, and that day's `retire` is skipped (shown as missed in `status`) until the next evening or a manual rerun.
 - **With `--cap 0`, every weekly refresh ends `partial` (`cap`).** That is by design (T19b) and is not a failure.
 - A console window opens briefly while the job runs.
 
