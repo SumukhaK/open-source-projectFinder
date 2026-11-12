@@ -420,3 +420,27 @@ def test_failed_expiry_after_a_snapshot_reports_both(tmp_path, monkeypatch, caps
     assert summary["result"] == "exported" and summary["snapshot"] == "snap1"
     assert summary["expiry"] == "failed"
     assert staging_dirs(state) == []
+
+
+@pytest.mark.parametrize(
+    ("argv", "name", "summary"),
+    [
+        (["backup"], "export_backup", {"result": "exported", "expiry": "done"}),
+        (["backup", "--verify"], "verify_backup", {"result": "verified"}),
+    ],
+)
+def test_backup_cli_prints_its_result_and_exits_zero(
+    tmp_path, monkeypatch, capsys, argv, name, summary
+):
+    settings = make_settings(tmp_path)
+    monkeypatch.setattr(worker, "Settings", lambda: settings)
+    monkeypatch.setattr(backup, name, lambda *args, **kwargs: dict(summary))
+    store = SimpleNamespace(connect=None)
+    monkeypatch.setattr(worker, "ArchiveStore", lambda _: store)
+    monkeypatch.setattr(worker, "ArchiveContentStore", lambda _: None)
+
+    code = worker.main(argv)
+
+    printed = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert printed["result"] == summary["result"]
