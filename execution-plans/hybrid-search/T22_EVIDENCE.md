@@ -72,14 +72,14 @@ Linux container, Python 3.13.18 (CI uses 3.11), SQLite 3.53.1, 2026-11-12:
 
 ## Review fix: legacy metadata was dropped (2026-11-12)
 
-The reviewer's real restore of the Drive backup into quarantine (WSL, real restic, no \`--activate\`) gave \`ready: true\`, ledger \`missing\`, **expired 206, rechecked 0, 0 repositories left**. The offline policy step read stored facts through \`load_cached_repository\`, which only accepts T19b \`payload_version: 2\` rows. All 206 pilot repositories were ingested by T18 with the older format, so each was treated as ineligible and purged before the GitHub re-check could see it. The live archive was untouched.
+The reviewer's real restore of the Drive backup into quarantine (WSL, real restic, no `--activate`) gave `ready: true`, ledger `missing`, **expired 206, rechecked 0, 0 repositories left**. The offline policy step read stored facts through `load_cached_repository`, which only accepts T19b `payload_version: 2` rows. All 206 pilot repositories were ingested by T18 with the older format, so each was treated as ineligible and purged before the GitHub re-check could see it. The live archive was untouched.
 
 Fix:
 - The offline policy check now reads the scalar facts every ingest stores (visibility, archived, fork, licence, pushed_at), so it works on T18 rows. Only a real policy failure purges.
-- A row with unusable facts, or a legacy row without the T19b payload, is kept and forces the numeric-ID re-check, even under a trusted ledger. That re-check then stores the fresh metadata (\`payload_version: 2\`, including language) in the quarantine, so activation rebuilds vectors with the right language. Without GitHub, such a restore is refused.
-- A restore that removed every repository through the offline policy step without any re-check now adds a \`warning\` to the verdict.
+- A row with unusable facts, or a legacy row without the T19b payload, is kept and forces the numeric-ID re-check, even under a trusted ledger. That re-check then stores the fresh metadata (`payload_version: 2`, including language) in the quarantine, so activation rebuilds vectors with the right language. Without GitHub, such a restore is refused.
+- A restore that removed every repository through the offline policy step without any re-check now adds a `warning` to the verdict.
 
-RED before the fix (\`pytest backend/tests/test_archive_restore.py -k "legacy or everything"\`): 4 failed. The two legacy cases gave \`assert 0 == 1\` (repositories); without GitHub, \`DID NOT RAISE RestoreRefused\`; and there was no \`warning\`. GREEN: \`test_archive_restore.py\` 43 passed; full suite 1306 passed, 3 skipped; coverage 93.3% / 90.3%; ruff and bandit clean.
+RED before the fix (`pytest backend/tests/test_archive_restore.py -k "legacy or everything"`): 4 failed. The two legacy cases gave `assert 0 == 1` (repositories); without GitHub, `DID NOT RAISE RestoreRefused`; and there was no `warning`. GREEN: `test_archive_restore.py` 43 passed; full suite 1306 passed, 3 skipped; coverage 93.3% / 90.3%; ruff and bandit clean.
 
 ## Operator and rollback notes
 
