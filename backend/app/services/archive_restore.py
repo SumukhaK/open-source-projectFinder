@@ -235,13 +235,47 @@ def _apply_ledger(connect, ledger, trust, current):
     return added, 0
 
 
+def _stored_metadata(db, repo_id):
+    """Backup-era policy facts as (RepositoryMetadata or None, is_current).
+
+    Every ingest so far (T18 rows included) stores these scalar facts, so the
+    offline policy check works on legacy rows too. Only T19b rows
+    (payload_version 2) also carry the language the vectors need.
+    """
+    from app.integrations.archive_github import RepositoryMetadata
+
+    row = db.execute(
+        "SELECT full_name, metadata_json FROM archive_repositories WHERE repo_id=?",
+        (repo_id,),
+    ).fetchone()
+    try:
+        stored = json.loads(row[1])
+        metadata = RepositoryMetadata(
+            repo_id=repo_id,
+            full_name=row[0],
+            default_branch=stored.get("default_branch"),
+            visibility=stored["visibility"],
+            archived=bool(stored["archived"]),
+            fork=bool(stored["fork"]),
+            license_spdx=stored.get("license_spdx"),
+            pushed_at=stored["pushed_at"],
+            response=None,
+        )
+    except (TypeError, ValueError, KeyError, AttributeError):
+        return None, False
+    return metadata, stored.get("payload_version") == 2
+
+
 def _purge_offline(runtime, now, summary):
-    """Purge suppressed repositories, then any whose stored facts fail policy."""
+    """Purge suppressed repositories, then any whose stored facts fail policy.
+
+    Returns how many kept repositories have unusable or legacy stored facts;
+    those need a fresh numeric-ID re-check, and are never dropped for it.
+    """
     from app.workers.archive import (
         ELIGIBILITY_DAYS,
         IneligibleRepository,
         check_eligibility,
-        load_cached_repository,
     )
 
     with runtime.connect() as db:
@@ -252,26 +286,32 @@ def _purge_offline(runtime, now, summary):
                 "archive_suppressions AS s USING(repo_id) ORDER BY r.repo_id"
             )
         ]
-        active = db.execute(
-            "SELECT r.repo_id, r.active_revision FROM archive_repositories AS r "
-            "WHERE r.active_revision IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "
-            "archive_suppressions AS s WHERE s.repo_id=r.repo_id) ORDER BY r.repo_id"
-        ).fetchall()
+        active = [
+            (repo_id, revision, *_stored_metadata(db, repo_id))
+            for repo_id, revision in db.execute(
+                "SELECT r.repo_id, r.active_revision FROM archive_repositories AS r "
+                "WHERE r.active_revision IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "
+                "archive_suppressions AS s WHERE s.repo_id=r.repo_id) "
+                "ORDER BY r.repo_id"
+            ).fetchall()
+        ]
     for repo_id in suppressed:
         purge_repository(runtime.connect, runtime.vectors, runtime.content, repo_id)
         summary["purged"] += 1
     cutoff = now - timedelta(days=ELIGIBILITY_DAYS)
-    for repo_id, revision in active:
-        cached = load_cached_repository(runtime.connect, runtime.content, repo_id)
+    unverified = 0
+    for repo_id, revision, metadata, current in active:
+        if metadata is None:
+            unverified += 1
+            continue
         try:
-            if cached is None:
-                raise IneligibleRepository("unverifiable", "stored facts unusable")
             check_eligibility(
-                cached.metadata, runtime.settings.archive_license_allowlist, cutoff
+                metadata, runtime.settings.archive_license_allowlist, cutoff
             )
+            unverified += not current
         except IneligibleRepository:
-            # Backup-era facts are not authoritative: purge only, no ledger
-            # entry, so an eligible repository can return through an ingest.
+            # Purge only, no ledger entry: an eligible repository can return
+            # through an ingest.
             purge_repository(
                 runtime.connect,
                 runtime.vectors,
@@ -280,6 +320,40 @@ def _purge_offline(runtime, now, summary):
                 expect_active=revision,
             )
             summary["expired"] += 1
+    return unverified
+
+
+class _Recording:
+    """Keeps the fresh metadata the re-check fetched, to store afterwards."""
+
+    def __init__(self, reader):
+        self.reader = reader
+        self.seen = {}
+
+    def fetch_metadata_by_id(self, repo_id):
+        result = self.reader.fetch_metadata_by_id(repo_id)
+        self.seen[repo_id] = result.metadata
+        return result
+
+
+def _store_fresh_metadata(connect, seen):
+    """Upgrade re-checked rows to current metadata (T19b payload, language)."""
+    from app.services.archive_content import upsert_repository_metadata
+    from app.workers.archive import IngestError, _metadata_payload
+
+    with connect(write=True) as db:
+        for repo_id, metadata in seen.items():
+            if not db.execute(
+                "SELECT 1 FROM archive_repositories WHERE repo_id=?", (repo_id,)
+            ).fetchone():
+                continue  # purged by the re-check
+            try:
+                payload = _metadata_payload(metadata)
+            except IngestError as error:
+                raise RestoreRefused(
+                    "GitHub returned unusable metadata; retry the restore later"
+                ) from error
+            upsert_repository_metadata(db, metadata=metadata, payload=payload)
 
 
 def _recheck(runtime, ledger, now, summary):
@@ -291,8 +365,15 @@ def _recheck(runtime, ledger, now, summary):
     if total == 0:
         return
     sweep = {"checked": 0, "issues": 0, "suppressed": {}, "purged": 0, "expired": 0}
+    recording = _Recording(runtime.reader)
     try:
-        retire._check_known(runtime, ledger, now, total, sweep)
+        retire._check_known(
+            SimpleNamespace(**{**vars(runtime), "reader": recording}),
+            ledger,
+            now,
+            total,
+            sweep,
+        )
     except retire._Stop as stop:
         raise RestoreRefused(
             f"GitHub re-check stopped ({stop.reason}); retry the restore later"
@@ -303,6 +384,7 @@ def _recheck(runtime, ledger, now, summary):
     summary["expired"] += sweep["expired"]
     if sweep["issues"] or sweep["checked"] < total:
         raise RestoreRefused("GitHub re-check was incomplete; retry the restore later")
+    _store_fresh_metadata(runtime.connect, recording.seen)
 
 
 def _checkpoint(path):
@@ -431,12 +513,15 @@ def _restore(
         "expired": 0,
         "rechecked": 0,
     }
-    _purge_offline(runtime, now, summary)
-    if trust != "trusted":
-        # D5: without a trustworthy ledger, only current GitHub state can
-        # clear a restored repository for serving.
+    with connect() as db:
+        restored = db.execute("SELECT count(*) FROM archive_repositories").fetchone()[0]
+    unverified = _purge_offline(runtime, now, summary)
+    if trust != "trusted" or unverified:
+        # D5: without a trustworthy ledger, or for rows whose stored facts
+        # cannot be checked offline, only current GitHub state can clear a
+        # restored repository for serving.
         if reader is None:
-            raise RestoreRefused("the ledger is not trusted and GitHub is unavailable")
+            raise RestoreRefused("a GitHub re-check is required but unavailable")
         _recheck(runtime, ledger, now, summary)
     with connect() as db:
         serving = sum(
@@ -459,6 +544,11 @@ def _restore(
         "repositories": serving,
         **summary,
     }
+    if restored and not serving and summary["expired"] and not summary["rechecked"]:
+        verdict["warning"] = (
+            "every restored repository was removed offline; check the backup "
+            "age and policy before activating"
+        )
     _write_private(quarantine / VERDICT_NAME, json.dumps(verdict, sort_keys=True))
     return {"result": "quarantined", **verdict}
 

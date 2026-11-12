@@ -555,3 +555,78 @@ def test_restore_cli_refuses_a_non_d2_allowlist(tmp_path, monkeypatch, capsys):
 
     assert worker.main(["restore"]) == 1
     assert "ALLOWLIST" in json.loads(capsys.readouterr().out)["error"]
+
+
+def make_legacy(tree):
+    """Rewrite the backup as T18-era rows: no payload_version, id or language."""
+    copy = tree / "catalogue.sqlite3"
+    db = sqlite3.connect(copy)
+    for repo_id, text in db.execute(
+        "SELECT repo_id, metadata_json FROM archive_repositories"
+    ).fetchall():
+        stored = json.loads(text)
+        legacy = {
+            key: stored[key]
+            for key in (
+                "default_branch",
+                "visibility",
+                "archived",
+                "fork",
+                "license_spdx",
+                "pushed_at",
+            )
+        }
+        db.execute(
+            "UPDATE archive_repositories SET metadata_json=? WHERE repo_id=?",
+            (json.dumps(legacy), repo_id),
+        )
+    db.commit()
+    db.close()
+    rewrite_manifest(
+        tree,
+        lambda m: m.update(
+            catalogue={"sha256": _sha256(copy), "bytes": copy.stat().st_size}
+        ),
+    )
+
+
+@pytest.mark.parametrize("trusted", [False, True])
+def test_legacy_metadata_is_rechecked_not_dropped(tmp_path, trusted):
+    state, restic = backed_up(tmp_path)
+    make_legacy(restic.snapshots[-1])
+    if trusted:
+        ledger(state).append(999, "suppress", "archived", 1.0)
+
+    verdict = run_restore(state, restic)
+
+    assert verdict["repositories"] == 1 and verdict["expired"] == 0
+    assert verdict["rechecked"] == 1
+    path = quarantine(state) / "catalogue.sqlite3"
+    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
+        stored = json.loads(
+            db.execute("SELECT metadata_json FROM archive_repositories").fetchone()[0]
+        )
+    assert stored["payload_version"] == 2 and stored["language"] == "Python"
+
+    summary = run_activate(state)
+
+    assert summary["vectors"] > 0
+    assert {row.language for row in state.vectors.rows.values()} == {"Python"}
+
+
+def test_legacy_metadata_without_github_stays_quarantined(tmp_path):
+    state, restic = backed_up(tmp_path)
+    make_legacy(restic.snapshots[-1])
+    ledger(state).append(999, "suppress", "archived", 1.0)
+
+    with pytest.raises(restore.RestoreRefused, match="GitHub"):
+        run_restore(state, restic, github=False)
+
+
+def test_restore_that_removes_everything_offline_is_flagged(tmp_path):
+    state, restic = backed_up(tmp_path)
+    ledger(state).append(999, "suppress", "archived", 1.0)
+
+    verdict = run_restore(state, restic, now=NOW + timedelta(days=400))
+
+    assert verdict["repositories"] == 0 and "warning" in verdict

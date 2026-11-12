@@ -58,7 +58,7 @@ Required RED list covered: private then purge then older backup (`test_private_t
 ## GREEN
 
 Linux container, Python 3.13.18 (CI uses 3.11), SQLite 3.53.1, 2026-11-12:
-- `pytest backend/tests/test_archive_restore.py`: **39 passed**.
+- `pytest backend/tests/test_archive_restore.py`: **39 passed** (43 after the review fix below).
 - `pytest backend/tests scripts/tests --cov=backend/app --cov-branch`: **1285 passed, 3 skipped** (restic not installed, POSIX/Windows-only skips); `scripts/quality.py coverage`: 93.3% combined, 90.3% branches, exit 0. `archive_restore.py` alone: 94%.
 - `ruff check backend scripts`, `ruff format --check backend scripts`: clean. `bandit -r backend/app`: no issues. `git diff --check`: clean.
 
@@ -69,6 +69,17 @@ Linux container, Python 3.13.18 (CI uses 3.11), SQLite 3.53.1, 2026-11-12:
 - Activation cannot detect a running API; stopping it is an operator step, documented in the backend README.
 - The restored catalogue replaces the live tombstone history. This is safe because activation holds the operation lock (no Milvus IO in flight) and deletes the replaced archive's orphan vectors; a later ingest may reuse a generation the replaced archive had used.
 - A trusted-ledger restore does not call GitHub; per-request public validation still applies when serving, and the next `retire` sweep re-checks every repository.
+
+## Review fix: legacy metadata was dropped (2026-11-12)
+
+The reviewer's real restore of the Drive backup into quarantine (WSL, real restic, no \`--activate\`) gave \`ready: true\`, ledger \`missing\`, **expired 206, rechecked 0, 0 repositories left**. The offline policy step read stored facts through \`load_cached_repository\`, which only accepts T19b \`payload_version: 2\` rows. All 206 pilot repositories were ingested by T18 with the older format, so each was treated as ineligible and purged before the GitHub re-check could see it. The live archive was untouched.
+
+Fix:
+- The offline policy check now reads the scalar facts every ingest stores (visibility, archived, fork, licence, pushed_at), so it works on T18 rows. Only a real policy failure purges.
+- A row with unusable facts, or a legacy row without the T19b payload, is kept and forces the numeric-ID re-check, even under a trusted ledger. That re-check then stores the fresh metadata (\`payload_version: 2\`, including language) in the quarantine, so activation rebuilds vectors with the right language. Without GitHub, such a restore is refused.
+- A restore that removed every repository through the offline policy step without any re-check now adds a \`warning\` to the verdict.
+
+RED before the fix (\`pytest backend/tests/test_archive_restore.py -k "legacy or everything"\`): 4 failed. The two legacy cases gave \`assert 0 == 1\` (repositories); without GitHub, \`DID NOT RAISE RestoreRefused\`; and there was no \`warning\`. GREEN: \`test_archive_restore.py\` 43 passed; full suite 1306 passed, 3 skipped; coverage 93.3% / 90.3%; ruff and bandit clean.
 
 ## Operator and rollback notes
 
