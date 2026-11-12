@@ -350,6 +350,12 @@ The real repository and password file are created by the owner, never by this co
 
 Run it from `backend/` with the WSL worker interpreter and the same private settings as `backup`; `--activate` also needs Milvus, the offline model (`HF_HUB_OFFLINE=1`) and `MILVUS_TOKEN`. There is no migration. See [T22 evidence](../execution-plans/hybrid-search/T22_EVIDENCE.md).
 
+## Scheduled weekly and daily jobs (T23)
+
+`python -m app.workers.schedule run weekly` runs `refresh` then `backup`; `run daily` runs `retire`. Each step is the normal `python -m app.workers.archive` command with its defaults, so `refresh` keeps `--cap 0` until the owner approves admissions (D1). The weekly period is the same Saturday 22:00 UTC (Sunday 03:30 Asia/Kolkata) boundary `refresh` uses, so scheduled, catch-up and manual launches in one week resume one run. A private `schedule.lock` beside the catalogue lets only one job run at a time; an overlapping launch runs nothing and exits 1. Each step's summary is reduced to allowlisted counts, timings, stop reasons and IDs and appended to the private `schedule-log.jsonl` (0600, last 400 lines). `python -m app.workers.schedule status` prints, per job, the current due period, whether it was missed, the next due time and each step's last attempt, state (`complete`/`partial`/`failed`) and last success.
+
+Windows Task Scheduler is the only scheduler. Its templates and the import, dry-run, enable/disable, status, retry and credential steps are in [infra/scheduler](../infra/scheduler/README.md). The templates import **disabled**; enabling them needs the owner's approval. A sleeping or switched-off laptop does not run them; they catch up when Windows is next up and the owner is signed in. They do not start Docker or Milvus. There is no migration; rollback is unregistering the tasks and reverting the code.
+
 ## API
 
 - `POST /auth/github/start`: app PKCE challenge and exact allowlisted return URI; returns GitHub authorization URL and state.
