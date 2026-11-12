@@ -287,3 +287,74 @@ def test_invalid_inputs_are_rejected():
         fuse_candidates(None)
     with raises(ValueError):
         fuse_candidates(KeywordCandidates(), archive_status="unknown")
+
+
+# U5: the worker stores at most MILVUS_TEXT_BYTES["snippet"] bytes, cut on a
+# UTF-8 character boundary, so a stored snippet within 3 bytes of the limit may
+# end mid-word. Cards must show a word-bounded excerpt instead.
+SNIPPET_LIMIT = 2048
+
+
+def archive_snippet(snippet):
+    result = fuse_candidates(KeywordCandidates(), (evidence(30, 0.9, snippet=snippet),))
+    return result.candidates[0].archive.snippet
+
+
+def stored(text):
+    # The worker's storage cut: bytes up to the limit, partial characters dropped.
+    return text.encode("utf-8")[:SNIPPET_LIMIT].decode("utf-8", errors="ignore")
+
+
+def test_a_cut_snippet_ends_on_a_word_boundary_with_an_ellipsis():
+    words = " ".join(f"word{index:04d}" for index in range(400))
+    snippet = stored(words)
+    assert len(snippet.encode("utf-8")) == SNIPPET_LIMIT
+    assert not snippet.endswith(" ")  # the stored cut lands inside a word
+
+    excerpt = archive_snippet(snippet)
+
+    assert excerpt.endswith("…")
+    body = excerpt[:-1]
+    assert words.startswith(body)
+    assert words[len(body)] == " "  # the excerpt stops at a whole word
+    assert len(excerpt.encode("utf-8")) <= SNIPPET_LIMIT
+
+
+def test_a_cut_multibyte_snippet_stays_valid_and_word_bounded():
+    words = " ".join("наблюдение" for _ in range(200))  # 2-byte characters
+    snippet = stored(words)
+    assert len(snippet.encode("utf-8")) >= SNIPPET_LIMIT - 3
+
+    excerpt = archive_snippet(snippet)
+
+    body = excerpt[:-1]
+    assert excerpt.endswith("…")
+    assert words.startswith(body) and words[len(body)] == " "
+    assert len(excerpt.encode("utf-8")) <= SNIPPET_LIMIT
+
+
+def test_a_cut_snippet_without_spaces_keeps_its_character_boundary():
+    text = "語" * 1000  # 3-byte characters, no word breaks to back off to
+    snippet = stored(text)
+
+    excerpt = archive_snippet(snippet)
+
+    assert excerpt.endswith("…")
+    assert text.startswith(excerpt[:-1])
+    assert len(excerpt[:-1]) >= len(snippet) - 1
+    assert len(excerpt.encode("utf-8")) <= SNIPPET_LIMIT
+
+
+def test_a_cut_snippet_also_breaks_on_newlines():
+    words = "\n".join(f"line {index:04d}" for index in range(300))
+    excerpt = archive_snippet(stored(words))
+
+    body = excerpt[:-1]
+    assert excerpt.endswith("…")
+    assert words.startswith(body) and words[len(body)] in " \n"
+
+
+def test_a_whole_short_chunk_snippet_is_returned_unchanged():
+    text = "A complete chunk that was never cut. It ends mid-sente"
+    assert archive_snippet(text) == text
+    assert archive_snippet("y" * (SNIPPET_LIMIT - 4)) == "y" * (SNIPPET_LIMIT - 4)

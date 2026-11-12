@@ -1,8 +1,10 @@
 """Deterministic repository-level fusion for the hybrid discovery pipeline."""
 
+import re
 from dataclasses import dataclass, replace
 from math import isfinite
 
+from app.core.config import MILVUS_TEXT_BYTES
 from app.services.eligibility import ArchiveEvidence
 from app.services.keyword_candidates import KeywordCandidate, KeywordCandidates
 from app.services.live_scope import live_eligible
@@ -12,6 +14,11 @@ MAX_SOURCE_REPOSITORIES = 100
 # Public ranking contract; a ranking change must bump this value.
 RANKING_VERSION = "rrf-v1"
 ARCHIVE_STATUSES = frozenset({"ok", "incomplete", "failed"})
+ELLIPSIS = "\u2026"
+# The worker stores a chunk's first MILVUS_TEXT_BYTES["snippet"] bytes, dropping
+# a partial UTF-8 character, so a cut snippet is within 3 bytes of the limit.
+_CUT_SNIPPET_BYTES = MILVUS_TEXT_BYTES["snippet"] - 3
+_LAST_WORD = re.compile(r"\s\S+$")
 
 
 @dataclass(frozen=True)
@@ -115,9 +122,27 @@ def _github_cards(github):
     return ranked[:MAX_SOURCE_REPOSITORIES]
 
 
+def _excerpt(snippet):
+    """Return a stored snippet that may end mid-word as a word-bounded excerpt.
+
+    Shorter snippets are whole chunks and stay unchanged. A whole chunk that is
+    itself within 3 bytes of the limit cannot be told apart and loses at most
+    its last word. Text without spaces keeps its character-boundary cut.
+    """
+    encoded = snippet.encode("utf-8")
+    if len(encoded) < _CUT_SNIPPET_BYTES:
+        return snippet
+    room = MILVUS_TEXT_BYTES["snippet"] - len(ELLIPSIS.encode("utf-8"))
+    text = encoded[:room].decode("utf-8", errors="ignore")
+    tail = _LAST_WORD.search(text)
+    if tail is not None and text[: tail.start()].strip():
+        text = text[: tail.start()]
+    return text.rstrip() + ELLIPSIS
+
+
 def _archive_card(hit):
     return ArchiveCard(
-        snippet=hit["snippet"],
+        snippet=_excerpt(hit["snippet"]),
         section=hit["section"],
         revision=hit["revision"],
         chunk_id=hit["chunk_id"],
