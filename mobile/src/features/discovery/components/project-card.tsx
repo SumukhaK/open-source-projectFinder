@@ -40,7 +40,10 @@ export function ProjectCard({ project, saved, busy, onOpen, onToggle }: {
       </Pressable>
     </View>
     {project.description ? <Text numberOfLines={3} style={[styles.description, { color: colors.muted }]}>{project.description}</Text> : null}
-    {snippet ? <Text numberOfLines={3} style={[styles.snippet, { color: colors.text }]}>{snippet}</Text> : null}
+    {snippet ? <View accessible accessibilityLabel={`README excerpt: ${snippet}`} style={styles.excerpt}>
+      <Text style={[styles.meta, { color: colors.muted }]}>README excerpt</Text>
+      <Text numberOfLines={3} style={[styles.snippet, { color: colors.text }]}>{snippet}</Text>
+    </View> : null}
     <View style={styles.stats}>
       <Text style={[styles.meta, { color: colors.muted }]}>{project.stars} stars</Text>
       <Text style={[styles.meta, { color: colors.muted }]}>{project.language ?? 'Language not reported'}</Text>
@@ -59,6 +62,7 @@ const styles = StyleSheet.create({
   toggle: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   toggleText: { fontSize: 24, lineHeight: 30 },
   description: { fontSize: 15, lineHeight: 23 },
+  excerpt: { gap: 2 },
   snippet: { fontSize: 14, lineHeight: 21, fontStyle: 'italic' },
   stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   meta: { fontSize: 13, lineHeight: 20 },
