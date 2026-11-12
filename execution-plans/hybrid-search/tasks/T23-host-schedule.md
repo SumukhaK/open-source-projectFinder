@@ -1,6 +1,6 @@
 # T23: Prepare weekly host scheduling and operator status
 
-Status: Awaiting review ([evidence](../T23_EVIDENCE.md)). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged as `9667ea5` ([PR #105](https://github.com/SumukhaK/open-source-projectFinder/pull/105), [evidence](../T23_EVIDENCE.md)). Tasks registered disabled; enabling needs owner approval. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
