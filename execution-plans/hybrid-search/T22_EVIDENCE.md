@@ -1,6 +1,6 @@
 # T22 restore into quarantine and reapply suppression
 
-Status: **Awaiting review.** Implemented by Claude on the owner's instruction (2026-11-12). It needs an independent review before merge. **No real restore has run yet** (see Limits).
+Status: **Merged** as `5bd2046` ([PR #102](https://github.com/SumukhaK/open-source-projectFinder/pull/102)) after an independent Claude review of `a2577fc`. The real restore of the owner's backup into quarantine passed on 2026-11-12; no real activation has run.
 
 In plain terms: `restore` unpacks a backup into a private quarantine folder, checks every hash, the schema and the model, applies today's "do not store" decisions, deletes anything that is suppressed or too old, and, if today's ledger cannot be trusted, re-checks every repository on GitHub. Only then is the quarantine marked ready. `restore --activate` is a separate step: it rebuilds the vectors, reads them back, and only then swaps the restored archive in, keeping the previous one aside.
 
@@ -80,6 +80,15 @@ Fix:
 - A restore that removed every repository through the offline policy step without any re-check now adds a `warning` to the verdict.
 
 RED before the fix (`pytest backend/tests/test_archive_restore.py -k "legacy or everything"`): 4 failed. The two legacy cases gave `assert 0 == 1` (repositories); without GitHub, `DID NOT RAISE RestoreRefused`; and there was no `warning`. GREEN: `test_archive_restore.py` 43 passed; full suite 1306 passed, 3 skipped; coverage 93.3% / 90.3%; ruff and bandit clean.
+
+## Real restore into quarantine (2026-11-12)
+
+Run by the reviewing session on the owner's WSL worker, against the real restic 0.19.1 repository in the owner's Drive sync folder, at `9f90723` (no `--activate`, live archive untouched):
+- `pytest` for the backup and restore suites with real restic installed: 67 passed, 0 failed, 0 skipped (both real round trips ran).
+- `restore`: exit 0, `result: "quarantined"`, `ready: true`, ledger `missing`, **rechecked 206**, purged 2 (both archived on GitHub since the pilot), **204 repositories** left, every row upgraded to `payload_version: 2`, no `warning`.
+- The first real run, at `a366539` before the legacy-metadata fix, left 0 repositories; see the review fix above.
+
+**Ledger side effect (accepted by the reviewer).** The numeric-ID re-check records its decisions in the **live** `suppression-ledger.jsonl`, exactly as a `retire` sweep would. This run appended 2 content-free `suppress archived` lines. They are current GitHub facts, so the next `retire` applies them to the live catalogue too.
 
 ## Operator and rollback notes
 
