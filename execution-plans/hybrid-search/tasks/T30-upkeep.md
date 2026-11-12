@@ -236,3 +236,32 @@ environment or a renamed `MILVUS_COLLECTION` runs `init-collection` once. RED:
 12 tests failed; GREEN: full backend 1263 passed / 3 skipped, 93.3% / 90.4%;
 ruff, format, bandit and `git diff --check` clean. Not run: a real Milvus
 server.
+
+## U17 execution — 2026-11-13
+
+Base `36a6953dac6370ccade1db3e921d2fafb6bceb31`; isolated branch
+`codex/hybrid-t30-u17-writer-busy-message`. Reverified WriterBusy falls through
+to the storage message. Read PR #81 and T18 Phase B evidence. Owner pulled the
+slice forward. Plan: CLI RED, specific sanitized mapping using the existing lease
+constant, regression/storage checks, full fake-only gates, one PR and no merge.
+
+U17 verification, Windows Python 3.11.9 / SQLite 3.45.1 (`PYTHONPATH=backend`):
+- RED: `python -m pytest backend/tests/test_archive_worker.py -q -k distinguishes_writer_busy`: 1 expected assertion failure (old storage message), 1 passed, 46 deselected.
+- GREEN: the full worker module runs both new cases successfully; 47 passed / 1 inherited environment failure (`test_worker_settings_refuse_bad_limits_and_have_no_implicit_licences`, MIT allowlist). The same test fails on untouched base. No environment values or secrets were copied or changed.
+- Ruff check/format passed (87 files), Bandit passed with no findings (existing nosec comment warnings), `git diff --check` passed.
+
+Message names the live writer lease and advises retry after completion or expiry,
+using ARCHIVE_LEASE_SECONDS (300) after the last heartbeat. Continuing heartbeats
+can renew the lease, so this does not promise the active worker stops within 300s.
+No paths, tokens or provider exception text are included. Exit remains 1; other
+storage errors retain their exact old message. No lease logic, requests or data
+change; rollback is a code revert. Fakes only, no services/model/WSL/T26 edits.
+
+Full suite command: `python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch --cov-report=json:reports/backend-coverage.json`
+-> 21 failed / 1238 passed / 79 skipped (218.92 s). All failures are SQLite 3.45.1
+WAL-gate restore failures, exactly reproduced on untouched base (21 failed /
+1236 passed / 79 skipped). The worker-settings failure occurs in the focused run,
+not this full run. `python scripts/quality.py coverage reports/backend-coverage.json`
+fails the unchanged 90% combined gate, as on untouched base (88.76% combined /
+85.36% branches). No exclusion, skip, interpreter patch or gate change. Linux CI
+is authoritative; local full verification is not green.
