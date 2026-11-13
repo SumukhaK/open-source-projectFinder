@@ -14,6 +14,7 @@ Each step is a subcommand:
 ``report``   scores the runs against those human judgments: nDCG@10 and
              judged-pool Recall@20, source contributions, latency, failure
              cases and a side-by-side table per idea.
+``gate``     checks the approved D8 option B acceptance bar (offline only).
 ``whatif``   re-ranks the frozen keyword and archive lists with alternative
              fusions and scores them with the same judgments (offline only).
 
@@ -71,6 +72,10 @@ WARMUP_TRIES = 3
 IDEA_RETRIES = 2
 # A hybrid score this far below keyword-only counts as a failure case.
 FAILURE_MARGIN = 0.1
+GATE_NDCG_TOLERANCE = 0.02
+GATE_MIN_ARCHIVE_ONLY = 15
+GATE_MAX_REGRESSIONS = 3
+GATE_MIN_ARCHIVE_OK = 57
 
 
 # ----------------------------------------------------------------- query set
@@ -330,6 +335,7 @@ def evaluate(data, labels, depth=POOL_DEPTH):
             mark["unsure"] for marks in labels.values() for mark in marks.values()
         ),
         "contributions": {"both": 0, "keyword_only": 0, "archive_only": 0},
+        "archive_only_relevant": [],
         "per_idea": {},
         "failures": [],
     }
@@ -380,6 +386,7 @@ def evaluate(data, labels, depth=POOL_DEPTH):
                 result["contributions"]["both"] += 1
             elif repo_id in archived:
                 result["contributions"]["archive_only"] += 1
+                result["archive_only_relevant"].append((entry["id"], repo_id))
             else:
                 result["contributions"]["keyword_only"] += 1
     result["runs"] = {
@@ -406,6 +413,118 @@ def evaluate(data, labels, depth=POOL_DEPTH):
             "p95": _percentile(values, 0.95),
         }
     return result
+
+
+# --------------------------------------------------------------------- gate
+
+
+def render_gate(data, judgments, owner_judgments, depth=POOL_DEPTH):
+    """Apply the owner-approved D8 B bar, using the existing metric definitions."""
+    if not NDCG_K <= depth <= KEPT_RESULTS:
+        raise ValueError("gate depth must be between 10 and 20")
+    if not isinstance(owner_judgments, dict):
+        raise ValueError("owner judgments must be an object")
+    if owner_judgments.get("snapshot_sha256") != snapshot_digest(data):
+        raise ValueError("owner judgments belong to a different snapshot")
+    try:
+        labels = validate_judgments(data, judgments, depth)
+        owner = validate_judgments(data, owner_judgments, depth)
+    except ValueError:
+        raise ValueError(
+            "invalid gate judgments: check snapshot binding, pooled IDs and grades"
+        ) from None
+    result = evaluate(data, labels, depth)
+    confirmed, missing = [], []
+    for idea_id, repo_id in result["archive_only_relevant"]:
+        mark = owner.get(idea_id, {}).get(repo_id)
+        if mark is None:
+            missing.append((idea_id, repo_id))
+        elif mark["grade"] >= 1:
+            confirmed.append((idea_id, repo_id))
+    expected = {idea["id"]: idea for idea in load_ideas()}
+    frozen = (
+        len(data["ideas"]) == len(expected)
+        and {
+            entry["id"]: {key: entry.get(key) for key in ("id", "idea", "category")}
+            for entry in data["ideas"]
+        }
+        == expected
+    )
+    archive_ok = sum(
+        entry["runs"]["archive"]["status"] == "ok" for entry in data["ideas"]
+    )
+    complete = (
+        frozen and not result["incomplete_ideas"] and archive_ok >= GATE_MIN_ARCHIVE_OK
+    )
+    keyword = result["runs"]["keyword"]["ndcg10"]
+    hybrid = result["runs"]["hybrid"]["ndcg10"]
+    quality = (
+        None
+        if keyword is None or hybrid is None
+        else (hybrid >= keyword - GATE_NDCG_TOLERANCE)
+    )
+    checks = [
+        (
+            "1. Quality",
+            f"hybrid {_number(hybrid)}; keyword {_number(keyword)}",
+            f"hybrid >= keyword - {GATE_NDCG_TOLERANCE}",
+            quality,
+        ),
+        (
+            "2. Archive adds value",
+            str(len(confirmed)),
+            f">= {GATE_MIN_ARCHIVE_ONLY} owner-relevant idea/repo pairs",
+            len(confirmed) >= GATE_MIN_ARCHIVE_ONLY,
+        ),
+        (
+            "3. Few regressions",
+            str(len(result["failures"])),
+            f"<= {GATE_MAX_REGRESSIONS} drops > {FAILURE_MARGIN}",
+            len(result["failures"]) <= GATE_MAX_REGRESSIONS,
+        ),
+        (
+            "4. Human-checked labels",
+            f"{len(confirmed)} counted / {len(result['archive_only_relevant'])} candidates",
+            "Count only pairs with owner grade >= 1; others excluded",
+            True,
+        ),
+        (
+            "5. Complete",
+            f"{len(result['complete_ideas'])}/{len(expected)} complete; {archive_ok} archive ok; frozen set {frozen}",
+            f"Exact frozen set, all judged; >= {GATE_MIN_ARCHIVE_OK} archive ok",
+            True if complete else None,
+        ),
+    ]
+    verdict = (
+        "INCONCLUSIVE"
+        if not complete or quality is None
+        else ("PASS" if all(check[3] for check in checks) else "FAIL")
+    )
+    lines = [
+        "# D8 option B gate",
+        "",
+        f"Verdict: {verdict}",
+        "",
+        "| Check | Measured | Threshold | Result |",
+        "| --- | --- | --- | --- |",
+    ]
+    for name, measured, threshold, passed in checks:
+        status = "INCONCLUSIVE" if passed is None else "PASS" if passed else "FAIL"
+        lines.append(f"| {name} | {measured} | {threshold} | {status} |")
+    lines += [
+        "",
+        f"Ideas with no relevant result (excluded from metric means): {len(result['no_relevant_ideas'])}.",
+        "",
+        "## Archive-only results needing an owner label",
+        "",
+    ]
+    # Only frozen IDs and numeric repository IDs, never snapshot text/metadata.
+    lines += [
+        f"- {idea_id} / {repo_id}"
+        for idea_id, repo_id in missing
+        if idea_id in expected
+    ] or ["- None."]
+    return "\n".join(lines) + "\n", {"PASS": 0, "FAIL": 1, "INCONCLUSIVE": 2}[verdict]
 
 
 # ------------------------------------------------------------------ report
@@ -907,12 +1026,27 @@ def main(argv=None):  # pragma: no cover - thin argument wrapper
     whatif_cmd.add_argument("judgments")
     whatif_cmd.add_argument("--out", required=True)
     whatif_cmd.add_argument("--depth", type=int, default=POOL_DEPTH)
+    gate_cmd = commands.add_parser("gate", help="check the owner-approved D8 B bar")
+    gate_cmd.add_argument("snapshot")
+    gate_cmd.add_argument("judgments")
+    gate_cmd.add_argument("--owner-judgments", required=True)
+    gate_cmd.add_argument("--out", required=True)
+    gate_cmd.add_argument("--depth", type=int, default=POOL_DEPTH)
     args = parser.parse_args(argv)
 
     if args.command == "collect":
         asyncio.run(_collect_main(args))
         return
     data = json.loads(Path(args.snapshot).read_text(encoding="utf-8"))
+    if args.command == "gate":
+        try:
+            judgments = json.loads(Path(args.judgments).read_text(encoding="utf-8"))
+            owner = json.loads(Path(args.owner_judgments).read_text(encoding="utf-8"))
+            report, code = render_gate(data, judgments, owner, args.depth)
+        except ValueError as error:
+            parser.error(str(error))
+        Path(args.out).write_text(report, encoding="utf-8")
+        return code
     if args.command == "sheet":
         Path(args.out).write_text(render_sheet(data, args.depth), encoding="utf-8")
     else:
@@ -925,4 +1059,4 @@ def main(argv=None):  # pragma: no cover - thin argument wrapper
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
