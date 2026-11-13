@@ -260,7 +260,7 @@ archive is much larger. D8's rule ("at least as relevant as today's") is
 ### Option B bar (owner-approved 2026-11-13)
 
 D8 B follow-up base: `931f7ffe84ba294f6f4502e839832ca207dbb6a5`, isolated
-`codex/hybrid-t27-d8b-gate`. Plan: independently assess the approved bar from
+`codex/hybrid-t27-d8b-gate`, [PR #121](https://github.com/SumukhaK/open-source-projectFinder/pull/121), Awaiting review. Plan: independently assess the approved bar from
 committed run-3 reports/labels; RED synthetic gate/CLI tests; reuse `evaluate`
 for the five checks; GREEN and full quality gates; one PR, awaiting review.
 No ranking change, stack run, snapshot collection or new dependency.
@@ -340,8 +340,7 @@ Verification (2026-11-13, Windows Python 3.11.9 / SQLite 3.45.1):
   No version patch, new skip, dependency or gate change. Linux CI is authoritative.
 - `python scripts/quality.py coverage reports/backend-coverage.json`: exit 1
   on both trees, below the unchanged 90% combined gate; final combined/branch
-  **89.45%/85.13%**, untouched base **89.47%/85.18%**. Production backend files
-  are unchanged; new CLI subprocess tests also import backend modules.
+  **89.47%/85.18%** on both trees. Production backend files are unchanged.
 
 The owner supplied the private snapshot path for
 one offline gate check; the snapshot was read in place, never copied or committed.
