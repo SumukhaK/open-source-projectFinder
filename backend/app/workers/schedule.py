@@ -291,24 +291,33 @@ class MilvusStack:
         status = self.settings.archive_schedule_docker_status
         return bool(status) and self._command(status, STACK_COMMAND_TIMEOUT)
 
-    def _start_docker(self, start, limit):
-        """Return (docker ready, error); mark docker_started only on a real start."""
+    def _ensure_docker(self, start, limit):
+        """Start Docker Desktop first if its status says it is down.
+
+        Return an error, or None when Docker is (or was already) running. Runs
+        before any compose command: the Windows docker CLI auto-starts Desktop
+        as a side effect, and an "up" that races that startup fails. A Desktop
+        that was already running is never marked as ours, so never stopped.
+        """
         settings = self.settings
+        if not settings.archive_schedule_docker_start:
+            return None
         if not settings.archive_schedule_docker_status:
-            return False, "Docker start needs a status command"
-        up_detail = self.detail
+            return "Docker start needs a status command"
         if self._docker_running():
-            return False, self._failed("Milvus start command failed", up_detail)
+            return None
         if not self._command(
             settings.archive_schedule_docker_start, STACK_COMMAND_TIMEOUT
         ):
-            return False, self._failed("Docker start command failed", self.detail)
+            return self._failed("Docker start command failed", self.detail)
+        # We started Desktop, so we stop it again even if the engine never answers.
         self.docker_started = True
+        # "desktop start" can return before the engine answers.
         while not self._docker_running():
             if self.clock() - start >= limit:
-                return False, f"Docker was not ready within {limit} s"
+                return f"Docker was not ready within {limit} s"
             self.sleep(MILVUS_POLL)
-        return True, None
+        return None
 
     def ensure(self):
         settings = self.settings
@@ -321,17 +330,12 @@ class MilvusStack:
         elif not settings.archive_schedule_milvus_up:
             error = "Milvus is not ready and no start command is configured"
         else:
-            self.started = True  # a failed "up" may still leave containers running
-            up = settings.archive_schedule_milvus_up
-            ok = self._command(up, limit)
-            if not ok and settings.archive_schedule_docker_start:
-                # Inside WSL the docker CLI fails while Docker Desktop is stopped.
-                # Start Desktop only when its status command says it is down,
-                # so a Desktop the owner already had running is never stopped.
-                ok, error = self._start_docker(start, limit)
-                if ok:
-                    ok = self._command(up, limit)
-            if ok:
+            error = self._ensure_docker(start, limit)
+            if error is None:
+                self.started = True  # a failed "up" may still leave containers
+                if not self._command(settings.archive_schedule_milvus_up, limit):
+                    error = self._failed("Milvus start command failed", self.detail)
+            if error is None:
                 while not self.probe():
                     if self.clock() - start >= limit:
                         error = f"Milvus was not ready within {limit} s"
@@ -339,8 +343,6 @@ class MilvusStack:
                     self.sleep(MILVUS_POLL)
                 else:
                     self.ready = True
-            elif error is None:
-                error = self._failed("Milvus start command failed", self.detail)
         self.ready = bool(self.ready)
         record.update(
             milvus_started=self.started,

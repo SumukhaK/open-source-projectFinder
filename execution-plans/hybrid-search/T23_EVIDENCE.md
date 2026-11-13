@@ -146,3 +146,22 @@ The cause could not be seen, because no command output was kept. Fix: a failed s
 - capped at `MAX_TEXT`.
 
 stdout is never kept. RED: 8 tests fail against `b592164`: 3 updated exact-message tests, the safe-line test, 3 withheld-line cases and the length bound. GREEN: `tests/test_archive_schedule.py` passes 51; full suite 1,357 passed / 3 skipped, coverage 93.4% / 90.5%. The root cause of the failed `up` is still being diagnosed on the laptop.
+
+### Review fix: start Docker Desktop before the first compose up (2026-11-13)
+
+Root cause of the failed laptop run, found by the reviewer's cold-start diagnostic from Ubuntu with the exact `.env` values:
+- The compose path, `.env`, GPU and interop all work. With Desktop stopped, `desktop start` took 31 s, the engine answered `info` 11 s later, and `up` then succeeded first time in 20.6 s.
+- The bug was ordering. `ensure()` ran `up` first while Desktop was down. The Windows docker CLI auto-starts Desktop as a side effect, so the later `desktop start` and the retried `up` raced Desktop's own startup.
+
+Fix:
+- When Docker start/status commands are configured, the status command runs before any compose command. If Docker is down, the job runs `desktop start`, then polls status until the engine answers (10 s polls, within `READY_SECONDS`, default 300, well above the ~45 s observed), and only then runs `up`, once.
+- An `up` failure no longer triggers a Desktop start. If Docker was already running, Desktop is never started or stopped.
+- A failed Desktop start runs no `up` and stops nothing.
+- `docker_started` is still set as soon as the start command succeeds, so a Desktop the job started is stopped again even if its engine never answers.
+
+RED against `6e23316`, 3 failed:
+- the new ordering test (status, start, status polls, then a single `up`);
+- the Milvus start test (a status check now precedes `up`);
+- the Desktop start failure test (no `up` and no stop afterwards).
+
+GREEN: `tests/test_archive_schedule.py` passed 51; full suite 1,357 passed / 3 skipped, coverage 93.4% / 90.5%; ruff, format, bandit and `git diff --check` clean.

@@ -512,7 +512,9 @@ def test_stopped_milvus_is_started_waited_for_and_stopped_again(tmp_path):
     assert code == 0
     up, down = " ".join(UP[1:]), " ".join(DOWN[1:])
     # Milvus comes up before refresh and goes down only after the whole job.
-    assert runner.calls == [up, "refresh", "backup", down]
+    # Docker was already running (status 0), so only Milvus is started.
+    status = " ".join(DOCKER_STATUS[1:])
+    assert runner.calls == [status, up, "refresh", "backup", down]
     milvus, refresh, backup, stop = records(tmp_path)
     assert milvus["milvus_started"] is True and milvus["docker_started"] is False
     assert milvus["milvus_ready_s"] >= 2 * schedule.MILVUS_POLL
@@ -521,12 +523,13 @@ def test_stopped_milvus_is_started_waited_for_and_stopped_again(tmp_path):
 
 
 @posix_only
-def test_docker_desktop_is_started_when_the_docker_cli_fails(tmp_path):
-    # In WSL the docker CLI disappears or fails while Docker Desktop is stopped.
+def test_stopped_docker_desktop_is_started_and_ready_before_the_first_up(tmp_path):
+    # The Windows docker CLI auto-starts Desktop as a side effect, so an "up"
+    # run while Desktop is down races its startup. Start and wait first.
     clock = Clock(DAILY_DUE)
     runner = StackRunner(
         {"retire": (0, line(result="finished"))},
-        {UP: [OSError("no such file"), 0], DOCKER_STATUS: [1, 1, 0]},
+        {UP: [0], DOCKER_STATUS: [1, 1, 0]},
     )
     code = schedule.run_job(
         "daily",
@@ -540,9 +543,8 @@ def test_docker_desktop_is_started_when_the_docker_cli_fails(tmp_path):
     assert code == 0
     up = " ".join(UP[1:])
     status = " ".join(DOCKER_STATUS[1:])
-    # Down before the start, then polled until Desktop answers.
+    # Down before the start, polled until the engine answers, then one "up".
     assert runner.calls == [
-        up,
         status,
         " ".join(DOCKER_START[1:]),
         status,
@@ -555,6 +557,7 @@ def test_docker_desktop_is_started_when_the_docker_cli_fails(tmp_path):
     milvus, retire, stop = records(tmp_path)
     assert milvus["docker_started"] is True and milvus["milvus_started"] is True
     assert retire["state"] == "complete" and stop["result"] == "stopped"
+    assert runner.calls.count(up) == 1
 
 
 @posix_only
@@ -604,13 +607,16 @@ def test_docker_start_failure_is_logged_and_retire_skipped(tmp_path):
     )
     assert code == 1
     assert "retire" not in runner.calls
-    milvus, retire, stop = records(tmp_path)
+    milvus, retire, *rest = records(tmp_path)
+    stop = rest[0] if rest else None
     assert milvus["error"] == "Docker start command failed (timed out after 300 s)"
     # A start that failed is not "ours": Desktop is never stopped for it.
     assert milvus["docker_started"] is False
     assert " ".join(DOCKER_STOP[1:]) not in runner.calls
     assert retire["result"] == "milvus_unavailable"
-    assert stop["result"] == "stopped"
+    # Neither Desktop nor Milvus was started, so nothing is stopped.
+    assert " ".join(UP[1:]) not in runner.calls
+    assert stop is None
 
 
 @posix_only
