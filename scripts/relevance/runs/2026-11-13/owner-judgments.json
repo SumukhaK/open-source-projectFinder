@@ -1,0 +1,213 @@
+{
+ "snapshot_sha256": "8a7733149acd97e2ed2b736a2001516b5ab33ba809b6a37d33ecc14c5d6aece0",
+ "judge": "owner",
+ "judged_at": "2026-11-13T16:23:35.613091+00:00",
+ "labels": {
+  "c01-budget": {
+   "36633370": {
+    "grade": 0,
+    "unsure": false
+   },
+   "481805419": {
+    "grade": 0,
+    "unsure": false
+   },
+   "674880786": {
+    "grade": 2,
+    "unsure": false
+   },
+   "712722155": {
+    "grade": 0,
+    "unsure": false
+   },
+   "983763510": {
+    "grade": 0,
+    "unsure": false
+   },
+   "1097695258": {
+    "grade": 0,
+    "unsure": false
+   },
+   "1137742295": {
+    "grade": 1,
+    "unsure": false
+   },
+   "1154050333": {
+    "grade": 0,
+    "unsure": false
+   },
+   "1235522568": {
+    "grade": 2,
+    "unsure": false
+   },
+   "1304407094": {
+    "grade": 0,
+    "unsure": false
+   }
+  },
+  "c02-markdown-notes": {
+   "4387772": {
+    "grade": 2,
+    "unsure": false
+   },
+   "16096681": {
+    "grade": 2,
+    "unsure": false
+   },
+   "22092762": {
+    "grade": 0,
+    "unsure": false
+   },
+   "22706666": {
+    "grade": 0,
+    "unsure": false
+   },
+   "51713533": {
+    "grade": 0,
+    "unsure": false
+   },
+   "53986979": {
+    "grade": 0,
+    "unsure": false
+   },
+   "63539055": {
+    "grade": 2,
+    "unsure": false
+   },
+   "151899223": {
+    "grade": 0,
+    "unsure": false
+   },
+   "161566280": {
+    "grade": 0,
+    "unsure": false
+   },
+   "163008241": {
+    "grade": 0,
+    "unsure": false
+   },
+   "227377639": {
+    "grade": 0,
+    "unsure": false
+   },
+   "334502029": {
+    "grade": 0,
+    "unsure": false
+   },
+   "609818132": {
+    "grade": 0,
+    "unsure": false
+   },
+   "672069346": {
+    "grade": 0,
+    "unsure": false
+   },
+   "751494017": {
+    "grade": 2,
+    "unsure": false
+   },
+   "875443471": {
+    "grade": 0,
+    "unsure": false
+   },
+   "970619821": {
+    "grade": 0,
+    "unsure": false
+   },
+   "980380979": {
+    "grade": 0,
+    "unsure": false
+   },
+   "1030432156": {
+    "grade": 2,
+    "unsure": false
+   },
+   "1119817914": {
+    "grade": 1,
+    "unsure": false
+   }
+  },
+  "c04-static-blog": {
+   "65252": {
+    "grade": 0,
+    "unsure": false
+   },
+   "5899961": {
+    "grade": 0,
+    "unsure": false
+   },
+   "13406329": {
+    "grade": 0,
+    "unsure": false
+   },
+   "17916799": {
+    "grade": 2,
+    "unsure": false
+   },
+   "18244524": {
+    "grade": 0,
+    "unsure": false
+   },
+   "22092762": {
+    "grade": 2,
+    "unsure": false
+   },
+   "38213612": {
+    "grade": 2,
+    "unsure": false
+   },
+   "57165232": {
+    "grade": 2,
+    "unsure": false
+   },
+   "75498097": {
+    "grade": 0,
+    "unsure": false
+   },
+   "91116029": {
+    "grade": 0,
+    "unsure": false
+   },
+   "109059304": {
+    "grade": 0,
+    "unsure": false
+   },
+   "264674523": {
+    "grade": 0,
+    "unsure": false
+   },
+   "328121260": {
+    "grade": 2,
+    "unsure": false
+   },
+   "334502029": {
+    "grade": 0,
+    "unsure": false
+   },
+   "358041247": {
+    "grade": 2,
+    "unsure": false
+   },
+   "452672326": {
+    "grade": 0,
+    "unsure": false
+   },
+   "501367212": {
+    "grade": 0,
+    "unsure": true
+   },
+   "609818132": {
+    "grade": 0,
+    "unsure": false
+   },
+   "818574904": {
+    "grade": 0,
+    "unsure": false
+   },
+   "974127194": {
+    "grade": 0,
+    "unsure": false
+   }
+  }
+ }
+}
