@@ -266,13 +266,23 @@ def archive_counts(path):
 class HybridRuntime:
     """Build the hybrid stack on first use; never at import or app boot."""
 
-    def __init__(self, settings: Settings, *, provider, now=None):
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        provider,
+        now=None,
+        archive_reader=None,
+        embeddings=None,
+    ):
         self.settings = settings
         self.provider = provider
         self._lock = RLock()
         self._build_lock = Lock()
         self._store = None
-        self._embeddings = None
+        self._reader = archive_reader
+        # An injected adapter is an already-loaded, contract-validated stack.
+        self._embeddings = embeddings
         self._target = None
         self._fallback = None
         self._fallback_until = 0.0
@@ -450,7 +460,7 @@ class HybridRuntime:
             raise HybridUnavailable("hybrid search is not configured")
         try:
             store = self._archive_store()
-            reader = ArchiveGitHubReader(settings=self.settings)
+            reader = self._reader or ArchiveGitHubReader(settings=self.settings)
         except (ArchiveGitHubError, OSError, RuntimeError):
             raise HybridUnavailable("hybrid search is unavailable") from None
         try:
