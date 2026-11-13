@@ -6,7 +6,7 @@ Prerequisite verified merged into main: T26 `6315e23`. D8 method approved 2026-1
 T27 has two parts. **Part A** ([PR #114](https://github.com/SumukhaK/open-source-projectFinder/pull/114), merged as `bf58d1e`, plus the collect fixes in #117 and #118) is the frozen query set, the offline
 evaluation tool and its tests. **Part B** ([below](#part-b-results-run-3-2026-11-13))
 is the real snapshot, the judging, the results and the D8 options. T27 is done
-only when Part B is reviewed and the owner has picked a D8 option.
+only when Part B is reviewed and the owner has picked a D8 option. Both happened on 2026-11-13: Part B merged as `f039f2f` and the owner chose A+B.
 
 ## What Part A adds
 
