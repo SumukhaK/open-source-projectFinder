@@ -11,6 +11,7 @@ from app.services.rank_fusion import FusedResults, SourceHealth, fuse_candidates
 from scripts.relevance_eval import (
     FAILURE_MARGIN,
     IDEAS_PATH,
+    WARMUP_IDEA,
     collect,
     evaluate,
     judged_pool,
@@ -320,7 +321,11 @@ def test_collect_records_three_runs_from_one_search_without_the_token():
     data = asyncio.run(
         collect(service, "secret-token", ideas, versions={"ranking": "rrf-v1"})
     )
-    assert service.seen == [("secret-token", "track my budget")]
+    assert service.seen == [
+        ("secret-token", WARMUP_IDEA),
+        ("secret-token", "track my budget"),
+    ]
+    assert data["versions"]["warmup"] == {"archive_status": "ok", "attempts": 1}
     assert "secret-token" not in json.dumps(data)
     runs = data["ideas"][0]["runs"]
     assert [r["repo_id"] for r in runs["keyword"]["results"]] == [1, 2]
@@ -394,3 +399,62 @@ def test_a_drop_within_the_margin_is_not_a_failure(monkeypatch):
     assert evaluate(data, checked)["failures"] == []
     monkeypatch.setattr(module, "FAILURE_MARGIN", gap - 1e-9)
     assert [item["id"] for item in evaluate(data, checked)["failures"]] == ["budget"]
+
+
+def test_cold_start_is_absorbed_by_the_unscored_warm_up():
+    service = FakeService()
+    search = service.search
+    calls = []
+
+    async def cold_then_warm(token, idea):
+        calls.append(idea)
+        if len(calls) == 1:
+            github = service.github.search(token, idea)
+            fused = fuse_candidates(github, (), archive_status="failed")
+            fused = FusedResults(
+                fused.candidates, fused.github, SourceHealth("failed", "timeout")
+            )
+            return SimpleNamespace(
+                fused=fused, status="degraded", archive_reason="timeout"
+            )
+        return await search(token, idea)
+
+    service.search = cold_then_warm
+    ideas = [
+        {"id": "budget", "idea": "track my budget", "category": "common"},
+        {"id": "notes", "idea": "markdown notes", "category": "common"},
+    ]
+    data = asyncio.run(collect(service, "t", ideas, versions={"ranking": "rrf-v1"}))
+    assert calls == [WARMUP_IDEA, WARMUP_IDEA, "track my budget", "markdown notes"]
+    assert data["versions"] == {
+        "ranking": "rrf-v1",
+        "warmup": {"archive_status": "ok", "attempts": 2},
+    }
+    assert [entry["id"] for entry in data["ideas"]] == ["budget", "notes"]
+    for entry in data["ideas"]:
+        assert entry["runs"]["archive"]["status"] == "ok"
+        assert [r["repo_id"] for r in entry["runs"]["archive"]["results"]] == [3, 1]
+
+
+def test_warm_up_gives_up_after_three_tries_and_records_it():
+    service = FakeService()
+    calls = []
+
+    async def always_cold(token, idea):
+        calls.append(idea)
+        github = service.github.search(token, idea)
+        fused = fuse_candidates(github, (), archive_status="failed")
+        fused = FusedResults(
+            fused.candidates, fused.github, SourceHealth("failed", "timeout")
+        )
+        return SimpleNamespace(fused=fused, status="degraded", archive_reason="timeout")
+
+    service.search = always_cold
+    ideas = [{"id": "budget", "idea": "track my budget", "category": "common"}]
+    data = asyncio.run(collect(service, "t", ideas, versions={}))
+    assert calls == [WARMUP_IDEA] * 3 + ["track my budget"]
+    assert data["versions"]["warmup"] == {"archive_status": "failed", "attempts": 3}
+
+
+def test_warm_up_text_is_not_a_frozen_idea():
+    assert WARMUP_IDEA not in {idea["idea"] for idea in load_ideas(IDEAS_PATH)}

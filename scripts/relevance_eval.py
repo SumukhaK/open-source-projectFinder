@@ -59,6 +59,10 @@ NDCG_K = 10
 RECALL_K = 20
 POOL_DEPTH = 10
 KEPT_RESULTS = 20
+# One unscored search loads the model and Milvus before the first frozen idea,
+# so a cold start cannot time out the archive for the first ideas only.
+WARMUP_IDEA = "warm-up search for the relevance evaluation"
+WARMUP_TRIES = 3
 # A hybrid score this far below keyword-only counts as a failure case.
 FAILURE_MARGIN = 0.1
 
@@ -184,13 +188,23 @@ async def collect(service, token, ideas, *, versions, pause=0.0):
     """Search each idea once and freeze keyword, archive and hybrid rankings.
 
     All three come from the same call, so they see the same GitHub answer and
-    the same checked archive evidence. The token is passed through only.
+    the same checked archive evidence. An unscored warm-up search runs first,
+    retried up to ``WARMUP_TRIES`` times until the archive reports ok; only its
+    outcome is kept. The token is passed through only.
     """
     github = service.github = _RecordingGitHub(service.github)
     eligibility = service.eligibility = _RecordingEligibility(service.eligibility)
+    warmup = {"archive_status": None, "attempts": 0}
+    while warmup["attempts"] < WARMUP_TRIES and warmup["archive_status"] != "ok":
+        if warmup["attempts"] and pause:
+            await asyncio.sleep(pause)
+        outcome = await service.search(token, WARMUP_IDEA)
+        warmup["attempts"] += 1
+        warmup["archive_status"] = outcome.fused.archive.status
+    versions = {**versions, "warmup": warmup}
     entries = []
-    for index, idea in enumerate(ideas):
-        if index and pause:
+    for idea in ideas:
+        if pause:
             await asyncio.sleep(pause)
         github.result = github.ms = eligibility.result = None
         started = time.perf_counter()
