@@ -86,3 +86,105 @@ Run by the reviewing Claude session on the owner's laptop with the owner's appro
 ## Operator and rollback notes
 
 See [infra/scheduler/README.md](../../infra/scheduler/README.md) for import, dry run, enable/disable, status, retry and credentials. No migration. Rollback: `Unregister-ScheduledTask` both tasks and revert the code; `schedule-log.jsonl` and `schedule.lock` can be deleted.
+
+## Follow-up: the jobs start and stop Milvus (2026-11-12)
+
+On the owner's decision (the laptop normally keeps Docker Desktop and Milvus stopped to save RAM), `schedule run` now manages the stack for the steps that need it (`refresh`, `retire`; not `backup`):
+- It first checks Milvus: connect and `verify_collection`, which also loads the collection. If Milvus is ready, the job uses it and leaves it running.
+- Otherwise it runs `ARCHIVE_SCHEDULE_MILVUS_UP`. If that fails (inside WSL the `docker` CLI is missing or fails while Docker Desktop is stopped), it runs `ARCHIVE_SCHEDULE_DOCKER_START` and retries `up` once. It then polls every 10 s up to `ARCHIVE_SCHEDULE_MILVUS_READY_SECONDS` (default 300).
+- If Milvus never becomes ready, the Milvus steps are logged `milvus_unavailable` and skipped, `backup` still runs, and the job exits 1.
+- At the end it runs `..._MILVUS_DOWN` only if it ran `up`, and `..._DOCKER_STOP` only if it started Desktop. A failed stop fails the job.
+- The log gets `milvus` / `milvus_stop` lines with `milvus_started`, `docker_started`, `milvus_ready_s` and fixed error messages; command output is never captured into it. `status` shows the last check per job.
+- Settings validation: each command is a JSON argument list with an absolute program path first, at most 32 bounded arguments, run without a shell. `-v`, `--volumes` and `--rmi` are refused, so a stop can never delete the Milvus volumes. Empty (the default) means check only, never start.
+
+Production files: `backend/app/workers/schedule.py`, `backend/app/core/config.py`. Also changed: the `backend/.env.example` placeholders and the runbook section "Starting and stopping Milvus".
+
+Tests are fakes only: a fake runner, probe, clock and sleep, plus `Settings` validation. They cover:
+- Milvus already healthy (left running);
+- stopped Milvus started, waited for and stopped after the whole job;
+- Docker CLI failure, then Desktop start, then retry, then both stopped;
+- never ready (refresh skipped, backup run, Milvus stopped, exit 1);
+- Docker start failure;
+- no start command configured (nothing started or stopped);
+- failed stop fails the job;
+- the status `milvus` block;
+- the probe returning False on a Milvus error;
+- unsafe commands rejected.
+
+Mutation check: 8 defects were each reintroduced and each failed the suite. They were: stopping when Milvus was healthy at start, no Docker fallback, running refresh without Milvus, skipping backup after a Milvus failure, never stopping what was started, skipping the health probe, allowing `down -v`, and allowing a PATH lookup. `tests/test_archive_schedule.py`: 41 passed; full suite 1,347 passed / 3 skipped, coverage 93.4% / 90.4%; ruff, format, bandit and `git diff --check` clean.
+
+Not run: Docker Desktop start from WSL (`docker.exe desktop start`, Desktop 4.37+) and the real compose up/down through Task Scheduler. The reviewer will check them on the laptop. Both tasks stay Disabled.
+
+### Review fix: never stop a Docker Desktop the owner had running (2026-11-12)
+
+Review of `9003e67` found one blocker. Any failed `up` set `docker_started`, and `docker desktop start` is a no-op when Desktop is already running. So `stop()` could shut down a Docker Desktop that the owner had open. Fix:
+- New `ARCHIVE_SCHEDULE_DOCKER_STATUS`, which exits 0 only while Docker runs. Settings now refuse `DOCKER_START`/`DOCKER_STOP` unless it is set.
+- After a failed `up`, the job checks status first. It starts Desktop only if Docker is down. `docker_started` is set only after a successful start. The job then polls status (10 s, within the same limit) before retrying `up`.
+- If Docker was already running, Desktop is neither started nor stopped. If the start command fails, Desktop is not stopped.
+
+RED: run against the reviewed `schedule.py`/`config.py`, the new and changed tests gave 7 failed, exit 1. They covered:
+- the Desktop-already-running case;
+- no status command;
+- Docker never answering within the bound;
+- a failed start not counted as ours;
+- the status polling order;
+- 2 settings cases.
+
+GREEN: `tests/test_archive_schedule.py` passed 46.
+
+### Review fix: sanitized diagnostics for failed stack commands (2026-11-12)
+
+The reviewer ran a real end-to-end check of `a25c76b` on the laptop, with Docker Desktop stopped at the start. It failed safely:
+- The run exited 1 in 41 s. `docker_started` and `milvus_started` were true, and the error was `Milvus start command failed`.
+- `retire` was skipped as `milvus_unavailable`, and `milvus_stop` reported `stopped`.
+- Docker Desktop was stopped again afterwards, the catalogue was unchanged, and both tasks are still Disabled.
+- The second `compose up` failed after `desktop start` and `info` had succeeded.
+
+The cause could not be seen, because no command output was kept. Fix: a failed stack command now adds a short diagnostic to the fixed message:
+- the exit code, or `timed out after N s` / `could not run`;
+- plus the last non-empty stderr line, but only if that line passes the existing `UNSAFE_ERROR` guard (no path separator, URL or token-like run);
+- capped at `MAX_TEXT`.
+
+stdout is never kept. RED: 8 tests fail against `b592164`: 3 updated exact-message tests, the safe-line test, 3 withheld-line cases and the length bound. GREEN: `tests/test_archive_schedule.py` passes 51; full suite 1,357 passed / 3 skipped, coverage 93.4% / 90.5%. The root cause of the failed `up` is still being diagnosed on the laptop.
+
+### Review fix: start Docker Desktop before the first compose up (2026-11-13)
+
+Root cause of the failed laptop run, found by the reviewer's cold-start diagnostic from Ubuntu with the exact `.env` values:
+- The compose path, `.env`, GPU and interop all work. With Desktop stopped, `desktop start` took 31 s, the engine answered `info` 11 s later, and `up` then succeeded first time in 20.6 s.
+- The bug was ordering. `ensure()` ran `up` first while Desktop was down. The Windows docker CLI auto-starts Desktop as a side effect, so the later `desktop start` and the retried `up` raced Desktop's own startup.
+
+Fix:
+- When Docker start/status commands are configured, the status command runs before any compose command. If Docker is down, the job runs `desktop start`, then polls status until the engine answers (10 s polls, within `READY_SECONDS`, default 300, well above the ~45 s observed), and only then runs `up`, once.
+- An `up` failure no longer triggers a Desktop start. If Docker was already running, Desktop is never started or stopped.
+- A failed Desktop start runs no `up` and stops nothing.
+- `docker_started` is still set as soon as the start command succeeds, so a Desktop the job started is stopped again even if its engine never answers.
+
+RED against `6e23316`, 3 failed:
+- the new ordering test (status, start, status polls, then a single `up`);
+- the Milvus start test (a status check now precedes `up`);
+- the Desktop start failure test (no `up` and no stop afterwards).
+
+GREEN: `tests/test_archive_schedule.py` passed 51; full suite 1,357 passed / 3 skipped, coverage 93.4% / 90.5%; ruff, format, bandit and `git diff --check` clean.
+
+### Merged, with a real end-to-end run (2026-11-13)
+
+[PR #107](https://github.com/SumukhaK/open-source-projectFinder/pull/107) was accepted at `50a0a60` by the separate reviewing Claude session and squash-merged as `a232fa4`. CI was green on all 6 checks.
+
+Cold-start diagnostic (the reviewer, from Ubuntu, using the exact `.env` values):
+- With Desktop stopped, `desktop start` took 31 s.
+- The engine answered `info` 11 s after that.
+- `compose up` then succeeded first time in 20.6 s.
+
+This showed that the compose path, `.env`, GPU and interop all work. The earlier failure at `a25c76b` was an ordering race, and `50a0a60` fixes it.
+
+Real end-to-end run at `50a0a60`, from inside Ubuntu as Task Scheduler runs it, with Docker Desktop stopped at the start:
+- `schedule run daily` exited 0 in 178 s.
+- `milvus`: `docker_started: true`, `milvus_started: true`, `milvus_ready_s: 36`, `ready`, no error.
+- `retire` finished: checked 204, issues 0.
+- `milvus_stop`: stopped. Docker Desktop was back at 0 processes afterwards.
+- The catalogue was unchanged (204 repositories). Both scheduled tasks stayed **Disabled**.
+
+Before the owner enables the tasks:
+- The worker checkout must be on `main` at or after `a232fa4`.
+- Its `backend/.env` must hold the `ARCHIVE_SCHEDULE_*` values from the runbook.
+- Enabling still needs the owner's approval.

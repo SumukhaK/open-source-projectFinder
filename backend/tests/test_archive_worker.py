@@ -21,6 +21,7 @@ from app.integrations.milvus import (
 )
 from app.services.archive_content import ArchiveContentStore
 from app.services.archive_publication import load_active_chunks
+from app.services.archive_runs import WriterBusy
 from app.services.embeddings import EmbeddingAdapter, EmbeddingError, ModelManifest
 from app.workers import archive as worker
 
@@ -970,3 +971,32 @@ def test_long_heading_preserves_section_identity_through_publication(
         assert vector.section == chunk.section
         assert len(chunk.section.encode("utf-8")) <= 512
     assert worker.ingest_one(state.runtime, REPO_ID, now=NOW)["result"] == "unchanged"
+
+
+@pytest.mark.parametrize(
+    "error,expected",
+    [
+        (
+            WriterBusy("private/path " + TOKEN),
+            "Another archive worker holds the writer lease; retry after it finishes "
+            "or its lease expires (up to 300 seconds after the last heartbeat).",
+        ),
+        (
+            OSError("private/path " + TOKEN),
+            "Archive storage failed; check private paths, free disk and WAL-fixed SQLite",
+        ),
+    ],
+)
+def test_cli_distinguishes_writer_busy_from_storage_errors(
+    monkeypatch, capsys, error, expected
+):
+    def broken(_):
+        raise error
+
+    monkeypatch.setattr(worker, "Settings", lambda: Settings(_env_file=None))
+    monkeypatch.setattr(worker, "build_runtime", broken)
+    assert worker.main(["ingest", "--repo-id", str(REPO_ID)]) == 1
+    output = capsys.readouterr()
+    assert json.loads(output.out)["error"] == expected
+    assert TOKEN not in output.out + output.err
+    assert "private/path" not in output.out + output.err

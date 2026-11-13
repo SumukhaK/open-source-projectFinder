@@ -1,6 +1,6 @@
 # T26: Verify the cross-layer hybrid path over real HTTP
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged as `6315e23` ([PR #111](https://github.com/SumukhaK/open-source-projectFinder/pull/111), [evidence](../T26_EVIDENCE.md)). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
