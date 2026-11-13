@@ -673,6 +673,45 @@ def _swap(catalogue, content_root, quarantine, now):
     return previous
 
 
+def _carry_high_water(live, restored, now):
+    """Keep counters monotonic without importing live content or live leases."""
+    try:
+        with live() as db:
+            fence = db.execute(
+                "SELECT COALESCE(MAX(fence),0) FROM archive_runs"
+            ).fetchone()[0]
+            generations = db.execute(
+                "SELECT repo_id,MAX(generation) FROM ("
+                "SELECT repo_id,generation FROM archive_documents UNION ALL "
+                "SELECT repo_id,generation FROM archive_tasks WHERE stage='cleanup') "
+                "GROUP BY repo_id"
+            ).fetchall()
+        with restored(write=True) as db:
+            run_id = db.execute(
+                "INSERT INTO archive_runs(kind,due_period,fence,completed) "
+                "VALUES('restore-high-water',?,?,1) "
+                "ON CONFLICT(kind,due_period) DO UPDATE SET "
+                "fence=MAX(fence,excluded.fence) RETURNING run_id",
+                (now.isoformat(), fence),
+            ).fetchone()[0]
+            # Non-hex, 64 characters: cannot collide with a semantic revision.
+            revision = "restore-high-water".ljust(64, "-")
+            db.executemany(
+                "INSERT INTO archive_tasks(run_id,repo_id,revision,stage,generation) "
+                "VALUES(?,?,?,'cleanup',?) ON CONFLICT(repo_id,revision) DO UPDATE SET "
+                "generation=MAX(generation,excluded.generation)",
+                [
+                    (run_id, repo_id, revision, generation)
+                    for repo_id, generation in generations
+                ],
+            )
+    except (OSError, sqlite3.DatabaseError) as error:
+        raise RestoreRefused(
+            "cannot carry live archive high-water marks; activation refused"
+        ) from error
+    return {"fence": fence, "repositories": len(generations)}
+
+
 def activate(
     connect,
     content,
@@ -712,6 +751,7 @@ def activate(
         )
         summary = {"purged": 0, "expired": 0}
         _purge_offline(runtime, now, summary)
+        high_water = _carry_high_water(connect, restored, now)
         written = _rebuild_vectors(restored, vectors, adapter, model)
         with connect() as db:
             live_chunks = {
@@ -731,6 +771,7 @@ def activate(
             "vectors": len(written),
             "previous": previous.name,
             "orphan_vectors": "done",
+            "high_water": high_water,
             "next": "restart the API, then run retire",
         }
         try:
