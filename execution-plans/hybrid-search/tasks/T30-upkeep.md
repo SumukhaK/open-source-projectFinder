@@ -39,7 +39,7 @@ At each post-merge tracker sync, the reviewer adds that task's non-blocking revi
 | U17 | T18 Phase B, [PR #81](https://github.com/SumukhaK/open-source-projectFinder/pull/81) | A refused early restart (`WriterBusy`, a live lease) falls through `_safe_error` in `backend/app/workers/archive.py` and prints "Archive storage failed; check private paths, free disk and WAL-fixed SQLite". Behaviour is safe (exit 1, zero requests) but the message misleads | Map `WriterBusy` to its own message saying another worker holds the lease and when it expires; add a test. **fixed in PR #109, awaiting review** |
 | U18 | T18 Phase B, [PR #81](https://github.com/SumukhaK/open-source-projectFinder/pull/81) | The WSL VM sat at its 6 GB `.wslconfig` cap and stopped once mid-run with low host RAM; an earlier `HCS/ERROR_NO_SYSTEM_RESOURCES` needed a full Windows Restart (not Shut down, because of Fast Startup) | Document the operator preflight for real runs in backend/README (close heavy apps, check host free RAM, Restart if WSL will not start) and decide whether the worker can lower peak memory (e.g. smaller embedding batches) before the 10k pilot. |
 | ~~U19~~ (closed by T19b, [PR #87](https://github.com/SumukhaK/open-source-projectFinder/pull/87)) | T19a, [PR #83](https://github.com/SumukhaK/open-source-projectFinder/pull/83) | `_stage` checks `with_generation(prepared, generation).chunks == prepared.chunks`, but generation 1 returns the input unchanged, so a salted payload staged against a generation-1 row would pass | Compare against chunk IDs recomputed from ordinal/text hash for every generation (including the unsalted generation-1 form) and add a test. Owner prompt 2026-11-10 folds this into T19b; close it here when T19b merges. |
-| U20 | T22, [PR #102](https://github.com/SumukhaK/open-source-projectFinder/pull/102) | After `restore --activate` the restored catalogue's `archive_runs` and cleanup tombstones are from the backup era, so `MAX(fence)` and each repository's generation high-water mark can go backwards. Safe today: activation holds the writer and OS locks, deletes orphan vectors and reads every rebuilt vector back | Before the swap, carry the live `MAX(fence)` and each repository's `MAX(generation)` tombstone into the restored catalogue; add a regression test |
+| U20 | T22, [PR #102](https://github.com/SumukhaK/open-source-projectFinder/pull/102) | After `restore --activate` the restored catalogue's `archive_runs` and cleanup tombstones are from the backup era, so `MAX(fence)` and each repository's generation high-water mark can go backwards. Safe today: activation holds the writer and OS locks, deletes orphan vectors and reads every rebuilt vector back | Before the swap, carry the live `MAX(fence)` and each repository's `MAX(generation)` tombstone into the restored catalogue; add a regression test. **fixed in PR #115, awaiting review** |
 
 ## Verify closed — notes owned by other tasks
 
@@ -302,7 +302,6 @@ failures mentioned by the owner did not occur. Coverage is 88.78% combined /
 **fails** the unchanged 90% combined gate. Untouched-base full suite: 21 failed / 1236 passed / 79 skipped (220.19 s),
 with the same coverage gate failure; Linux CI is authoritative and local full verification is not green.
 
-
 ## U20 execution — 2026-11-13
 
 Owner-authorized early slice; base `9b61e371b3a2f4240e9643ac457b9761f3e5dbbe`.
@@ -318,3 +317,7 @@ Implementation uses the existing run/task tables: a completed, unowned run carri
 - `ruff check backend scripts`, `ruff format --check backend scripts`, `bandit -r backend/app`, `git diff --check`: pass (Bandit emits existing comment-parsing warnings).
 
 No real restore/activation, network provider, Docker, WSL, restic process, Milvus or model download was run. On activation failure, follow existing T22 restore-again instructions; failed swap still rolls back the live paths. Do not manually discard the new content-free counter rows. Awaiting independent review; not accepted or merged.
+
+Merged latest main `ff9d6b72dd1146739c5c30277c43fffa9fda556a` (U4) with a merge commit, preserving both evidence sections. Final merged-tree full run: 1,273 passed / 99 skipped / the same 21 WAL failures (135.82 s); coverage 89.47% combined / 85.18% branches, unchanged gate still fails locally. Ruff/format/Bandit/diff remain clean.
+
+[PR #115](https://github.com/SumukhaK/open-source-projectFinder/pull/115). Initial [Linux CI](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/43379447885) passed Backend quality and Dependency audit, but Secret scan detected `generic-api-key` in `scripts/relevance_eval.py:579`, commit `4a8808b9a48cc065fdde6296382f50e281179c31` from the unrelated open T27 [PR #114](https://github.com/SumukhaK/open-source-projectFinder/pull/114). That file/commit is not in the U20 tree. No secret match is reproduced here; no exception, scanner change or edit to T27 was made. This is a required-CI blocker, not waived by implementation completion.
