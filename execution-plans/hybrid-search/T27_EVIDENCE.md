@@ -262,7 +262,8 @@ archive is much larger. D8's rule ("at least as relevant as today's") is
 - New `whatif` subcommand for the offline re-ranking above.
 - RED: the new tests failed at import against `0b27f24` (no `refuse`/`render_whatif`;
   the colour-scheme and snippet tests target behaviour that did not exist). GREEN:
-  `scripts/tests/test_relevance_eval.py` 39 passed. Full suite and ruff below.
+  `scripts/tests/test_relevance_eval.py` 39 passed; full suite 1,423 passed, 9
+  skipped; ruff check and format clean; gitleaks clean on the branch.
 
 ## Part B runbook (laptop, WSL worker venv)
 
