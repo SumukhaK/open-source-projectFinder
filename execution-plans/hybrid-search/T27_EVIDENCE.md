@@ -86,6 +86,19 @@ local-storage name as a generic API key (a false positive); it is renamed
 are done; `scripts/tests` 66 passed, ruff
 clean.
 
+## Warm-up fix (2026-11-13)
+
+The first real `collect` on the laptop (main `d8905d8`) found the archive source
+timing out on exactly the first 5 ideas (cold start, hybrid about 8.0 s) and ok
+on the other 53, which would unfairly zero archive-only and degrade hybrid for
+c01-c05. `collect` now runs an unscored warm-up first (fixed text not in
+`ideas.json`, up to 3 tries until the archive is ok) and records
+`versions.warmup = {archive_status, attempts}`. RED: the new tests failed to
+import `WARMUP_IDEA`; GREEN: `scripts/tests/test_relevance_eval.py` 32 passed.
+Other facts from that first run: 426 s wall, 1.24 GiB max RSS, a judged pool of
+1,057 results, and no repository returned by both keyword and archive for any
+of the 58 ideas. That snapshot is discarded; collect is rerun after this fix.
+
 ## Part B runbook (laptop, WSL worker venv)
 
 1. Bring the pilot stack up (Milvus running). `collect` always reads the ignored
@@ -96,8 +109,13 @@ clean.
    step is needed. The token goes to GitHub only and is never written to the
    snapshot or logs. Run with `HF_HUB_OFFLINE=1`, as the scheduled jobs do.
 2. `python scripts/relevance_eval.py collect --out scripts/relevance/runs/<date>-snapshot.json`
-   (58 ideas with a 2.5 s pause stays under GitHub's search rate limit; about
-   3-4 minutes). The command prints the snapshot digest.
+   (58 ideas with a 2.5 s pause stays under GitHub's search rate limit; the
+   first real run took about 7 minutes). It first runs one unscored warm-up
+   search, retried up to 3 times until the archive reports ok, so a cold model
+   or Milvus cannot time out the archive on the first ideas only; the outcome is
+   recorded as `versions.warmup` and the warm-up search is never stored. Check
+   that `warmup.archive_status` is `ok` before judging. The command prints the
+   snapshot digest.
 3. `python scripts/relevance_eval.py sheet <snapshot> --out judge.html`, open it
    in a browser, enter a role label such as "owner" as the judge name (not a
    personal name, since the file is committed), judge, and download `judgments.json`. Expect roughly 15-25
