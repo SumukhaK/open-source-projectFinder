@@ -260,7 +260,7 @@ archive is much larger. D8's rule ("at least as relevant as today's") is
 ### Option B bar (owner-approved 2026-11-13)
 
 D8 B follow-up base: `931f7ffe84ba294f6f4502e839832ca207dbb6a5`, isolated
-`codex/hybrid-t27-d8b-gate`, [PR #121](https://github.com/SumukhaK/open-source-projectFinder/pull/121), Awaiting review. Plan: independently assess the approved bar from
+`codex/hybrid-t27-d8b-gate`, [PR #121](https://github.com/SumukhaK/open-source-projectFinder/pull/121), merged as `875f71b`. Plan: independently assess the approved bar from
 committed run-3 reports/labels; RED synthetic gate/CLI tests; reuse `evaluate`
 for the five checks; GREEN and full quality gates; one PR, awaiting review.
 No ranking change, stack run, snapshot collection or new dependency.
@@ -347,7 +347,7 @@ one offline gate check; the snapshot was read in place, never copied or committe
 Only its verdict table is included in the PR; the report's missing-label list
 stays local. No production ranking, `RANKING_VERSION`, API, migration or config
 changes. Reverting this PR removes only the offline gate; existing subcommands
-remain compatible. Awaiting review; not self-accepted or merged.
+remain compatible. Independently reviewed by Claude and merged as `875f71b`.
 
 ### Part B tool changes
 
