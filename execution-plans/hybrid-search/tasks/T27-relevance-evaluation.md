@@ -1,6 +1,6 @@
 # T27: Evaluate relevance on a human-judged query set
 
-Status: Part A (query set, tool, tests) merged as `bf58d1e` ([PR #114](https://github.com/SumukhaK/open-source-projectFinder/pull/114)); Part B (real snapshot, owner judging, report) not started. See [evidence](../T27_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Part A (query set, tool, tests) merged as `bf58d1e` ([PR #114](https://github.com/SumukhaK/open-source-projectFinder/pull/114)); Part B (results, offline what-if, D8 options) awaiting review. See [evidence](../T27_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
