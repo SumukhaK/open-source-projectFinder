@@ -420,6 +420,62 @@ def test_cache_cannot_be_extended_by_repeated_reads_or_caller_mutation(connect):
     assert len(calls) == 2
 
 
+def test_cached_validation_keeps_the_public_card_fields(connect):
+    """A cache hit must still describe a card, not just prove visibility.
+
+    The hybrid API builds every result card from the evidence metadata, so a
+    repeated search inside the visibility TTL must not lose the public fields.
+    """
+    hit = seed(connect, pushed_at="2026-10-27T00:00:00Z")
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(
+            200,
+            json=payload(
+                name="project",
+                owner={"login": "owner", "avatar_url": "https://avatars.example/o"},
+                description="A small project",
+                stargazers_count=7,
+                language="Python",
+                license={"spdx_id": "MIT"},
+            ),
+        )
+
+    checker = service(connect, handler, ttl=900)
+    first = checker.check([hit]).archive[0].metadata
+    second = checker.check([hit]).archive[0].metadata
+
+    assert len(calls) == 1
+    for field in (
+        "id",
+        "name",
+        "full_name",
+        "owner",
+        "description",
+        "stargazers_count",
+        "language",
+        "license",
+    ):
+        assert second[field] == first[field], field
+    # The cache stays a bounded public subset, never a provider response body.
+    assert set(second) == {
+        "id",
+        "name",
+        "full_name",
+        "owner",
+        "description",
+        "stargazers_count",
+        "language",
+        "license",
+        "private",
+        "archived",
+        "pushed_at",
+        "visibility",
+    }
+
+
 def test_migration_three_preserves_v2_published_content(tmp_path):
     with sqlite3.connect(tmp_path / "upgrade.sqlite3") as db:
         db.execute("PRAGMA foreign_keys=ON")
