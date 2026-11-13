@@ -264,6 +264,48 @@ Run from the repo root; Linux uses the equivalent exports and the supported work
 
 Rollback: stop consumers and revert T07; auth and existing keyword search are unaffected. No SQL migration or alias activation occurs. Preserve real collection data; never delete a collection to repair a generation mismatch. A future model/schema change requires a newly named collection and T08's validated activation, not modifying the existing collection in place.
 
+## Worker credentials and real-run preflight
+
+### One private worker-token location
+
+Keep one authoritative copy of `ARCHIVE_GITHUB_TOKEN` in the **worker checkout's
+ignored `backend/.env`**, on the Linux-native WSL filesystem:
+`/home/sumukha/<worker-checkout>/backend/.env`. Run manual commands from that
+`backend/` directory; configure the scheduler to use the same directory. This is
+the one worker configuration location, not an extra file for each Git worktree.
+Set its mode to **0600** (owner read/write only):
+
+```sh
+# From the designated Linux worker checkout's backend/ directory:
+chmod 600 .env
+```
+
+Do not keep additional worker-token copies in the Windows main checkout or old
+task worktrees. The operator should consolidate any existing copies privately,
+verify the designated worker works, then remove obsolete copies without printing
+their contents. This documentation does not claim that cleanup has been performed.
+Never paste the value into commands, logs, evidence or Git; rotate it only in this
+one file. See the [scheduler credential instructions](../infra/scheduler/README.md).
+
+### Before a real run
+
+- Save work, close unneeded heavy apps and check Windows host free RAM before
+  starting WSL, the worker and Milvus. Leave headroom for all three; do not start
+  another model or integration run on an already constrained laptop.
+- If WSL fails with `ERROR_NO_SYSTEM_RESOURCES` (including the HCS-prefixed form),
+  use **Windows Restart**, not Shut down. Fast Startup can preserve the stuck state;
+  a full Restart cleared it in the [T18 run](../execution-plans/hybrid-search/T18_EVIDENCE.md).
+- Start only the Milvus Compose profile the approved run needs, using the
+  [Milvus runbook](../infra/milvus/README.md). Stop that profile afterwards with
+  ordinary `down`, preserving volumes; never `down -v` or prune.
+- Do not change `.wslconfig` without the owner's approval.
+
+Lowering worker peak memory, for example through smaller embedding batches,
+remains **open before the 10k pilot**. Measure it and obtain separate pilot
+approval; this preflight neither implements that optimization nor authorizes a
+larger run. The T18 VM stop's root cause was unconfirmed; these steps are operator
+precautions, not a claim that memory tuning has been validated.
+
 ## Single-repository ingestion (T09, merged)
 
 `app/workers/archive.py` is a local operator command, not an API route or scheduler. It resolves one repository by numeric GitHub ID, applies the archive policy, and either publishes a new revision or reports unchanged semantic content.
@@ -292,7 +334,7 @@ A retired revision keeps a `cleanup` tombstone in `archive_tasks` because a time
 
 ## Bounded archive backfill (T18, merged)
 
-`python -m app.workers.archive backfill --cap 1000` is a manual, serial local-worker command. It persists T16 partition pages, T17 leases/checkpoints and numeric-ID outcomes so a stopped pilot resumes without duplicate repository ingestion. It uses the approved D2 SPDX list exactly, keeps REST and search request accounting separate, leaves long GitHub waits as a durable `retry_at`, and writes a sanitized JSON-lines partition log beside the private catalogue. It reports `curated` or `partial` coverage only; it never claims a complete year. No scheduler is installed. The owner-approved real 1k run (2026-11-10) stopped at `cap` with 206 published and 794 licence-skipped, and resumed without duplicates after a deliberate kill and an unplanned WSL stop ([Phase B evidence](../execution-plans/hybrid-search/T18_EVIDENCE.md#phase-b-real-1k-sample-2026-11-10)). Any 10k pilot needs separate owner approval. Before a real run, close heavy apps and check host free RAM; if WSL refuses to start with `ERROR_NO_SYSTEM_RESOURCES`, use Windows Restart, not Shut down.
+`python -m app.workers.archive backfill --cap 1000` is a manual, serial local-worker command. It persists T16 partition pages, T17 leases/checkpoints and numeric-ID outcomes so a stopped pilot resumes without duplicate repository ingestion. It uses the approved D2 SPDX list exactly, keeps REST and search request accounting separate, leaves long GitHub waits as a durable `retry_at`, and writes a sanitized JSON-lines partition log beside the private catalogue. It reports `curated` or `partial` coverage only; it never claims a complete year. No scheduler is installed. The owner-approved real 1k run (2026-11-10) stopped at `cap` with 206 published and 794 licence-skipped, and resumed without duplicates after a deliberate kill and an unplanned WSL stop ([Phase B evidence](../execution-plans/hybrid-search/T18_EVIDENCE.md#phase-b-real-1k-sample-2026-11-10)). Any 10k pilot needs separate owner approval. Follow the [real-run preflight](#before-a-real-run) before starting services.
 
 Operator limits: no bulk crawl, scheduler, public ingestion API or corpus acquisition before policy approval. Run it only against an explicitly approved public repository and licence, with `HF_HUB_OFFLINE=1` and private `ARCHIVE_GITHUB_TOKEN`/`MILVUS_TOKEN`. Before activation, stopping the command leaves the previous published revision serving; after activation, stopping it does not undo the new revision. Retry failures by the same numeric ID without deleting catalogue/content/vector data. Evidence: [T09 evidence](../execution-plans/hybrid-search/T09_EVIDENCE.md).
 
@@ -345,7 +387,7 @@ The real repository and password file are created by the owner, never by this co
 - **Current suppression wins.** The ledger beside the live catalogue is *trusted* only if it is a private, parseable file that holds every suppression the live catalogue enforces. A trusted ledger is reapplied exactly (T20 `reapply`). A **missing** or **stale** ledger adds every known decision (ledger plus live suppressions) without lifting any, and then every remaining repository is re-checked by numeric ID on GitHub with the T20 sweep rules; new suppressions go to the ledger. If GitHub stops (credential, quota, 5xx, 403) or any answer is inconclusive, nothing is kept. Like `retire`, the re-check appends its new suppressions (content-free) to the **live** ledger, because they are current GitHub facts; the next `retire` applies them to the live catalogue. An unsafe or unreadable ledger is refused: repair it first.
 - **Purge in quarantine.** Suppressed repositories are purged, then any repository whose stored facts fail the archive policy (365-day window, licence, fork, archived, visibility) is purged without a ledger entry. A row whose facts are unusable, or an older (pre-T19b) row without language, is kept and forces the GitHub re-check even under a trusted ledger. The re-check stores fresh metadata, so rebuilt vectors carry the right language. Quarantine purges never touch Milvus. A verdict where the offline step alone removed every repository carries a `warning`.
 - **Verdict.** Only a run that passes everything writes `verdict.json` (`ready: true`, snapshot, ledger state, counts, catalogue hash) and prints `result: "quarantined"`.
-- **Activation.** Stop the API first. Under the writer lock it refuses a quarantine without a ready verdict or whose catalogue changed since, reapplies ledger decisions made since the restore and purges again, then embeds every active chunk, upserts it and reads it back strongly. Only then does it move the live catalogue and content to `restore-previous-<UTC time>/` and rename the quarantine in. A failed rename is rolled back. Afterwards it deletes the vectors of chunks the replaced archive had and the restored one does not (`orphan_vectors`; a failure exits 1 but is harmless because serving ignores chunks outside the active set).
+- **Activation.** Stop the API first. Under the writer lock it refuses a quarantine without a ready verdict or whose catalogue changed since, reapplies ledger decisions made since the restore and purges again, then embeds every active chunk, upserts it and reads it back strongly. Only then does it move the live catalogue and content to `restore-previous-<UTC time>/` and rename the quarantine in. A failed rename is rolled back. Afterwards it deletes the vectors of chunks the replaced archive had and the restored one does not (`orphan_vectors`; a failure exits 1 but is harmless because serving ignores chunks outside the active set). Activation also carries the live fence and per-repository generation high-water marks into content-free rows before the swap; unavailable live counters refuse activation with a sanitized failure summary rather than resetting them.
 - **After activation.** Restart the API: its visibility cache (at most 15 minutes, fresh GitHub reads only) and pagination snapshots (5 minutes) are process-local, so a restart clears them. Then run `retire`. Keep `restore-previous-*` until you are satisfied; rolling back is renaming it back (API stopped). Delete it afterwards, because the T20 sweep does not look inside it.
 
 Run it from `backend/` with the WSL worker interpreter and the same private settings as `backup`; `--activate` also needs Milvus, the offline model (`HF_HUB_OFFLINE=1`) and `MILVUS_TOKEN`. There is no migration. See [T22 evidence](../execution-plans/hybrid-search/T22_EVIDENCE.md).

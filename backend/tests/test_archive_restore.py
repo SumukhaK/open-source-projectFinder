@@ -24,7 +24,7 @@ from app.workers import archive as worker
 from app.workers.retire import sweep
 from test_archive_backup import FakeRestic, configured, distinct, export
 from test_archive_retirement import SweepReader
-from test_archive_worker import NOW, REPO_ID, make_snapshot
+from test_archive_worker import NOW, REPO_ID, connect_factory, make_snapshot
 
 
 class RestoringRestic(FakeRestic):
@@ -630,3 +630,120 @@ def test_restore_that_removes_everything_offline_is_flagged(tmp_path):
     verdict = run_restore(state, restic, now=NOW + timedelta(days=400))
 
     assert verdict["repositories"] == 0 and "warning" in verdict
+
+
+# This seam exercises restore with real SQLite transactions, without enabling WAL
+# on the Windows interpreter; ArchiveStore's production WAL refusal is unchanged.
+def open_test_catalogue(settings):
+    return connect_factory(settings.archive_database_path)
+
+
+@pytest.fixture(params=[20, 50])
+def live_ahead_of_backup(tmp_path, request):
+    state, restic = backed_up(tmp_path)
+    with state.connect(write=True) as db:
+        run = db.execute(
+            "INSERT INTO archive_runs(kind,due_period,fence,completed) "
+            "VALUES('old-live','period',100,1) RETURNING run_id"
+        ).fetchone()[0]
+        db.execute("UPDATE archive_documents SET generation=?", (request.param,))
+        state.live_generation = max(request.param, 30)
+        db.executemany(
+            "INSERT INTO archive_tasks(run_id,repo_id,revision,stage,generation) "
+            "VALUES(?,?,?,'cleanup',?)",
+            [(run, REPO_ID, "f" * 64, 30), (run, 999, "e" * 64, 40)],
+        )
+    run_restore(state, restic, open_catalogue=open_test_catalogue)
+    return state
+
+
+def test_activation_carries_live_fence_and_generation_high_water(live_ahead_of_backup):
+    state = live_ahead_of_backup
+    run_activate(state, open_catalogue=open_test_catalogue)
+    with state.connect() as db:
+        assert db.execute("SELECT MAX(fence) FROM archive_runs").fetchone()[0] > 100
+        generations = dict(
+            db.execute(
+                "SELECT repo_id,MAX(generation) FROM ("
+                "SELECT repo_id,generation FROM archive_documents UNION ALL "
+                "SELECT repo_id,generation FROM archive_tasks WHERE stage='cleanup') "
+                "GROUP BY repo_id"
+            )
+        )
+        assert generations[REPO_ID] >= state.live_generation
+        assert generations[999] >= 40
+        assert load_active_chunks(db, REPO_ID)
+
+
+def test_next_publication_exceeds_pre_restore_generation(live_ahead_of_backup):
+    state = live_ahead_of_backup
+    run_activate(state, open_catalogue=open_test_catalogue)
+    state.reader.snapshot = make_snapshot(readme_text="# New revision\nNew content.")
+    assert worker.ingest_one(state.runtime, REPO_ID, now=NOW)["result"] == "published"
+    with state.connect() as db:
+        assert (
+            db.execute(
+                "SELECT MAX(generation) FROM archive_documents WHERE repo_id=?",
+                (REPO_ID,),
+            ).fetchone()[0]
+            > state.live_generation
+        )
+
+
+def test_activation_rejects_pre_restore_lease(live_ahead_of_backup):
+    from app.services.archive_runs import LeaseLost, RunStore, publication_writer
+
+    state = live_ahead_of_backup
+    runs = RunStore(state.connect, clock=lambda: 1.0)
+    run_id = runs.create_run("stale", NOW)
+    stale = runs.claim(run_id, "old-worker")
+    # The real activation clock sees this lease as expired, but this stale
+    # process still thinks it is valid. It must not regain write permission.
+    run_activate(state, open_catalogue=open_test_catalogue)
+    with pytest.raises(LeaseLost), publication_writer(state.connect, stale):
+        pytest.fail("stale worker entered publication boundary")
+    fresh = runs.claim(runs.create_run("fresh", NOW), "new-worker")
+    assert fresh.fence > stale.fence
+    runs.release(fresh)
+
+
+@pytest.mark.parametrize("failure", [sqlite3.DatabaseError, FileNotFoundError])
+def test_high_water_unreadable_live_refuses_without_changing_quarantine(
+    tmp_path, failure
+):
+    state, restic = backed_up(tmp_path)
+    run_restore(state, restic, open_catalogue=open_test_catalogue)
+    path = quarantine(state) / "catalogue.sqlite3"
+    before = path.read_bytes()
+
+    def unreadable():
+        raise failure("private path or provider detail")
+
+    with pytest.raises(restore.RestoreRefused) as caught:
+        restore._carry_high_water(unreadable, connect_factory(path), NOW)
+    assert str(caught.value) == (
+        "cannot carry live archive high-water marks; activation refused"
+    )
+    assert path.read_bytes() == before
+
+
+def test_high_water_does_not_lower_existing_restored_counters(live_ahead_of_backup):
+    state = live_ahead_of_backup
+    restored = connect_factory(quarantine(state) / "catalogue.sqlite3")
+    restore._carry_high_water(state.connect, restored, NOW)
+    with restored(write=True) as db:
+        db.execute("UPDATE archive_runs SET fence=500 WHERE kind='restore-high-water'")
+        db.execute("UPDATE archive_tasks SET generation=500 WHERE stage='cleanup'")
+    restore._carry_high_water(state.connect, restored, NOW)
+    with restored() as db:
+        assert db.execute("SELECT MAX(fence) FROM archive_runs").fetchone()[0] == 500
+        assert all(
+            row[0] == 500
+            for row in db.execute(
+                "SELECT generation FROM archive_tasks WHERE stage='cleanup'"
+            )
+        )
+        assert db.execute(
+            "SELECT owner,expires_at,completed FROM archive_runs "
+            "WHERE kind='restore-high-water'"
+        ).fetchone()[:] == (None, None, 1)

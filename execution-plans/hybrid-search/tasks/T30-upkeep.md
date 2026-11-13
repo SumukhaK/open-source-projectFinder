@@ -27,7 +27,7 @@ At each post-merge tracker sync, the reviewer adds that task's non-blocking revi
 | ~~U5~~ (closed by [PR #100](https://github.com/SumukhaK/open-source-projectFinder/pull/100), merged as `69e9cab`) | T09, [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34) | Milvus snippets are cut at 2,048 bytes, possibly mid-word | Truncate on a word/character boundary and confirm the app labels snippets as excerpts (if T15/T25 have not already) Since 2026-11-05: land this before voice V2 if the grounded summary quotes snippets, so the LLM never receives a mid-word cut. **fixed in PR #100, merged as `69e9cab`**: cut at serving time on a word boundary with `…`; cards are labelled "README excerpt"; the summary receives only `full_names`, so no snippet reaches the LLM |
 | ~~U6~~ (closed by [PR #101](https://github.com/SumukhaK/open-source-projectFinder/pull/101), merged as `85ee3cb`) | T09, [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34) | Worker preflight (`ensure_collection`) creates the Milvus collection on first run | Split creation into an explicit operator init step so a misconfigured run cannot silently create an empty collection; **fixed in PR #101, merged as `85ee3cb`**: preflight calls `verify_collection()`, creation only through `python -m app.workers.archive init-collection` |
 | U7 | T11, [PR #38](https://github.com/SumukhaK/open-source-projectFinder/pull/38) | A GitHub 422 (rejected query) is reported as `failed`/`unavailable`; owner accepted this for now | If real logs show 422s, report a distinct `query_rejected` reason |
-| U8 | T09, [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34) | Operator: the worker token sits in two ignored `.env` files (main checkout and T09 worktree) | Keep one private copy; document its location in the operator runbook. No secret values in the repository |
+| U8 | T09, [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34) | Operator: the worker token sits in two ignored `.env` files (main checkout and T09 worktree) | Keep one private copy; document its location in the operator runbook. No secret values in the repository **fixed in PR #110, awaiting review** |
 | U9 | T04, [PR #19](https://github.com/SumukhaK/open-source-projectFinder/pull/19) | Compressed-response burst bound is documented, not measured | Measure peak memory during T18/T19 runs; tighten only if pressure is observed |
 | U10 | T14, [PR #49](https://github.com/SumukhaK/open-source-projectFinder/pull/49) | One key both signs cursors and computes the HMAC idea/filter digests | Add domain separation (for example, prefix digest input with `b"digest:"`) or derive two subkeys; invalidates live cursors, which is acceptable after a restart; **fixed in PR #85, merged as `14a82b6`** |
 | ~~U11~~ (closed by [PR #93](https://github.com/SumukhaK/open-source-projectFinder/pull/93), merged as `b0a1981`) | T15, [PR #51](https://github.com/SumukhaK/open-source-projectFinder/pull/51) | Requests that arrive while the lazy hybrid build runs each hold a `to_thread` worker blocked on the build lock until the build ends (the route itself returns a retryable 503 after `HYBRID_BUILD_WAIT_SECONDS`) | Let waiters check a build-in-progress flag and return immediately instead of queueing on the lock, so a slow build cannot drain the default thread pool; **fixed in PR #93, merged as `b0a1981`** |
@@ -37,9 +37,9 @@ At each post-merge tracker sync, the reviewer adds that task's non-blocking revi
 | U15 | T25, [PR #58](https://github.com/SumukhaK/open-source-projectFinder/pull/58) | T25's GREEN criterion asks for a real mobile-sized light/dark UI inspection of the notices, Try again button, refresh control, focus/labels and touch targets; it was not performed because sign-in needs a live backend and OAuth | Do the inspection during T26's real-HTTP run on a phone-sized device or simulator, in both themes, and record screenshots or findings Voice UI (V1, V3) carries its own device inspection in the voice plan, so U15 covers only the T25 screen. |
 | U16 | V1b/V2b/V3b, [PR #76](https://github.com/SumukhaK/open-source-projectFinder/pull/76), [#78](https://github.com/SumukhaK/open-source-projectFinder/pull/78) | Voice device acceptance never ran on a physical phone; the emulator retries could not drive hold-to-talk and lacked RAM for Ollama (see V1b/V2b/V3b evidence) | Owner decision 2026-11-10: the owner runs this manually on a real phone once the app is complete end to end. Checklist: consent/deny/settings; hold/speak/release, slide cancel, 30 s cap, background cancel, release-to-transcript latency (3 clips); summary card after the list; auto-speak after voice search, first-sound latency (3 runs), one-time tip, typed search Read aloud/Stop, mic press stops speech, setting off, silent mode, TalkBack suppression and announcement; stops on new search/tab/sign-out/background; Ollama stopped -> card hidden; light/dark. Record results in V1b/V2b/V3b evidence and flip their TRACKER rows to device check done. |
 | U17 | T18 Phase B, [PR #81](https://github.com/SumukhaK/open-source-projectFinder/pull/81) | A refused early restart (`WriterBusy`, a live lease) falls through `_safe_error` in `backend/app/workers/archive.py` and prints "Archive storage failed; check private paths, free disk and WAL-fixed SQLite". Behaviour is safe (exit 1, zero requests) but the message misleads | Map `WriterBusy` to its own message saying another worker holds the lease and when it expires; add a test. **fixed in PR #109, awaiting review** |
-| U18 | T18 Phase B, [PR #81](https://github.com/SumukhaK/open-source-projectFinder/pull/81) | The WSL VM sat at its 6 GB `.wslconfig` cap and stopped once mid-run with low host RAM; an earlier `HCS/ERROR_NO_SYSTEM_RESOURCES` needed a full Windows Restart (not Shut down, because of Fast Startup) | Document the operator preflight for real runs in backend/README (close heavy apps, check host free RAM, Restart if WSL will not start) and decide whether the worker can lower peak memory (e.g. smaller embedding batches) before the 10k pilot. |
+| U18 | T18 Phase B, [PR #81](https://github.com/SumukhaK/open-source-projectFinder/pull/81) | The WSL VM sat at its 6 GB `.wslconfig` cap and stopped once mid-run with low host RAM; an earlier `HCS/ERROR_NO_SYSTEM_RESOURCES` needed a full Windows Restart (not Shut down, because of Fast Startup) | Document the operator preflight for real runs in backend/README (close heavy apps, check host free RAM, Restart if WSL will not start) and decide whether the worker can lower peak memory (e.g. smaller embedding batches) before the 10k pilot. **fixed in PR #110, awaiting review** |
 | ~~U19~~ (closed by T19b, [PR #87](https://github.com/SumukhaK/open-source-projectFinder/pull/87)) | T19a, [PR #83](https://github.com/SumukhaK/open-source-projectFinder/pull/83) | `_stage` checks `with_generation(prepared, generation).chunks == prepared.chunks`, but generation 1 returns the input unchanged, so a salted payload staged against a generation-1 row would pass | Compare against chunk IDs recomputed from ordinal/text hash for every generation (including the unsalted generation-1 form) and add a test. Owner prompt 2026-11-10 folds this into T19b; close it here when T19b merges. |
-| U20 | T22, [PR #102](https://github.com/SumukhaK/open-source-projectFinder/pull/102) | After `restore --activate` the restored catalogue's `archive_runs` and cleanup tombstones are from the backup era, so `MAX(fence)` and each repository's generation high-water mark can go backwards. Safe today: activation holds the writer and OS locks, deletes orphan vectors and reads every rebuilt vector back | Before the swap, carry the live `MAX(fence)` and each repository's `MAX(generation)` tombstone into the restored catalogue; add a regression test |
+| U20 | T22, [PR #102](https://github.com/SumukhaK/open-source-projectFinder/pull/102) | After `restore --activate` the restored catalogue's `archive_runs` and cleanup tombstones are from the backup era, so `MAX(fence)` and each repository's generation high-water mark can go backwards. Safe today: activation holds the writer and OS locks, deletes orphan vectors and reads every rebuilt vector back | Before the swap, carry the live `MAX(fence)` and each repository's `MAX(generation)` tombstone into the restored catalogue; add a regression test. **fixed in PR #115, awaiting review** |
 
 ## Verify closed — notes owned by other tasks
 
@@ -266,6 +266,7 @@ fails at 88.79% combined / 85.42% branches, below the unchanged 90% combined
 gate, as on untouched base (88.76% combined /
 85.36% branches). No exclusion, skip, interpreter patch or gate change. Linux CI
 is authoritative; local full verification is not green.
+
 ## U4 execution — 2026-11-13
 
 Base: `36a6953dac6370ccade1db3e921d2fafb6bceb31`; isolated branch
@@ -301,3 +302,50 @@ failures mentioned by the owner did not occur. Coverage is 88.78% combined /
 85.39% branches: `python scripts/quality.py coverage reports/backend-coverage.json`
 **fails** the unchanged 90% combined gate. Untouched-base full suite: 21 failed / 1236 passed / 79 skipped (220.19 s),
 with the same coverage gate failure; Linux CI is authoritative and local full verification is not green.
+
+## U8 + U18 operator documentation — 2026-11-13
+
+Base `36a6953dac6370ccade1db3e921d2fafb6bceb31`; independent branch
+`codex/hybrid-t30-u8-u18-operator-docs`. Owner pulled this slice forward before T29.
+Read U8/U18, T09 credential evidence, T18 Phase B and PR #81. Main already had a
+brief RAM/Restart note and scheduler documentation named the worker `.env`;
+neither item was fully fixed: backend README lacked the single-copy/0600 rule,
+Fast Startup explanation, profile cleanup, owner-only WSL-limit changes and the
+open memory optimization decision. Retained the existing guidance and linked the
+expanded preflight instead of duplicating it.
+
+Plan/result: backend README now names the one authoritative ignored Linux worker
+`backend/.env` (0600); consolidation remains an operator action, not claimed done.
+Preflight covers heavy apps/free host RAM, Windows Restart rather than Fast
+Startup shutdown, only the needed Milvus profile and ordinary down afterwards,
+and no `.wslconfig` edits without the owner. Lower worker peak memory (such as
+smaller embedding batches) remains open before a separately approved 10k pilot.
+No secrets read/copied/printed, applications closed, services started, memory
+settings changed, or code modified. Documentation only; no TDD or runtime tests
+needed. Validate local link targets, fenced blocks and `git diff --check`.
+Rollback is a documentation revert. Operational advice follows the recorded T18
+incident; it is not new hardware or live-run evidence.
+
+Checks: 129 relative local link targets resolve across backend README, T30 and
+hybrid TRACKER; fenced code blocks balanced in all three. `git diff --check`
+passed. Runtime suites intentionally not repeated for this docs-only slice.
+
+## U20 execution — 2026-11-13
+
+Owner-authorized early slice; base `9b61e371b3a2f4240e9643ac457b9761f3e5dbbe`.
+Plan: reproduce restored fence/generation regression with fake providers and SQLite; carry content-free high-water marks under the activation writer lock using existing tables; verify publication, stale leases, restore regressions and unchanged quality gates. No migration or real restore.
+
+Implementation uses the existing run/task tables: a completed, unowned run carries the live maximum fence; one non-hex 64-character cleanup sentinel per numeric repository ID carries the maximum generation from live documents and cleanup tombstones (including repositories absent from the backup). Existing larger restored counters stay larger. No content, lease owner or expiry is imported. The writer/OS lock encloses the carry and swap. Missing/unreadable live counters remain a refusal; the CLI returns a sanitized failure summary rather than treating them as zero. Activation reports carried fence/count only. No migration; existing rename rollback, quarantine, suppression and orphan-vector behavior is retained.
+
+2026-11-13, Windows Python 3.11.9 / SQLite 3.45.1, fake providers only:
+- RED: `python -m pytest backend/tests/test_archive_restore.py -k "carries_live or exceeds_pre_restore or rejects_pre_restore" -q --tb=short`: 3 assertion failures (`3 > 100`, `2 > 30`, `4 > 102`). Stale lease rejection already worked; the new lease's counter regressed.
+- GREEN: same tests expanded to document-vs-tombstone maxima, tombstone-only repositories, higher restored counters and sanitized missing/unreadable live state: `-k "high_water or exceeds_pre_restore or rejects_pre_restore"`: 10 passed. Explicit test catalogue injection uses ordinary SQLite transactions, never enables unsafe WAL or patches the version gate.
+- Full required pytest/coverage command: 1,271 passed / 99 skipped / 21 failed (154.30 s). Untouched base in a separate detached worktree: 1,261 passed / 99 skipped / the same 21 failed (157.72 s). All failures are existing T22 restore paths refusing this unpatched Windows WAL runtime; the four settings failures mentioned in the prompt did not recur.
+- `python scripts/quality.py coverage reports/backend-coverage.json`: exit 1 on both trees; combined/branch coverage 89.48%/85.19% versus base 87.38%/83.47%. Gates unchanged; Linux CI is authoritative for WAL-backed tests and the full gate.
+- `ruff check backend scripts`, `ruff format --check backend scripts`, `bandit -r backend/app`, `git diff --check`: pass (Bandit emits existing comment-parsing warnings).
+
+No real restore/activation, network provider, Docker, WSL, restic process, Milvus or model download was run. On activation failure, follow existing T22 restore-again instructions; failed swap still rolls back the live paths. Do not manually discard the new content-free counter rows. Awaiting independent review; not accepted or merged.
+
+Merged latest main `ff9d6b72dd1146739c5c30277c43fffa9fda556a` (U4) with a merge commit, preserving both evidence sections. Final merged-tree full run: 1,273 passed / 99 skipped / the same 21 WAL failures (135.82 s); coverage 89.47% combined / 85.18% branches, unchanged gate still fails locally. Ruff/format/Bandit/diff remain clean.
+
+[PR #115](https://github.com/SumukhaK/open-source-projectFinder/pull/115). Initial [Linux CI](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/43379447885) passed Backend quality and Dependency audit, but Secret scan detected `generic-api-key` in `scripts/relevance_eval.py:579`, commit `4a8808b9a48cc065fdde6296382f50e281179c31` from the unrelated open T27 [PR #114](https://github.com/SumukhaK/open-source-projectFinder/pull/114). That file/commit is not in the U20 tree. No secret match is reproduced here; no exception, scanner change or edit to T27 was made. This is a required-CI blocker, not waived by implementation completion.
