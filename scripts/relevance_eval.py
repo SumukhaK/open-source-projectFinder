@@ -1,6 +1,6 @@
 """T27 offline relevance evaluation: frozen ideas, blind judging and metrics.
 
-Three steps, each a subcommand:
+Each step is a subcommand:
 
 ``collect``  runs every idea in ``scripts/relevance/ideas.json`` once through
              the real hybrid search service and freezes three rankings per idea
@@ -14,6 +14,8 @@ Three steps, each a subcommand:
 ``report``   scores the runs against those human judgments: nDCG@10 and
              judged-pool Recall@20, source contributions, latency, failure
              cases and a side-by-side table per idea.
+``whatif``   re-ranks the frozen keyword and archive lists with alternative
+             fusions and scores them with the same judgments (offline only).
 
 Recall here is judged-pool recall: the share of relevant results that any run
 found and the judge marked, never recall over all of GitHub. These are offline
@@ -42,7 +44,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from app.services.eligibility import EligibilityResult  # noqa: E402
 from app.services.keyword_candidates import KeywordCandidates  # noqa: E402
-from app.services.rank_fusion import fuse_candidates  # noqa: E402
+from app.services.rank_fusion import RRF_K, fuse_candidates  # noqa: E402
 
 IDEAS_PATH = ROOT / "scripts" / "relevance" / "ideas.json"
 CATEGORIES = frozenset(
@@ -176,7 +178,6 @@ def _card(candidate):
         "stars": metadata.get("stargazers_count"),
         "url": "https://github.com/" + full_name,
         "sources": list(candidate.sources),
-        "snippet": candidate.archive.snippet if candidate.archive else None,
     }
 
 
@@ -528,6 +529,93 @@ def render_report(data, judgments, depth=POOL_DEPTH):
     return "\n".join(lines)
 
 
+# ------------------------------------------------------------------ what-if
+
+STRATEGIES = {
+    "rrf": "RRF as shipped (equal weights, k=60)",
+    "rrf_archive_0.5": "weighted RRF, archive weight 0.5",
+    "rrf_archive_0.25": "weighted RRF, archive weight 0.25",
+    "keyword_then_archive": "keyword list, then archive results appended",
+    "archive_after_keyword_top5": "keyword top 5, then archive, then the rest of keyword",
+}
+
+
+def _weighted_rrf(keyword, archive, archive_weight):
+    # Same tie-break as rank_fusion: best source rank, then repository id.
+    scores, best = {}, {}
+    for weight, ranking in ((1.0, keyword), (archive_weight, archive)):
+        for rank, repo_id in enumerate(_unique(ranking), 1):
+            scores[repo_id] = scores.get(repo_id, 0.0) + weight / (RRF_K + rank)
+            best[repo_id] = min(best.get(repo_id, rank), rank)
+    return sorted(
+        scores, key=lambda repo_id: (-scores[repo_id], best[repo_id], repo_id)
+    )
+
+
+def refuse(entry, strategy):
+    """Re-rank one idea's frozen keyword and archive lists offline."""
+    keyword, archive = _ranking(entry, "keyword"), _ranking(entry, "archive")
+    if strategy == "rrf":
+        return _weighted_rrf(keyword, archive, 1.0)
+    if strategy.startswith("rrf_archive_"):
+        return _weighted_rrf(keyword, archive, float(strategy.rsplit("_", 1)[1]))
+    if strategy == "keyword_then_archive":
+        return list(_unique(keyword + archive))
+    if strategy == "archive_after_keyword_top5":
+        return list(_unique(keyword[:5] + archive + keyword[5:]))
+    raise ValueError(f"unknown strategy {strategy}")
+
+
+def render_whatif(data, judgments, depth=POOL_DEPTH):
+    """Score alternative fusions of the frozen lists against the same labels."""
+    labels = validate_judgments(data, judgments, depth)
+    complete = set(evaluate(data, labels, depth)["complete_ideas"])
+    entries = [entry for entry in data["ideas"] if entry["id"] in complete]
+    lines = [
+        "# T27 what-if: offline re-ranking",
+        "",
+        "Each row re-ranks the frozen keyword and archive lists (top "
+        f"{KEPT_RESULTS} each) of snapshot `{snapshot_digest(data)}` and scores "
+        "them with the same judgments. This is offline re-ranking for choosing "
+        "a fusion, not a product mode, and it makes no new search. Results "
+        "outside the judged pool count as not relevant; the last column counts "
+        "them in each top 10.",
+        "",
+        "| Strategy | Mean nDCG@10 | Mean judged-pool Recall@20 | Ideas >"
+        f" {FAILURE_MARGIN} below keyword | Unjudged in top 10 | Meaning |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for strategy, meaning in [("frozen_hybrid", "hybrid as served")] + list(
+        STRATEGIES.items()
+    ):
+        ndcgs, recalls, worse, unjudged = [], [], 0, 0
+        for entry in entries:
+            marks = labels.get(entry["id"], {})
+            grades = {repo_id: mark["grade"] for repo_id, mark in marks.items()}
+            ranking = (
+                _ranking(entry, "hybrid")
+                if strategy == "frozen_hybrid"
+                else refuse(entry, strategy)
+            )
+            unjudged += sum(
+                repo_id not in grades for repo_id in list(_unique(ranking))[:NDCG_K]
+            )
+            ndcg, recall = ndcg_at(ranking, grades), recall_at(ranking, grades)
+            keyword = ndcg_at(_ranking(entry, "keyword"), grades)
+            if ndcg is not None:
+                ndcgs.append(ndcg)
+                if keyword is not None and ndcg < keyword - FAILURE_MARGIN:
+                    worse += 1
+            if recall is not None:
+                recalls.append(recall)
+        lines.append(
+            f"| {strategy} | {_number(_mean(ndcgs))} | {_number(_mean(recalls))} | "
+            f"{worse} | {unjudged} | {meaning} |"
+        )
+    lines += ["", f"Ideas scored: {len(entries)} complete of {len(data['ideas'])}."]
+    return "\n".join(lines)
+
+
 # ------------------------------------------------------------------- sheet
 
 
@@ -582,6 +670,7 @@ _SHEET = """<!DOCTYPE html>
 <meta charset="utf-8">
 <title>T27 search quality judging</title>
 <style>
+:root { color-scheme: light dark; }
 body { font: 15px/1.45 system-ui, sans-serif; margin: 0 auto; max-width: 900px; padding: 0 16px 80px; }
 header { position: sticky; top: 0; background: Canvas; padding: 10px 0; border-bottom: 1px solid #8884; }
 .idea { border-top: 2px solid #8886; margin-top: 28px; padding-top: 8px; }
@@ -809,6 +898,13 @@ def main(argv=None):  # pragma: no cover - thin argument wrapper
     report_cmd.add_argument("judgments")
     report_cmd.add_argument("--out", required=True)
     report_cmd.add_argument("--depth", type=int, default=POOL_DEPTH)
+    whatif_cmd = commands.add_parser(
+        "whatif", help="offline re-ranking of frozen lists"
+    )
+    whatif_cmd.add_argument("snapshot")
+    whatif_cmd.add_argument("judgments")
+    whatif_cmd.add_argument("--out", required=True)
+    whatif_cmd.add_argument("--depth", type=int, default=POOL_DEPTH)
     args = parser.parse_args(argv)
 
     if args.command == "collect":
@@ -819,8 +915,9 @@ def main(argv=None):  # pragma: no cover - thin argument wrapper
         Path(args.out).write_text(render_sheet(data, args.depth), encoding="utf-8")
     else:
         judgments = json.loads(Path(args.judgments).read_text(encoding="utf-8"))
+        render = render_whatif if args.command == "whatif" else render_report
         Path(args.out).write_text(
-            render_report(data, judgments, args.depth) + "\n", encoding="utf-8"
+            render(data, judgments, args.depth) + "\n", encoding="utf-8"
         )
     print(f"Wrote {args.out}")
 

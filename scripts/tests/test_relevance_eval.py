@@ -11,6 +11,7 @@ from app.services.rank_fusion import FusedResults, SourceHealth, fuse_candidates
 from scripts.relevance_eval import (
     FAILURE_MARGIN,
     IDEAS_PATH,
+    STRATEGIES,
     WARMUP_IDEA,
     collect,
     evaluate,
@@ -18,8 +19,10 @@ from scripts.relevance_eval import (
     load_ideas,
     ndcg_at,
     recall_at,
+    refuse,
     render_report,
     render_sheet,
+    render_whatif,
     snapshot_digest,
     validate_judgments,
 )
@@ -331,7 +334,11 @@ def test_collect_records_three_runs_from_one_search_without_the_token():
     assert [r["repo_id"] for r in runs["keyword"]["results"]] == [1, 2]
     assert [r["repo_id"] for r in runs["archive"]["results"]] == [3, 1]
     assert [r["repo_id"] for r in runs["hybrid"]["results"]] == [1, 3, 2]
-    assert runs["archive"]["results"][0]["snippet"] == "About repo 3"
+    # README excerpts are never frozen: the sheet does not use them and they
+    # can hold third-party text such as e-mail addresses.
+    assert all(
+        "snippet" not in result for run in runs.values() for result in run["results"]
+    )
     assert runs["hybrid"]["results"][0]["sources"] == ["github", "archive"]
     assert data["ideas"][0]["latency_ms"]["hybrid"] >= 0
 
@@ -525,3 +532,52 @@ def test_idea_retries_are_bounded_and_the_report_counts_them():
         "Ideas searched again after an archive failure: 1; archive still failed "
         "after retries: 1." in report
     )
+
+
+def test_sheet_declares_both_colour_schemes_so_dark_browsers_stay_readable():
+    page = render_sheet(snapshot(), depth=10)
+    assert ":root { color-scheme: light dark; }" in page
+
+
+def test_refuse_reproduces_shipped_rrf_and_its_tie_break():
+    entry = snapshot()["ideas"][0]
+    # keyword [1, 2], archive [3, 1]: 1 is in both; 2 and 3 tie at rank 2/1.
+    assert refuse(entry, "rrf") == [1, 3, 2]
+    assert refuse(entry, "rrf") == _ranking_of(entry, "hybrid")
+
+
+def _ranking_of(entry, run):
+    return [result["repo_id"] for result in entry["runs"][run]["results"]]
+
+
+def test_weighted_rrf_and_ordered_strategies_follow_their_definitions():
+    entry = snapshot()["ideas"][0]
+    entry["runs"]["keyword"]["results"] = [card(i) for i in (1, 2, 4, 5, 6, 7)]
+    entry["runs"]["archive"]["results"] = [card(i) for i in (3, 8, 1)]
+    # Archive rank 1 at weight 0.5 scores 0.5/61, below keyword rank 6 (1/66).
+    assert refuse(entry, "rrf_archive_0.5") == [1, 2, 4, 5, 6, 7, 3, 8]
+    assert refuse(entry, "keyword_then_archive") == [1, 2, 4, 5, 6, 7, 3, 8]
+    assert refuse(entry, "archive_after_keyword_top5") == [1, 2, 4, 5, 6, 3, 8, 7]
+    # Equal weights: archive rank 1 (1/61) beats keyword rank 2 (1/62).
+    assert refuse(entry, "rrf")[:3] == [1, 3, 2]
+    assert set(STRATEGIES) == {
+        "rrf",
+        "rrf_archive_0.5",
+        "rrf_archive_0.25",
+        "keyword_then_archive",
+        "archive_after_keyword_top5",
+    }
+
+
+def test_whatif_scores_each_strategy_on_the_frozen_pool_and_is_labelled_offline():
+    data = snapshot()
+    raw = judgments(
+        data, {"budget": {"1": {"grade": 2}, "2": {"grade": 0}, "3": {"grade": 1}}}
+    )
+    page = render_whatif(data, raw, depth=10)
+    assert "offline re-ranking" in page
+    assert "not a product mode" in page
+    # keyword_then_archive gives [1, 2, 3] on this idea.
+    expected = ndcg_at([1, 2, 3], {1: 2, 2: 0, 3: 1})
+    assert f"| keyword_then_archive | {expected:.3f} |" in page
+    assert "| rrf | 1.000 |" in page
