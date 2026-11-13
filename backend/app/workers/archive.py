@@ -18,7 +18,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from app.core.archive_store import ArchiveStore
-from app.core.config import ARCHIVE_BACKFILL_LICENSES, MILVUS_TEXT_BYTES, Settings
+from app.core.config import (
+    ARCHIVE_BACKFILL_LICENSES,
+    ARCHIVE_LEASE_SECONDS,
+    MILVUS_TEXT_BYTES,
+    Settings,
+)
 from app.integrations.archive_github import (
     ArchiveGitHubError,
     ArchiveGitHubReader,
@@ -52,7 +57,7 @@ from app.services.archive_publication import (
     publish_revision,
     reconcile,
 )
-from app.services.archive_runs import check_lease
+from app.services.archive_runs import WriterBusy, check_lease
 from app.services.embeddings import EmbeddingAdapter, EmbeddingError, ModelManifest
 from pydantic import ValidationError
 from pydantic_settings import SettingsError
@@ -192,6 +197,12 @@ def load_cached_repository(connect, content, repo_id):
 
 
 def _safe_error(error):
+    if isinstance(error, WriterBusy):
+        return (
+            "Another archive worker holds the writer lease; retry after it finishes "
+            "or its lease expires "
+            f"(up to {ARCHIVE_LEASE_SECONDS} seconds after the last heartbeat)."
+        )
     if isinstance(error, EmbeddingError):
         return (
             "preflight: pinned embedding model unavailable; verify the offline E5 cache"
