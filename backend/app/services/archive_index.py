@@ -21,7 +21,7 @@ from app.services.embeddings import PREFIXES, EmbeddingAdapter, EmbeddingError
 from markdown_it import MarkdownIt
 
 NORMALIZER_VERSION = "markdown-v1"
-CHUNKER_VERSION = "sections-v1"
+CHUNKER_VERSION = "sections-v2"
 _NAVIGATION = {"contents", "table of contents", "navigation"}
 
 
@@ -327,8 +327,6 @@ def _sections(text):
 
 
 def _inline_text(tokens):
-    if any(token.type == "html_inline" for token in tokens):
-        return ""
     parts, anchor = [], False
     for token in tokens:
         if token.type == "link_open":
