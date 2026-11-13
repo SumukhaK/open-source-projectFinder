@@ -86,7 +86,7 @@ def test_unicode_sections_and_code_are_inert_normalized_text(adapter):
 
 def test_images_html_and_navigation_are_not_semantic_content(adapter):
     readme = b"""[![Build](https://bad.test/badge.svg)](https://bad.test)
-<script>danger()</script>
+<script>block_danger()</script>
 
 ## Contents
 [Features](#features)
@@ -99,9 +99,10 @@ Unsafe <script>danger()</script> paragraph.
     result = prepare(adapter, readme)
     text = "\n".join(chunk.text for chunk in result.chunks)
     assert "Works offline with map_cache and SQLite." in text
+    assert "Unsafe danger() paragraph." in text
     assert all(
         value not in text
-        for value in ("bad.test", "Build", "danger", "Contents", "<script>")
+        for value in ("bad.test", "Build", "block_danger", "Contents", "<script>")
     )
 
 
@@ -405,3 +406,12 @@ def test_non_boolean_source_truncated_is_rejected(adapter):
             adapter=adapter,
             source_truncated=1,
         )
+
+
+def test_inline_html_keeps_surrounding_prose(adapter):
+    prepared = prepare(adapter, b"Install <kbd>pip</kbd> first, then run it.")
+    assert any(
+        "Install pip first, then run it." in chunk.text for chunk in prepared.chunks
+    )
+    assert all("<kbd>" not in chunk.text for chunk in prepared.chunks)
+    assert prepared.chunker_version == "sections-v2"
