@@ -3,11 +3,10 @@
 Base: `origin/main` `ff9d6b72dd1146739c5c30277c43fffa9fda556a` (work started on `40546ba`; T26 merged as `6315e23`, [PR #111](https://github.com/SumukhaK/open-source-projectFinder/pull/111)).
 Prerequisite verified merged into main: T26 `6315e23`. D8 method approved 2026-10-29; its numbers are set from this task's baseline.
 
-T27 has two parts. **Part A** (this PR) is the frozen query set, the offline
-evaluation tool and its tests. **Part B** needs the real stack and the owner:
-freeze a real snapshot on the laptop, the owner judges it blind, and the report
-and the proposed D8 numbers are added in a follow-up PR. T27 is not done until
-Part B is reviewed; nothing here claims a real relevance result.
+T27 has two parts. **Part A** ([PR #114](https://github.com/SumukhaK/open-source-projectFinder/pull/114), merged as `bf58d1e`, plus the collect fixes in #117 and #118) is the frozen query set, the offline
+evaluation tool and its tests. **Part B** ([below](#part-b-results-run-3-2026-11-13))
+is the real snapshot, the judging, the results and the D8 options. T27 is done
+only when Part B is reviewed and the owner has picked a D8 option.
 
 ## What Part A adds
 
@@ -129,6 +128,146 @@ hit, serially. Users would see degraded results (live-only) for the first
 queries. T28 should measure it and consider bounded parallel reads, a
 pre-warm of the catalogue's visibility after start, or serving a still-fresh
 check longer; it is not changed here.
+
+## Part B results (run 3, 2026-11-13)
+
+Branch `claude/t27-part-b`: the owner's laptop data (`86d9871`, 8 files in
+[`scripts/relevance/runs/2026-11-13/`](../../scripts/relevance/runs/2026-11-13/))
+merged with three small tool changes. No product code changes.
+
+### Run facts
+
+- `collect` at `0b27f24` (main after #118) on the owner's laptop: model
+  revision `614241f`, collection `repo_chunks_e5small_v1`, `rrf-v1`, k=60, 100
+  keyword candidates, **204 archive repositories**.
+- Warm-up `{archive_status: failed, attempts: 3}`. c02 needed 2 attempts and
+  c01 still failed after 3 (the cold eligibility cache, see the T28 finding
+  above). Archive ok on 57 of 58 ideas.
+- Judged pool 1,097 results (union of each run's top 10). No repository was
+  returned by both keyword and archive for any idea.
+- Latency: keyword source median 3,764 ms, p95 4,738 ms; hybrid median 3,771
+  ms, p95 5,068 ms. This is not a capacity measurement; T28 owns that.
+- **The snapshot is not committed.** Its archive snippets are verbatim README
+  text that gitleaks flags (sample keys, JWTs) and that holds third-party
+  e-mail addresses. It stays private on the owner's laptop: file sha256
+  `a06572d6a6353f13d157373d6921302f10b5b138fd910c1cef1ba90e4c2b0409`
+  (2,074,630 bytes); relevance_eval digest
+  `8a7733149acd97e2ed2b736a2001516b5ab33ba809b6a37d33ecc14c5d6aece0`, which
+  every committed judgment file is bound to. `collect` no longer stores
+  snippets (below), so later snapshots can be committed.
+
+### Judging and agreement ([agreement.md](../../scripts/relevance/runs/2026-11-13/agreement.md))
+
+- **Owner:** 50 blind labels on 3 ideas (c01-budget 10, c02-markdown-notes 20,
+  c04-static-blog 20), in `owner-judgments.json`.
+- **Two blind Claude judges** graded all 1,097 (`model-judgments.json`,
+  `model2-judgments.json`). Model vs model: 95.2% exact, weighted kappa 0.93.
+  Owner vs each model on the 50 owner labels: 66% exact, 80% on relevant vs
+  not, weighted kappa 0.53 / 0.51; the models are more lenient.
+- **Caveat:** model 1 saw the owner's c01 and c02 grades before grading those
+  two ideas, so owner-vs-model agreement there is not fully blind. c04 and all
+  of model 2's grades were blind.
+- **Reconciled** (`judgments.json`, used for the headline numbers): the owner's
+  label where present; else the grade both models agree on; else the lower
+  grade, marked unsure. 1,097 labels, 215 unsure.
+- **Against the T27 rule** ("human judges, not the implementing model, approve
+  labels"): only the owner's 50 labels are human. The other 1,047 are model
+  labels, and they are the main input to the means. The conclusion below holds
+  on each model's labels alone, but the reviewer and owner should decide
+  whether this counts as T27's human-judged baseline or whether more owner
+  judging is needed first.
+
+### Results ([report.md](../../scripts/relevance/runs/2026-11-13/report.md))
+
+Means over the 45 ideas with at least one relevant result (13 ideas, including
+all 5 no-match ideas, had nothing relevant). Recall@20 is judged-pool recall.
+
+| Run | nDCG@10 reconciled | nDCG@10 model / model 2 | Judged-pool Recall@20 |
+| --- | --- | --- | --- |
+| Keyword (today) | 0.695 | 0.709 / 0.710 | 0.969 |
+| Archive only | 0.034 | see reports | 0.031 |
+| Hybrid (`rrf-v1`) | 0.428 | 0.429 / 0.431 | 1.000 |
+
+| Category (reconciled nDCG@10) | Keyword | Archive only | Hybrid |
+| --- | --- | --- | --- |
+| common | 0.736 | 0.017 | 0.480 |
+| language | 0.652 | 0.050 | 0.414 |
+| non_english | 0.470 | 0.153 | 0.214 |
+| rare | 0.788 | 0.000 | 0.445 |
+| vague | 0.431 | 0.000 | 0.333 |
+
+- Hybrid is more than 0.1 below keyword on **36 of 58 ideas**; the failure list
+  is in the report.
+- Hybrid's relevant top-10 results: keyword only 109, archive only 5, both 0.
+- Hybrid's judged-pool recall of 1.000 only means its top 20 contains both
+  lists' top 10s; it is not a quality gain.
+
+### Offline re-ranking what-if (`whatif`, run on the laptop at `123a278`)
+
+Re-ranks the frozen keyword and archive lists with the reconciled judgments;
+offline only, not a product mode. All 58 ideas complete; no strategy put an
+unjudged result into a top 10.
+
+| Strategy | nDCG@10 | Recall@20 | Ideas >0.1 below keyword | nDCG@10 model / model 2 |
+| --- | --- | --- | --- | --- |
+| frozen hybrid (served) | 0.428 | 1.000 | 36 | 0.429 / 0.431 |
+| `rrf` recomputed | 0.428 | 1.000 | 36 | 0.429 / 0.431 |
+| weighted RRF, archive 0.9 | 0.640 | 1.000 | 15 | 0.642 / 0.654 |
+| weighted RRF, archive 0.75 | 0.695 | 0.969 | 0 | 0.709 / 0.710 |
+| weighted RRF, archive 0.5 | 0.695 | 0.969 | 0 | 0.709 / 0.710 |
+| weighted RRF, archive 0.25 | 0.695 | 0.969 | 0 | 0.709 / 0.710 |
+| keyword, then archive | 0.695 | 0.969 | 0 | 0.709 / 0.710 |
+| keyword top 5, then archive | 0.511 | 0.606 | 28 | 0.515 / 0.518 |
+
+The recomputed `rrf` reproduces the served hybrid exactly. With k=60 an
+archive rank-1 result passes keyword rank 10 only when its weight is above
+61/70 (about 0.87), so every weight of 0.75 or less is identical to keyword
+only on this data. Each step that brings archive results into the top 10 costs
+nDCG.
+
+### Conclusion
+
+On today's 204-repository pilot archive, adding archive results makes ranking
+worse: the archive rarely holds a relevant repository for these ideas (5
+relevant archive-only results in 58 top-10s), and equal-weight RRF interleaves
+its weak matches from position 2. No tested mix improves on keyword-only. The
+cause is coverage, not fusion: archive-only nDCG@10 is 0.034. The archive's
+promise (semantic matches GitHub keywords miss) cannot be measured until the
+archive is much larger. D8's rule ("at least as relevant as today's") is
+**not met** by the shipped `rrf-v1` hybrid.
+
+### D8 options for the owner (no number chosen here)
+
+- **A. Keep the archive out of the top 10 for now.** Serve keyword first, by
+  ranking archive after keyword or by weighted RRF with an archive weight of
+  0.75 or less, which equals keyword-only here: nDCG@10 0.695, 0 ideas worse.
+  Rerun T27 with the same ideas after the 10k pilot, and only then let the
+  archive into the top 10. This needs a ranking change (a new
+  `RANKING_VERSION`) in its own reviewed task; not done here.
+- **B. Set a numeric acceptance bar for any later hybrid ranking,** checked
+  with this tool on a fresh snapshot. For example: hybrid nDCG@10 at least
+  keyword minus 0.02, AND at least N relevant archive-only results in hybrid
+  top 10s across the 58 ideas (N for the owner to choose; today it is 5), AND
+  no more than M ideas more than 0.1 below keyword.
+- A and B combine: A now, B as the gate for re-enabling the archive.
+- **Owner's choice (2026-11-13, project thread decision card): A + B.** Keep the
+  archive out of the top 10 now (a separate ranking task), and gate its return
+  on a numeric bar. B's exact numbers (the nDCG tolerance, N and M) are not yet
+  set and still need the owner's approval before T28/T29.
+- Latency is not a deciding factor yet: hybrid median is within 10 ms of the
+  keyword source here. T28 sets the response-time part of D8.
+
+### Part B tool changes
+
+- The judging sheet declares `:root { color-scheme: light dark; }`. On the
+  laptop it was unreadable in a dark-themed browser (dark canvas, black text).
+- `collect` no longer stores archive snippet text. The sheet and report never
+  used it, and it is what kept the run-3 snapshot private.
+- New `whatif` subcommand for the offline re-ranking above.
+- RED: the new tests failed at import against `0b27f24` (no `refuse`/`render_whatif`;
+  the colour-scheme and snippet tests target behaviour that did not exist). GREEN:
+  `scripts/tests/test_relevance_eval.py` 39 passed; full suite 1,423 passed, 9
+  skipped; ruff check and format clean; gitleaks clean on the branch.
 
 ## Part B runbook (laptop, WSL worker venv)
 
