@@ -42,6 +42,11 @@ LOG_KEEP = 400  # about a year of daily and weekly records
 LOCK_WAIT = 150 * 60
 LOCK_POLL = 30
 
+# Steps that need the local Milvus stack; backup does not.
+MILVUS_STEPS = {"refresh", "retire"}
+MILVUS_POLL = 10
+STACK_COMMAND_TIMEOUT = 300
+
 COMPLETE = {"finished", "exported", "verified"}
 PARTIAL = {"cap", "quota", "rate_limit"}
 # Only counts, timings, stop reasons and version IDs reach the log.
@@ -82,6 +87,9 @@ KEPT = {
     "schema_version",
     "error",
     "timings_ms",
+    "milvus_started",
+    "docker_started",
+    "milvus_ready_s",
 }
 MAX_TEXT = 200
 # CLI errors are already sanitized; this is a second guard so a future message
@@ -215,10 +223,184 @@ def _append(directory, record):
         os.replace(temporary, path)
 
 
+def _milvus_ready(settings):
+    """True when Milvus answers and the configured collection is loaded."""
+    from app.integrations.milvus import MilvusAdapter
+    from app.services.embeddings import ModelManifest
+
+    adapter = None
+    try:
+        adapter = MilvusAdapter.connect(settings, ModelManifest.load())
+        adapter.verify_collection()
+        return True
+    except Exception:  # any failure just means "not ready yet"
+        return False
+    finally:
+        if adapter is not None:
+            try:
+                adapter.close()
+            except Exception:  # nosec B110 - closing a probe client is best effort
+                pass
+
+
+def _diagnostic(code, stderr):
+    """Exit code plus the last stderr line, only if it carries no path or token."""
+    lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
+    text = f"exit {code}"
+    if lines and not UNSAFE_ERROR.search(lines[-1]):
+        text += ": " + lines[-1]
+    return text[:MAX_TEXT]
+
+
+class MilvusStack:
+    """Bring Docker/Milvus up for the steps that need it; stop only what we started.
+
+    Commands are fixed argument lists from settings, run without a shell. Their
+    output is never logged; the log gets fixed messages, flags and seconds.
+    """
+
+    def __init__(self, settings, *, runner, clock, sleep, probe):
+        self.settings = settings
+        self.runner, self.clock, self.sleep, self.probe = runner, clock, sleep, probe
+        self.ready = None  # None until a step that needs Milvus asks for it
+        self.started = False
+        self.docker_started = False
+        self.detail = None
+
+    def _command(self, command, timeout):
+        """Run one stack command; on failure keep a short sanitized diagnostic."""
+        self.detail = None
+        try:
+            done = self.runner(
+                command, capture_output=True, text=True, timeout=timeout, check=False
+            )
+        except subprocess.TimeoutExpired:
+            self.detail = f"timed out after {timeout} s"
+            return False
+        except OSError:
+            self.detail = "could not run"
+            return False
+        if done.returncode != 0:
+            self.detail = _diagnostic(done.returncode, done.stderr)
+        return done.returncode == 0
+
+    def _failed(self, message, detail):
+        return f"{message} ({detail})"[:MAX_TEXT] if detail else message
+
+    def _docker_running(self):
+        status = self.settings.archive_schedule_docker_status
+        return bool(status) and self._command(status, STACK_COMMAND_TIMEOUT)
+
+    def _ensure_docker(self, start, limit):
+        """Start Docker Desktop first if its status says it is down.
+
+        Return an error, or None when Docker is (or was already) running. Runs
+        before any compose command: the Windows docker CLI auto-starts Desktop
+        as a side effect, and an "up" that races that startup fails. A Desktop
+        that was already running is never marked as ours, so never stopped.
+        """
+        settings = self.settings
+        if not settings.archive_schedule_docker_start:
+            return None
+        if not settings.archive_schedule_docker_status:
+            return "Docker start needs a status command"
+        if self._docker_running():
+            return None
+        if not self._command(
+            settings.archive_schedule_docker_start, STACK_COMMAND_TIMEOUT
+        ):
+            return self._failed("Docker start command failed", self.detail)
+        # We started Desktop, so we stop it again even if the engine never answers.
+        self.docker_started = True
+        # "desktop start" can return before the engine answers.
+        while not self._docker_running():
+            if self.clock() - start >= limit:
+                return f"Docker was not ready within {limit} s"
+            self.sleep(MILVUS_POLL)
+        return None
+
+    def ensure(self):
+        settings = self.settings
+        start = self.clock()
+        limit = settings.archive_schedule_milvus_ready_seconds
+        record = {"step": "milvus", "milvus_started": False, "docker_started": False}
+        error = None
+        if self.probe():
+            self.ready = True
+        elif not settings.archive_schedule_milvus_up:
+            error = "Milvus is not ready and no start command is configured"
+        else:
+            error = self._ensure_docker(start, limit)
+            if error is None:
+                self.started = True  # a failed "up" may still leave containers
+                if not self._command(settings.archive_schedule_milvus_up, limit):
+                    error = self._failed("Milvus start command failed", self.detail)
+            if error is None:
+                while not self.probe():
+                    if self.clock() - start >= limit:
+                        error = f"Milvus was not ready within {limit} s"
+                        break
+                    self.sleep(MILVUS_POLL)
+                else:
+                    self.ready = True
+        self.ready = bool(self.ready)
+        record.update(
+            milvus_started=self.started,
+            docker_started=self.docker_started,
+            milvus_ready_s=round(self.clock() - start),
+            result="ready" if self.ready else "failed",
+            state="complete" if self.ready else "failed",
+            started_at=_iso(start),
+            finished_at=_iso(self.clock()),
+        )
+        if error:
+            record["error"] = error
+        return record
+
+    def stop(self):
+        """Undo only what ensure() started; None when there was nothing to stop."""
+        if not (self.started or self.docker_started):
+            return None
+        start = self.clock()
+        errors = []
+        down = self.settings.archive_schedule_milvus_down
+        if self.started and down and not self._command(down, STACK_COMMAND_TIMEOUT):
+            errors.append(self._failed("Milvus stop command failed", self.detail))
+        docker_stop = self.settings.archive_schedule_docker_stop
+        if (
+            self.docker_started
+            and docker_stop
+            and not self._command(docker_stop, STACK_COMMAND_TIMEOUT)
+        ):
+            errors.append(self._failed("Docker stop command failed", self.detail))
+        record = {
+            "step": "milvus_stop",
+            "result": "failed" if errors else "stopped",
+            "state": "failed" if errors else "complete",
+            "started_at": _iso(start),
+            "finished_at": _iso(self.clock()),
+        }
+        if errors:
+            record["error"] = "; ".join(errors)[:MAX_TEXT]
+        return record
+
+
 def run_job(
-    job, directory, *, runner=subprocess.run, clock=time.time, sleep=time.sleep
+    job,
+    directory,
+    *,
+    settings=None,
+    runner=subprocess.run,
+    clock=time.time,
+    sleep=time.sleep,
+    probe=None,
 ):
-    """Run one job's steps in order; return 0 only if every step exited 0."""
+    """Run one job's steps in order; return 0 only if every step exited 0.
+
+    With ``settings``, the Milvus stack is checked (and started if configured)
+    before the first step that needs it and stopped at the end if this run
+    started it. Without settings the steps run as-is.
+    """
     launched = clock()
     due = last_due(job, datetime.fromtimestamp(launched, timezone.utc))
     base = {"job": job, "due_period": due.isoformat(), "launched_at": _iso(launched)}
@@ -238,27 +420,64 @@ def run_job(
             )
             return 1
         status = 0
-        # Backup runs even after a failed refresh: the export is consistent on
-        # its own and keeps the D5 7-day copies current.
-        for step in JOBS[job]:
-            started = clock()
-            code, summary = _run_step(step, runner)
-            state = _state(code, summary)
-            _append(
-                directory,
-                {
-                    **summary,
-                    **base,
-                    "step": step,
-                    "started_at": _iso(started),
-                    "finished_at": _iso(clock()),
-                    "exit_code": code,
-                    "state": state,
-                    "waited_s": waited,
-                },
+        stack = None
+        if settings is not None:
+            stack = MilvusStack(
+                settings,
+                runner=runner,
+                clock=clock,
+                sleep=sleep,
+                probe=probe or (lambda: _milvus_ready(settings)),
             )
-            if code != 0:
-                status = 1
+        try:
+            # Backup runs even after a failed refresh or an unavailable Milvus:
+            # the export is consistent on its own and keeps the D5 copies current.
+            for step in JOBS[job]:
+                started = clock()
+                if stack is not None and step in MILVUS_STEPS:
+                    if stack.ready is None:
+                        record = stack.ensure()
+                        _append(directory, {**base, "exit_code": None, **record})
+                        if not stack.ready:
+                            status = 1
+                    if not stack.ready:
+                        _append(
+                            directory,
+                            {
+                                **base,
+                                "step": step,
+                                "started_at": _iso(started),
+                                "finished_at": _iso(clock()),
+                                "exit_code": None,
+                                "result": "milvus_unavailable",
+                                "state": "failed",
+                                "waited_s": waited,
+                            },
+                        )
+                        continue
+                code, summary = _run_step(step, runner)
+                state = _state(code, summary)
+                _append(
+                    directory,
+                    {
+                        **summary,
+                        **base,
+                        "step": step,
+                        "started_at": _iso(started),
+                        "finished_at": _iso(clock()),
+                        "exit_code": code,
+                        "state": state,
+                        "waited_s": waited,
+                    },
+                )
+                if code != 0:
+                    status = 1
+        finally:
+            record = stack.stop() if stack is not None else None
+            if record is not None:
+                _append(directory, {**base, "exit_code": None, **record})
+                if record["state"] != "complete":
+                    status = 1
         return status
 
 
@@ -289,6 +508,20 @@ def _step_status(rows):
         "stop_reason": latest.get("stop_reason"),
         "retry_at": latest.get("retry_at"),
         "error": latest.get("error"),
+    }
+
+
+def _milvus_status(rows):
+    start = [row for row in rows if row.get("step") == "milvus"]
+    stop = [row for row in rows if row.get("step") == "milvus_stop"]
+    latest = start[-1] if start else {}
+    return {
+        "last_check_at": latest.get("finished_at"),
+        "result": latest.get("result"),
+        "milvus_started": latest.get("milvus_started"),
+        "milvus_ready_s": latest.get("milvus_ready_s"),
+        "error": latest.get("error"),
+        "last_stop": (stop[-1].get("result") if stop else None),
     }
 
 
@@ -324,14 +557,20 @@ def status(directory, now):
                 step: _step_status([row for row in rows if row.get("step") == step])
                 for step in steps
             },
+            "milvus": _milvus_status(rows),
         }
     return {"now": now.astimezone(timezone.utc).isoformat(), "jobs": jobs}
 
 
-def _directory():
+def _settings():
     from app.core.config import Settings
 
-    return Settings().archive_database_path.expanduser().resolve().parent
+    return Settings()
+
+
+def _directory(settings=None):
+    settings = settings or _settings()
+    return settings.archive_database_path.expanduser().resolve().parent
 
 
 def main(argv=None):
@@ -345,9 +584,10 @@ def main(argv=None):
     commands.add_parser("status", help="Show last success, partial and next due")
     args = parser.parse_args(argv)
 
-    directory = _directory()
     if args.command == "run":
-        return run_job(args.job, directory)
+        settings = _settings()
+        return run_job(args.job, _directory(settings), settings=settings)
+    directory = _directory()
     print(json.dumps(status(directory, datetime.now(timezone.utc)), sort_keys=True))
     return 0
 
