@@ -266,3 +266,19 @@ fails at 88.79% combined / 85.42% branches, below the unchanged 90% combined
 gate, as on untouched base (88.76% combined /
 85.36% branches). No exclusion, skip, interpreter patch or gate change. Linux CI
 is authoritative; local full verification is not green.
+
+## U20 execution — 2026-11-13
+
+Owner-authorized early slice; base `9b61e371b3a2f4240e9643ac457b9761f3e5dbbe`.
+Plan: reproduce restored fence/generation regression with fake providers and SQLite; carry content-free high-water marks under the activation writer lock using existing tables; verify publication, stale leases, restore regressions and unchanged quality gates. No migration or real restore.
+
+Implementation uses the existing run/task tables: a completed, unowned run carries the live maximum fence; one non-hex 64-character cleanup sentinel per numeric repository ID carries the maximum generation from live documents and cleanup tombstones (including repositories absent from the backup). Existing larger restored counters stay larger. No content, lease owner or expiry is imported. The writer/OS lock encloses the carry and swap. Missing/unreadable live counters remain a refusal; the CLI returns a sanitized failure summary rather than treating them as zero. Activation reports carried fence/count only. No migration; existing rename rollback, quarantine, suppression and orphan-vector behavior is retained.
+
+2026-11-13, Windows Python 3.11.9 / SQLite 3.45.1, fake providers only:
+- RED: `python -m pytest backend/tests/test_archive_restore.py -k "carries_live or exceeds_pre_restore or rejects_pre_restore" -q --tb=short`: 3 assertion failures (`3 > 100`, `2 > 30`, `4 > 102`). Stale lease rejection already worked; the new lease's counter regressed.
+- GREEN: same tests expanded to document-vs-tombstone maxima, tombstone-only repositories, higher restored counters and sanitized missing/unreadable live state: `-k "high_water or exceeds_pre_restore or rejects_pre_restore"`: 10 passed. Explicit test catalogue injection uses ordinary SQLite transactions, never enables unsafe WAL or patches the version gate.
+- Full required pytest/coverage command: 1,271 passed / 99 skipped / 21 failed (154.30 s). Untouched base in a separate detached worktree: 1,261 passed / 99 skipped / the same 21 failed (157.72 s). All failures are existing T22 restore paths refusing this unpatched Windows WAL runtime; the four settings failures mentioned in the prompt did not recur.
+- `python scripts/quality.py coverage reports/backend-coverage.json`: exit 1 on both trees; combined/branch coverage 89.48%/85.19% versus base 87.38%/83.47%. Gates unchanged; Linux CI is authoritative for WAL-backed tests and the full gate.
+- `ruff check backend scripts`, `ruff format --check backend scripts`, `bandit -r backend/app`, `git diff --check`: pass (Bandit emits existing comment-parsing warnings).
+
+No real restore/activation, network provider, Docker, WSL, restic process, Milvus or model download was run. On activation failure, follow existing T22 restore-again instructions; failed swap still rolls back the live paths. Do not manually discard the new content-free counter rows. Awaiting independent review; not accepted or merged.
