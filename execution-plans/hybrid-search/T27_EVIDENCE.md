@@ -99,6 +99,37 @@ Other facts from that first run: 426 s wall, 1.24 GiB max RSS, a judged pool of
 1,057 results, and no repository returned by both keyword and archive for any
 of the 58 ideas. That snapshot is discarded; collect is rerun after this fix.
 
+## Per-idea retry and a cold-cache finding (2026-11-13)
+
+The rerun with the warm-up (main `3fe2d94`) ended with
+`versions.warmup = {archive_status: "failed", attempts: 3}`; c01 and c02 still
+timed out (about 8.0 s each) and c03 onward were ok. Run 2 facts: 410 s wall,
+1.31 GB max RSS, archive ok on 56 of 58 ideas, hybrid degraded on 3, a judged
+pool of 1,087, and still no repository shared by keyword and archive.
+
+Cause, checked in `EligibilityService.check`: every archive hit whose
+repository is not in the visibility cache needs its own GitHub metadata read
+(`reader.fetch_metadata`), one after another, before it can be served. A cold
+cache therefore needs up to about 100 sequential reads for one search, which
+does not fit the 8 s `hybrid_search_budget`. Reads are cached for
+`archive_visibility_ttl_seconds` (900 s), so once a few searches have touched
+most of the ~204 pilot repositories, later ideas are fast. A fixed warm-up text
+only warms the repositories it hits. It is not a model or Milvus warm-up.
+
+Fix: `collect` keeps the warm-up and now searches an idea again, whole, up to
+2 more times (with the normal pause) when its archive source failed. All three
+runs of a kept entry still come from one search call; `entry.attempts` records
+how many ran, and the report header counts retried and still-failed ideas.
+RED: the two new tests failed against the previous `collect`; GREEN: 34 passed.
+
+**Product finding for T28:** after a restart, or once the 15-minute
+visibility cache has expired, the first real searches can lose the archive
+source at the 8 s budget because eligibility reads GitHub once per uncached
+hit, serially. Users would see degraded results (live-only) for the first
+queries. T28 should measure it and consider bounded parallel reads, a
+pre-warm of the catalogue's visibility after start, or serving a still-fresh
+check longer; it is not changed here.
+
 ## Part B runbook (laptop, WSL worker venv)
 
 1. Bring the pilot stack up (Milvus running). `collect` always reads the ignored
@@ -113,9 +144,11 @@ of the 58 ideas. That snapshot is discarded; collect is rerun after this fix.
    first real run took about 7 minutes). It first runs one unscored warm-up
    search, retried up to 3 times until the archive reports ok, so a cold model
    or Milvus cannot time out the archive on the first ideas only; the outcome is
-   recorded as `versions.warmup` and the warm-up search is never stored. Check
-   that `warmup.archive_status` is `ok` before judging. The command prints the
-   snapshot digest.
+   recorded as `versions.warmup` and the warm-up search is never stored. An
+   idea whose archive source still fails is searched again, whole, up to 2
+   more times; each idea's `attempts` is stored and the report header counts
+   retried and still-failed ideas. Before judging, check that no idea's
+   archive status is `failed`. The command prints the snapshot digest.
 3. `python scripts/relevance_eval.py sheet <snapshot> --out judge.html`, open it
    in a browser, enter a role label such as "owner" as the judge name (not a
    personal name, since the file is committed), judge, and download `judgments.json`. Expect roughly 15-25
