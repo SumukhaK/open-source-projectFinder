@@ -252,10 +252,103 @@ archive is much larger. D8's rule ("at least as relevant as today's") is
 - A and B combine: A now, B as the gate for re-enabling the archive.
 - **Owner's choice (2026-11-13, project thread decision card): A + B.** Keep the
   archive out of the top 10 now (a separate ranking task), and gate its return
-  on a numeric bar. B's exact numbers (the nDCG tolerance, N and M) are not yet
-  set and still need the owner's approval before T28/T29.
+  on a numeric bar. The owner approved B's numbers on 2026-11-13; see the
+  Option B bar below. Option A remains a separate ranking task.
 - Latency is not a deciding factor yet: hybrid median is within 10 ms of the
   keyword source here. T28 sets the response-time part of D8.
+
+### Option B bar (owner-approved 2026-11-13)
+
+D8 B follow-up base: `931f7ffe84ba294f6f4502e839832ca207dbb6a5`, isolated
+`codex/hybrid-t27-d8b-gate`. Plan: independently assess the approved bar from
+committed run-3 reports/labels; RED synthetic gate/CLI tests; reuse `evaluate`
+for the five checks; GREEN and full quality gates; one PR, awaiting review.
+No ranking change, stack run, snapshot collection or new dependency.
+
+The approved checks are: (1) mean hybrid nDCG@10 >= keyword minus **0.02**;
+(2) at least **15** relevant archive-only idea/repository pairs in hybrid top
+10s, counted only when the supplied owner file also grades them >=1;
+(3) at most **3** ideas with a hybrid drop strictly greater than the existing
+`FAILURE_MARGIN` (**0.1**); (4) model-only or owner-rejected pairs do not count;
+(5) every frozen idea is completely judged and archive is `ok` on at least
+**57 of 58**. Missing completeness/availability, a different frozen set, or
+undefined quality means yields **INCONCLUSIVE** even if another check fails.
+
+```text
+python scripts/relevance_eval.py gate SNAPSHOT JUDGMENTS --owner-judgments OWNER_JUDGMENTS --out OUT.md [--depth N]
+```
+
+Exit codes: PASS 0, FAIL 1, INCONCLUSIVE 2. A mismatched owner snapshot digest
+is refused with exit 2 and no new report. Depth is 10-20: a smaller pool cannot
+judge a top-10 acceptance bar. The command reuses `evaluate()` and adds only the
+archive-only relevant pair list to its result. Existing metrics and reports
+are unchanged; no-relevant ideas remain excluded from means and are counted
+in the gate report. The five-row report lists missing owner labels by frozen
+idea ID/numeric repo ID only. Check 4 reports that the counting rule was applied;
+it does not require labels for excluded pairs once 15 confirmed pairs exist.
+The caller must supply actual owner judgments: a file name/digest is not proof
+of who graded it. General metric labels still come from JUDGMENTS, so use the
+owner-reconciled file. No snippet, query text, judge name or repository metadata
+is copied into the report. D8's response-time bound is out of scope; T28 sets it.
+
+**Approved numbers: implementer's review.** Agree to implement 0.02 as a policy
+non-inferiority tolerance, not as demonstrated run-to-run noise. A standard-library
+paired percentile bootstrap of the approved run-3 snapshot, using the committed
+reconciled labels and `evaluate()`, resampled all 58 idea pairs with replacement
+20,000 times (`random.Random(20261113)`), excluded undefined means inside each
+replicate as the metric does, and used sorted replicates 500 and 19499 for the
+95% endpoints. There are 45 scored and 13 no-relevant ideas. Mean hybrid minus
+keyword is **-0.267172**, approximate 95% interval **[-0.315467, -0.216300]**,
+bootstrap standard error **0.025258**. The earlier calculation from rounded
+committed report scores gave [-0.315532, -0.216318], consistent with the exact
+snapshot calculation. These are across-idea sampling estimates conditional on
+this corpus and these mostly model labels; the purposively selected ideas are
+not a random sample of users. One frozen run cannot measure temporal/provider
+noise or remove label bias. No bootstrap criterion is added to the gate.
+
+Agree with **15** as an initial, modest benefit requirement (about 0.26 confirmed
+pairs per idea, three times the baseline's five model/reconciled pairs). It is
+not fifteen distinct repositories or ideas; the count may cluster. Agree with
+**3** as a guard against mean scores hiding large losses (3/58 = 5.17%, or
+3/45 = 6.67% of today's scored ideas). All approved values are unchanged.
+**Proposed, not approved:** report benefit spread and per-category regressions
+before choosing category-specific floors; consider a judged-pool Recall@20
+non-regression requirement and a held-out human-judged set before repeated tuning.
+Also proposed, not approved: require a healthy keyword baseline, since a failed
+keyword source can artificially make the relative hybrid score look better.
+Small categories and thirteen undefined/no-relevant ideas make a universal
+category floor premature. The existing no-relevant metric convention stays
+unchanged; it must not be presented as proof of good no-match behavior. Only
+50/1,097 baseline labels are human and owner/model relevant-vs-not agreement
+is 80%; owner-confirmed contributions alone do not validate the overall means.
+
+Verification (2026-11-13, Windows Python 3.11.9 / SQLite 3.45.1):
+- Baseline relevance tests: 40 passed. RED: eight assertion failures on the
+  missing gate command/report and mismatch diagnostic; privacy follow-up RED:
+  one assertion showing an arbitrary invalid idea ID leaked into the error.
+- GREEN: `python -m pytest scripts/tests/test_relevance_eval.py -q`: 59 passed,
+  including PASS/FAIL/INCONCLUSIVE process exit codes, each numeric failure in
+  isolation, missing and negative owner labels, exact frozen set, one/two
+  archive outages, undefined means, depth bounds and sanitized validation.
+- `ruff check backend scripts`, `ruff format --check backend scripts`,
+  `bandit -r backend/app`, `git diff --check`: pass. Bandit emits existing
+  comment-parsing warnings; no findings.
+- Full final command: `python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch --cov-report=json:reports/backend-coverage.json`:
+  **1,332 passed / 99 skipped / 21 failed**, 137.64 s. Untouched base in a
+  separate detached worktree: **1,313 passed / 99 skipped / the same 21 failed**,
+  136.57 s. Failures are inherited T22 paths refusing unpatched Windows SQLite.
+  No version patch, new skip, dependency or gate change. Linux CI is authoritative.
+- `python scripts/quality.py coverage reports/backend-coverage.json`: exit 1
+  on both trees, below the unchanged 90% combined gate; final combined/branch
+  **89.45%/85.13%**, untouched base **89.47%/85.18%**. Production backend files
+  are unchanged; new CLI subprocess tests also import backend modules.
+
+The owner supplied the private snapshot path for
+one offline gate check; the snapshot was read in place, never copied or committed.
+Only its verdict table is included in the PR; the report's missing-label list
+stays local. No production ranking, `RANKING_VERSION`, API, migration or config
+changes. Reverting this PR removes only the offline gate; existing subcommands
+remain compatible. Awaiting review; not self-accepted or merged.
 
 ### Part B tool changes
 

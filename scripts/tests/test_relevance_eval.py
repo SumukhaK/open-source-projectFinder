@@ -613,3 +613,186 @@ def test_written_reports_end_with_exactly_one_newline(tmp_path):
             ]
         )
         assert out.read_text().endswith("\n") and not out.read_text().endswith("\n\n")
+
+
+# Tiny fake rankings on the real frozen idea IDs; no provider or private data.
+def gate_fixture(case="pass"):
+    entries, labels, owner = [], {}, {}
+    for i, idea in enumerate(load_ideas()):
+        keyword = list(range(1, 11))
+        hybrid = [11, *range(2, 11)]
+        if case == "quality":
+            hybrid[-1] = 12  # Each drop is < FAILURE_MARGIN, but mean drops > .02.
+        if case == "regressions" and i < 4:
+            hybrid[0] = 12  # Four >.1 drops, but the mean drop stays within .02.
+        if case == "value" and i >= 14:
+            hybrid = keyword
+        entries.append(
+            {
+                **idea,
+                "runs": {
+                    "keyword": {"status": "ok", "results": [card(n) for n in keyword]},
+                    "archive": {"status": "ok", "results": [card(11)]},
+                    "hybrid": {"status": "ok", "results": [card(n) for n in hybrid]},
+                },
+            }
+        )
+        labels[idea["id"]] = {
+            str(n): {"grade": int(n != 12)} for n in set(keyword + hybrid + [11])
+        }
+        if case != "model_only" or i < 14:
+            owner[idea["id"]] = {"11": {"grade": 1}}
+    if case == "incomplete":
+        del labels[entries[0]["id"]]["1"]
+    if case == "unavailable":
+        for entry in entries[:2]:
+            entry["runs"]["archive"]["status"] = "failed"
+    data = snapshot(entries)
+    return data, judgments(data, labels), judgments(data, owner)
+
+
+@pytest.mark.parametrize(
+    "case,expected,code",
+    [
+        ("pass", "PASS", 0),
+        ("quality", "FAIL", 1),
+        ("value", "FAIL", 1),
+        ("regressions", "FAIL", 1),
+        ("model_only", "FAIL", 1),
+        ("incomplete", "INCONCLUSIVE", 2),
+        ("unavailable", "INCONCLUSIVE", 2),
+    ],
+)
+def test_gate_cli_verdict_and_exit_codes(tmp_path, case, expected, code):
+    data, marks, owner = gate_fixture(case)
+    for name, value in (("s", data), ("j", marks), ("o", owner)):
+        (tmp_path / f"{name}.json").write_text(json.dumps(value))
+    out = tmp_path / "gate.md"
+    try:
+        status = main(
+            [
+                "gate",
+                str(tmp_path / "s.json"),
+                str(tmp_path / "j.json"),
+                "--owner-judgments",
+                str(tmp_path / "o.json"),
+                "--out",
+                str(out),
+            ]
+        )
+    except SystemExit as error:
+        status = error.code
+    assert out.exists(), "gate must write the verdict report"
+    report = out.read_text()
+    assert f"Verdict: {expected}" in report
+    assert status == code
+    assert "owner/repo" not in report and "Repository " not in report
+    if case in ("quality", "value", "regressions"):
+        assert report.count("| FAIL |") == 1
+    if case == "model_only":
+        assert "14" in report and f"{data['ideas'][-1]['id']} / 11" in report
+
+
+def test_gate_refuses_owner_snapshot_mismatch(tmp_path, capsys):
+    data, marks, owner = gate_fixture()
+    owner["snapshot_sha256"] = "0" * 64
+    for name, value in (("s", data), ("j", marks), ("o", owner)):
+        (tmp_path / f"{name}.json").write_text(json.dumps(value))
+    with pytest.raises(SystemExit) as caught:
+        main(
+            [
+                "gate",
+                str(tmp_path / "s.json"),
+                str(tmp_path / "j.json"),
+                "--owner-judgments",
+                str(tmp_path / "o.json"),
+                "--out",
+                str(tmp_path / "gate.md"),
+            ]
+        )
+    assert caught.value.code == 2
+    assert "owner judgments belong to a different snapshot" in capsys.readouterr().err
+    assert not (tmp_path / "gate.md").exists()
+
+
+@pytest.mark.parametrize("change", ["different_set", "duplicate_idea", "no_relevant"])
+def test_gate_cannot_pass_without_frozen_scored_ideas(change):
+    from scripts.relevance_eval import render_gate
+
+    data, marks, owner = gate_fixture()
+    if change == "different_set":
+        data["ideas"][0]["idea"] = "a different idea"
+    elif change == "duplicate_idea":
+        data["ideas"][-1] = data["ideas"][0]
+        marks["labels"].pop(load_ideas()[-1]["id"])
+        owner["labels"].pop(load_ideas()[-1]["id"])
+    else:
+        for labels in marks["labels"].values():
+            for mark in labels.values():
+                mark["grade"] = 0
+    marks["snapshot_sha256"] = owner["snapshot_sha256"] = snapshot_digest(data)
+    report, code = render_gate(data, marks, owner)
+    assert code == 2 and "Verdict: INCONCLUSIVE" in report
+
+
+def test_gate_owner_rejection_is_not_counted_and_one_outage_is_allowed():
+    from scripts.relevance_eval import render_gate
+
+    data, marks, owner = gate_fixture()
+    for idea in data["ideas"][15:]:
+        owner["labels"][idea["id"]]["11"]["grade"] = 0
+    data["ideas"][0]["runs"]["archive"]["status"] = "failed"
+    marks["snapshot_sha256"] = owner["snapshot_sha256"] = snapshot_digest(data)
+    report, code = render_gate(data, marks, owner)
+    assert code == 0 and "| 2. Archive adds value | 15 |" in report
+    owner["labels"][data["ideas"][0]["id"]]["11"]["grade"] = 0
+    report, code = render_gate(data, marks, owner)
+    assert code == 1 and "| 2. Archive adds value | 14 |" in report
+
+
+@pytest.mark.parametrize("depth", [0, 9, 21])
+def test_gate_refuses_depth_that_cannot_judge_the_top_ten(depth):
+    from scripts.relevance_eval import render_gate
+
+    with pytest.raises(ValueError, match="depth"):
+        render_gate(*gate_fixture(), depth=depth)
+
+
+@pytest.mark.parametrize("case,code", [("pass", 0), ("value", 1), ("incomplete", 2)])
+def test_gate_process_exit_code(tmp_path, case, code):
+    import subprocess
+    import sys
+
+    from scripts.relevance_eval import ROOT
+
+    for name, value in zip(("s", "j", "o"), gate_fixture(case), strict=True):
+        (tmp_path / f"{name}.json").write_text(json.dumps(value))
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/relevance_eval.py"),
+            "gate",
+            str(tmp_path / "s.json"),
+            str(tmp_path / "j.json"),
+            "--owner-judgments",
+            str(tmp_path / "o.json"),
+            "--out",
+            str(tmp_path / "out.md"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == code, result.stderr
+    assert result.stdout == ""
+
+
+def test_gate_invalid_judgment_error_does_not_echo_input():
+    from scripts.relevance_eval import render_gate
+
+    data, marks, owner = gate_fixture()
+    owner["labels"]["private@example.test"] = {"11": {"grade": 1}}
+    with pytest.raises(ValueError) as caught:
+        render_gate(data, marks, owner)
+    assert "private@example.test" not in str(caught.value)
+    assert "invalid gate judgments" in str(caught.value)
