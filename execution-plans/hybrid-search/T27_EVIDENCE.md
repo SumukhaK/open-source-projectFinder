@@ -250,6 +250,10 @@ archive is much larger. D8's rule ("at least as relevant as today's") is
   top 10s across the 58 ideas (N for the owner to choose; today it is 5), AND
   no more than M ideas more than 0.1 below keyword.
 - A and B combine: A now, B as the gate for re-enabling the archive.
+- **Owner's choice (2026-11-13, project thread decision card): A + B.** Keep the
+  archive out of the top 10 now (a separate ranking task), and gate its return
+  on a numeric bar. B's exact numbers (the nDCG tolerance, N and M) are not yet
+  set and still need the owner's approval before T28/T29.
 - Latency is not a deciding factor yet: hybrid median is within 10 ms of the
   keyword source here. T28 sets the response-time part of D8.
 

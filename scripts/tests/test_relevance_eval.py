@@ -17,6 +17,7 @@ from scripts.relevance_eval import (
     evaluate,
     judged_pool,
     load_ideas,
+    main,
     ndcg_at,
     recall_at,
     refuse,
@@ -593,3 +594,22 @@ def test_archive_weight_decides_whether_archive_reaches_the_top_ten():
     entry["runs"]["archive"]["results"] = [card(99)]
     assert refuse(entry, "rrf_archive_0.9").index(99) == 7
     assert refuse(entry, "rrf_archive_0.75").index(99) == 20
+
+
+def test_written_reports_end_with_exactly_one_newline(tmp_path):
+    data = snapshot()
+    raw = judgments(data, {"budget": {"1": {"grade": 2}}})
+    (tmp_path / "s.json").write_text(json.dumps(data))
+    (tmp_path / "j.json").write_text(json.dumps(raw))
+    for command in ("report", "whatif"):
+        out = tmp_path / f"{command}.md"
+        main(
+            [
+                command,
+                str(tmp_path / "s.json"),
+                str(tmp_path / "j.json"),
+                "--out",
+                str(out),
+            ]
+        )
+        assert out.read_text().endswith("\n") and not out.read_text().endswith("\n\n")

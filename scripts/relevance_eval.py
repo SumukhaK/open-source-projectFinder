@@ -919,7 +919,7 @@ def main(argv=None):  # pragma: no cover - thin argument wrapper
         judgments = json.loads(Path(args.judgments).read_text(encoding="utf-8"))
         render = render_whatif if args.command == "whatif" else render_report
         Path(args.out).write_text(
-            render(data, judgments, args.depth) + "\n", encoding="utf-8"
+            render(data, judgments, args.depth).rstrip("\n") + "\n", encoding="utf-8"
         )
     print(f"Wrote {args.out}")
 
