@@ -44,6 +44,16 @@ class EligibilityResult:
         return bool(self.issues)
 
 
+def _cached_copy(metadata):
+    """Copy a cached record so a caller cannot mutate the shared nested dicts."""
+    copy = dict(metadata)
+    for key in ("owner", "license"):
+        value = copy.get(key)
+        if isinstance(value, dict):
+            copy[key] = dict(value)
+    return copy
+
+
 def _within_window(value, now):
     if not isinstance(value, str):
         return False
@@ -98,7 +108,7 @@ class EligibilityService:
                     <= (now - checked).total_seconds()
                     < self.settings.archive_visibility_ttl_seconds
                 ):
-                    return dict(metadata), checked
+                    return _cached_copy(metadata), checked
                 self._cache.pop(repo_id)
         result = self.reader.fetch_metadata(repo_id, name)
         metadata = json.loads(result.response.body)
@@ -107,10 +117,33 @@ class EligibilityService:
         return metadata, now
 
     def _remember(self, repo_id, metadata, now):
-        # Store only validation fields, never provider response bodies or README text.
+        # Store a bounded public card subset plus the validation fields, never
+        # provider response bodies, README text or arbitrary URLs.
+        owner = metadata.get("owner")
+        license_data = metadata.get("license")
         cached = {
-            key: metadata.get(key)
-            for key in ("id", "full_name", "private", "archived", "pushed_at")
+            "id": metadata.get("id"),
+            "name": metadata.get("name"),
+            "full_name": metadata.get("full_name"),
+            "owner": (
+                {
+                    "login": owner.get("login"),
+                    "avatar_url": owner.get("avatar_url", ""),
+                }
+                if isinstance(owner, dict)
+                else None
+            ),
+            "description": metadata.get("description"),
+            "stargazers_count": metadata.get("stargazers_count"),
+            "language": metadata.get("language"),
+            "license": (
+                {"spdx_id": license_data.get("spdx_id")}
+                if isinstance(license_data, dict)
+                else None
+            ),
+            "private": metadata.get("private"),
+            "archived": metadata.get("archived"),
+            "pushed_at": metadata.get("pushed_at"),
         }
         cached["visibility"] = metadata.get("visibility", "public")
         with self._lock:

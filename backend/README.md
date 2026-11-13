@@ -621,6 +621,50 @@ is verified by T26, not by these fake-only tests. Rollback is a code revert with
 no migration or stored data. See
 [T15 evidence](../execution-plans/hybrid-search/T15_EVIDENCE.md).
 
+## Cross-layer hybrid integration lane (T26)
+
+`backend/tests/test_hybrid_integration.py` is an opt-in lane that drives the real
+archive worker, catalogue/content store, CPU Milvus collection, uvicorn-served
+FastAPI app and real HTTP. Only upstream GitHub is a `MockTransport`, and
+embeddings are deterministic fixtures that use the real manifest (384 dimensions,
+unit-norm). It never downloads a model, calls GitHub or uses a GPU.
+
+It needs the CPU Milvus stack from `infra/milvus/compose.yaml` and a private
+`MILVUS_TOKEN`. From the repo root in Linux/WSL (the archive store needs POSIX
+permissions):
+
+```sh
+cd infra/milvus
+docker compose --env-file /path/to/private/milvus.env --profile cpu up -d --wait
+cd ../..
+
+export MILVUS_TOKEN="root:$(sed -n 's/^MILVUS_PASSWORD=//p' /path/to/private/milvus.env)"
+export RUN_HYBRID_INTEGRATION=1
+python -m pytest backend/tests/test_hybrid_integration.py -q
+
+cd infra/milvus && docker compose --env-file /path/to/private/milvus.env down
+```
+
+Without `RUN_HYBRID_INTEGRATION=1` the six lane tests skip, so the default suite
+is unchanged. The lane uses a fresh temp directory below the system temp root and
+one uniquely named collection (`reporadar_t26_<32 hex>`); teardown drops only
+that collection. `test_hybrid_cleanup.py` guards both rules in the default suite.
+It takes about 10-17 s depending on cache warmth and needs roughly 7 GB free host RAM for
+the CPU container. It is a local lane rather than a hosted CI job: a
+`workflow_dispatch` job on a PR branch cannot be triggered before merge, and the
+Milvus stack is heavy for a free runner.
+
+The lane covers the mobile response contract, keyword ∪ vector union with
+provenance labels, the exact RRF order, fused-cursor paging without repeats or
+gaps, incomplete sources (`degraded` or `503 SEARCH_INCOMPLETE`, never an empty
+success) and private-repository suppression that survives a server restart. It
+also found a real defect: a repeated search inside the visibility TTL served
+reduced cached metadata, so archive-only cards lost their public fields and the
+route returned 500. `EligibilityService` now keeps a bounded public card subset in
+its cache (still no response bodies or README text). Real model quality, live
+GitHub and GPU behaviour are out of scope. See
+[T26 evidence](../execution-plans/hybrid-search/T26_EVIDENCE.md).
+
 ## Durable worker state (T17, merged)
 
 Migration 4 adds `archive_runs`, `archive_partitions` and `archive_tasks` without
