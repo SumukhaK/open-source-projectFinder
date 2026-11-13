@@ -165,3 +165,26 @@ RED against `6e23316`, 3 failed:
 - the Desktop start failure test (no `up` and no stop afterwards).
 
 GREEN: `tests/test_archive_schedule.py` passed 51; full suite 1,357 passed / 3 skipped, coverage 93.4% / 90.5%; ruff, format, bandit and `git diff --check` clean.
+
+### Merged, with a real end-to-end run (2026-11-13)
+
+[PR #107](https://github.com/SumukhaK/open-source-projectFinder/pull/107) was accepted at `50a0a60` by the separate reviewing Claude session and squash-merged as `a232fa4`. CI was green on all 6 checks.
+
+Cold-start diagnostic (the reviewer, from Ubuntu, using the exact `.env` values):
+- With Desktop stopped, `desktop start` took 31 s.
+- The engine answered `info` 11 s after that.
+- `compose up` then succeeded first time in 20.6 s.
+
+This showed that the compose path, `.env`, GPU and interop all work. The earlier failure at `a25c76b` was an ordering race, and `50a0a60` fixes it.
+
+Real end-to-end run at `50a0a60`, from inside Ubuntu as Task Scheduler runs it, with Docker Desktop stopped at the start:
+- `schedule run daily` exited 0 in 178 s.
+- `milvus`: `docker_started: true`, `milvus_started: true`, `milvus_ready_s: 36`, `ready`, no error.
+- `retire` finished: checked 204, issues 0.
+- `milvus_stop`: stopped. Docker Desktop was back at 0 processes afterwards.
+- The catalogue was unchanged (204 repositories). Both scheduled tasks stayed **Disabled**.
+
+Before the owner enables the tasks:
+- The worker checkout must be on `main` at or after `a232fa4`.
+- Its `backend/.env` must hold the `ARCHIVE_SCHEDULE_*` values from the runbook.
+- Enabling still needs the owner's approval.
