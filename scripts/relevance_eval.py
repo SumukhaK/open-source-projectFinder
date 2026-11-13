@@ -63,6 +63,10 @@ KEPT_RESULTS = 20
 # so a cold start cannot time out the archive for the first ideas only.
 WARMUP_IDEA = "warm-up search for the relevance evaluation"
 WARMUP_TRIES = 3
+# An idea whose archive source failed (for example a timeout while the
+# eligibility visibility cache is cold) is searched again, whole, at most this
+# many times. Every kept entry still comes from one single search call.
+IDEA_RETRIES = 2
 # A hybrid score this far below keyword-only counts as a failure case.
 FAILURE_MARGIN = 0.1
 
@@ -190,7 +194,9 @@ async def collect(service, token, ideas, *, versions, pause=0.0):
     All three come from the same call, so they see the same GitHub answer and
     the same checked archive evidence. An unscored warm-up search runs first,
     retried up to ``WARMUP_TRIES`` times until the archive reports ok; only its
-    outcome is kept. The token is passed through only.
+    outcome is kept. An idea whose archive source failed is searched again,
+    whole, up to ``IDEA_RETRIES`` times; only the last search is kept and
+    ``attempts`` records how many ran. The token is passed through only.
     """
     github = service.github = _RecordingGitHub(service.github)
     eligibility = service.eligibility = _RecordingEligibility(service.eligibility)
@@ -204,40 +210,45 @@ async def collect(service, token, ideas, *, versions, pause=0.0):
     versions = {**versions, "warmup": warmup}
     entries = []
     for idea in ideas:
-        if pause:
-            await asyncio.sleep(pause)
-        github.result = github.ms = eligibility.result = None
-        started = time.perf_counter()
-        outcome = await service.search(token, idea["idea"])
-        hybrid_ms = round((time.perf_counter() - started) * 1000)
-        live = github.result
-        if not isinstance(live, KeywordCandidates):
-            live = KeywordCandidates(status="failed", reason="not_recorded")
-        checked = eligibility.result
-        evidence = checked.archive if isinstance(checked, EligibilityResult) else ()
-        archive = outcome.fused.archive
-        entries.append(
-            {
-                "id": idea["id"],
-                "idea": idea["idea"],
-                "category": idea["category"],
-                "runs": {
-                    "keyword": _run(
-                        live.status, live.reason, fuse_candidates(live).candidates
-                    ),
-                    "archive": _run(
-                        archive.status,
-                        archive.reason,
-                        fuse_candidates(KeywordCandidates(), evidence).candidates
-                        if evidence
-                        else (),
-                    ),
-                    "hybrid": _run(outcome.status, None, outcome.fused.candidates),
-                },
-                "latency_ms": {"hybrid": hybrid_ms, "keyword": github.ms},
-            }
-        )
+        for attempt in range(1, IDEA_RETRIES + 2):
+            if pause:
+                await asyncio.sleep(pause)
+            entry = await _search_once(service, github, eligibility, token, idea)
+            if entry["runs"]["archive"]["status"] != "failed":
+                break
+        entry["attempts"] = attempt
+        entries.append(entry)
     return {"format": 1, "versions": versions, "ideas": entries}
+
+
+async def _search_once(service, github, eligibility, token, idea):
+    github.result = github.ms = eligibility.result = None
+    started = time.perf_counter()
+    outcome = await service.search(token, idea["idea"])
+    hybrid_ms = round((time.perf_counter() - started) * 1000)
+    live = github.result
+    if not isinstance(live, KeywordCandidates):
+        live = KeywordCandidates(status="failed", reason="not_recorded")
+    checked = eligibility.result
+    evidence = checked.archive if isinstance(checked, EligibilityResult) else ()
+    archive = outcome.fused.archive
+    return {
+        "id": idea["id"],
+        "idea": idea["idea"],
+        "category": idea["category"],
+        "runs": {
+            "keyword": _run(live.status, live.reason, fuse_candidates(live).candidates),
+            "archive": _run(
+                archive.status,
+                archive.reason,
+                fuse_candidates(KeywordCandidates(), evidence).candidates
+                if evidence
+                else (),
+            ),
+            "hybrid": _run(outcome.status, None, outcome.fused.candidates),
+        },
+        "latency_ms": {"hybrid": hybrid_ms, "keyword": github.ms},
+    }
 
 
 # --------------------------------------------------------------- judgments
@@ -406,6 +417,10 @@ def _number(value):
 def render_report(data, judgments, depth=POOL_DEPTH):
     labels = validate_judgments(data, judgments, depth)
     result = evaluate(data, labels, depth)
+    retried = sum(entry.get("attempts", 1) > 1 for entry in data["ideas"])
+    still_failed = sum(
+        entry["runs"]["archive"]["status"] == "failed" for entry in data["ideas"]
+    )
     lines = [
         "# T27 relevance report",
         "",
@@ -423,6 +438,9 @@ def render_report(data, judgments, depth=POOL_DEPTH):
         f"Complete ideas: {len(result['complete_ideas'])} of {len(data['ideas'])}. "
         f"Ideas with nothing relevant: {len(result['no_relevant_ideas'])}. "
         f"Labels marked unsure: {result['unsure_labels']}.",
+        "",
+        f"Ideas searched again after an archive failure: {retried}; archive still "
+        f"failed after retries: {still_failed}.",
         "",
         "| Run | Mean nDCG@10 | Mean judged-pool Recall@20 | Ideas scored |",
         "| --- | --- | --- | --- |",

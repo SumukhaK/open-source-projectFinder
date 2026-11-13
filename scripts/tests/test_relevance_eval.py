@@ -452,9 +452,76 @@ def test_warm_up_gives_up_after_three_tries_and_records_it():
     service.search = always_cold
     ideas = [{"id": "budget", "idea": "track my budget", "category": "common"}]
     data = asyncio.run(collect(service, "t", ideas, versions={}))
-    assert calls == [WARMUP_IDEA] * 3 + ["track my budget"]
+    assert calls == [WARMUP_IDEA] * 3 + ["track my budget"] * 3
     assert data["versions"]["warmup"] == {"archive_status": "failed", "attempts": 3}
 
 
 def test_warm_up_text_is_not_a_frozen_idea():
     assert WARMUP_IDEA not in {idea["idea"] for idea in load_ideas(IDEAS_PATH)}
+
+
+def test_an_idea_whose_archive_times_out_is_searched_again_whole():
+    service = FakeService()
+    search = service.search
+    calls = []
+
+    async def flaky(token, idea):
+        calls.append(idea)
+        # The warm-up succeeds; the first real search times out once.
+        if calls.count("track my budget") == 1 and idea == "track my budget":
+            github = service.github.search(token, idea)
+            fused = fuse_candidates(github, (), archive_status="failed")
+            fused = FusedResults(
+                fused.candidates, fused.github, SourceHealth("failed", "timeout")
+            )
+            return SimpleNamespace(
+                fused=fused, status="degraded", archive_reason="timeout"
+            )
+        return await search(token, idea)
+
+    service.search = flaky
+    ideas = [
+        {"id": "budget", "idea": "track my budget", "category": "common"},
+        {"id": "notes", "idea": "markdown notes", "category": "common"},
+    ]
+    data = asyncio.run(collect(service, "t", ideas, versions={}))
+    assert calls == [
+        WARMUP_IDEA,
+        "track my budget",
+        "track my budget",
+        "markdown notes",
+    ]
+    budget, notes = data["ideas"]
+    assert budget["attempts"] == 2 and notes["attempts"] == 1
+    assert budget["runs"]["archive"]["status"] == "ok"
+    assert [r["repo_id"] for r in budget["runs"]["archive"]["results"]] == [3, 1]
+    assert [r["repo_id"] for r in budget["runs"]["hybrid"]["results"]] == [1, 3, 2]
+
+
+def test_idea_retries_are_bounded_and_the_report_counts_them():
+    service = FakeService()
+    calls = []
+    search = service.search
+
+    async def archive_down(token, idea):
+        calls.append(idea)
+        if idea == WARMUP_IDEA:
+            return await search(token, idea)
+        github = service.github.search(token, idea)
+        fused = fuse_candidates(github, (), archive_status="failed")
+        fused = FusedResults(
+            fused.candidates, fused.github, SourceHealth("failed", "timeout")
+        )
+        return SimpleNamespace(fused=fused, status="degraded", archive_reason="timeout")
+
+    service.search = archive_down
+    ideas = [{"id": "budget", "idea": "track my budget", "category": "common"}]
+    data = asyncio.run(collect(service, "t", ideas, versions={}))
+    assert calls == [WARMUP_IDEA] + ["track my budget"] * 3
+    assert data["ideas"][0]["attempts"] == 3
+    assert data["ideas"][0]["runs"]["archive"]["status"] == "failed"
+    report = render_report(data, judgments(data, {}))
+    assert (
+        "Ideas searched again after an archive failure: 1; archive still failed "
+        "after retries: 1." in report
+    )
