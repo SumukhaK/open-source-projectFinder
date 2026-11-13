@@ -1,6 +1,6 @@
 # T27: Evaluate relevance on a human-judged query set
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Part A (query set, tool, tests) awaiting review; Part B (real snapshot, owner judging, report) not started. See [evidence](../T27_EVIDENCE.md). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
