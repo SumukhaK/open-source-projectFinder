@@ -533,6 +533,8 @@ def render_report(data, judgments, depth=POOL_DEPTH):
 
 STRATEGIES = {
     "rrf": "RRF as shipped (equal weights, k=60)",
+    "rrf_archive_0.9": "weighted RRF, archive weight 0.9",
+    "rrf_archive_0.75": "weighted RRF, archive weight 0.75",
     "rrf_archive_0.5": "weighted RRF, archive weight 0.5",
     "rrf_archive_0.25": "weighted RRF, archive weight 0.25",
     "keyword_then_archive": "keyword list, then archive results appended",

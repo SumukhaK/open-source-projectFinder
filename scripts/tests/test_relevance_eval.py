@@ -562,6 +562,8 @@ def test_weighted_rrf_and_ordered_strategies_follow_their_definitions():
     assert refuse(entry, "rrf")[:3] == [1, 3, 2]
     assert set(STRATEGIES) == {
         "rrf",
+        "rrf_archive_0.9",
+        "rrf_archive_0.75",
         "rrf_archive_0.5",
         "rrf_archive_0.25",
         "keyword_then_archive",
@@ -581,3 +583,13 @@ def test_whatif_scores_each_strategy_on_the_frozen_pool_and_is_labelled_offline(
     expected = ndcg_at([1, 2, 3], {1: 2, 2: 0, 3: 1})
     assert f"| keyword_then_archive | {expected:.3f} |" in page
     assert "| rrf | 1.000 |" in page
+
+
+def test_archive_weight_decides_whether_archive_reaches_the_top_ten():
+    # With k=60 an archive rank-1 result passes keyword rank 10 (1/70) only
+    # when its weight is above 61/70 (about 0.871).
+    entry = snapshot()["ideas"][0]
+    entry["runs"]["keyword"]["results"] = [card(i) for i in range(1, 21)]
+    entry["runs"]["archive"]["results"] = [card(99)]
+    assert refuse(entry, "rrf_archive_0.9").index(99) == 7
+    assert refuse(entry, "rrf_archive_0.75").index(99) == 20
