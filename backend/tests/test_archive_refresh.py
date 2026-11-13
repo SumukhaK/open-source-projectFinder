@@ -795,3 +795,38 @@ def test_refresh_refuses_a_non_d2_allowlist_before_any_request(
 
     assert code == 1
     assert "approved backfill policy" in capsys.readouterr().out
+
+
+def test_chunker_v2_refresh_reembeds_once_then_is_unchanged(tmp_path, monkeypatch):
+    from app.services import archive_index
+
+    github = FakeGitHub()
+    github.add()
+    state = setup(tmp_path, github)
+    with monkeypatch.context() as old:
+        old.setattr(archive_index, "CHUNKER_VERSION", "sections-v1")
+        first = worker.ingest_one(state.runtime, REPO_ID, now=NOW)
+    assert first["result"] == "published"
+    previous_revision = active_revision(state.connect)
+    calls = state.adapter.calls
+
+    refreshed = Refresh(state.runtime, clock=lambda: NOW.timestamp()).run(refresh_cap=0)
+
+    assert refreshed["published"] == 1
+    assert state.adapter.calls == calls + 1
+    assert active_revision(state.connect) != previous_revision
+    with state.connect() as db:
+        assert (
+            db.execute(
+                "SELECT chunker_version FROM archive_documents WHERE state='published'"
+            ).fetchone()[0]
+            == "sections-v2"
+        )
+    calls = state.adapter.calls
+    upserts = len(state.vectors.upserts)
+    next_week = (NOW + timedelta(days=7)).timestamp()
+    replay = Refresh(state.runtime, clock=lambda: next_week).run(refresh_cap=0)
+    assert replay["unchanged"] == 1
+    assert replay["published"] == 0
+    assert state.adapter.calls == calls
+    assert len(state.vectors.upserts) == upserts

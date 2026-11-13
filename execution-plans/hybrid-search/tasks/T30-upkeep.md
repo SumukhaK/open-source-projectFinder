@@ -23,7 +23,7 @@ At each post-merge tracker sync, the reviewer adds that task's non-blocking revi
 | ~~U1~~ (closed by [PR #90](https://github.com/SumukhaK/open-source-projectFinder/pull/90), merged as `f4983e7`) | T07, [PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28) | Milvus adapter's chunk-ordinal upper bound is a hard-coded literal | Derive it from `ARCHIVE_MAX_CHUNKS - 1`; **fixed in PR #90, merged as `f4983e7`** |
 | ~~U2~~ (closed by [PR #90](https://github.com/SumukhaK/open-source-projectFinder/pull/90), merged as `f4983e7`) | T07, [PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28) | Vector dimension 384 is hard-coded in the adapter | Read it from the embedding manifest's `dimensions`; **fixed in PR #90, merged as `f4983e7`** |
 | ~~U3~~ (closed by [PR #90](https://github.com/SumukhaK/open-source-projectFinder/pull/90), merged as `f4983e7`) | T07, [PR #28](https://github.com/SumukhaK/open-source-projectFinder/pull/28) | `close()` does not guard a client that was never created | Make `close()` a safe no-op when the client is `None`; **fixed in PR #90, merged as `f4983e7`** |
-| U4 | T05, [PR #20](https://github.com/SumukhaK/open-source-projectFinder/pull/20) | README chunking drops a whole paragraph that contains inline HTML | Keep the surrounding text. Changes prepared output: bump `CHUNKER_VERSION` and plan the re-ingest through T19's refresh; separate slice |
+| U4 | T05, [PR #20](https://github.com/SumukhaK/open-source-projectFinder/pull/20) | README chunking drops a whole paragraph that contains inline HTML | Keep the surrounding text. Changes prepared output: bump `CHUNKER_VERSION` and plan the re-ingest through T19's refresh; separate slice; **fixed in PR #108, awaiting review** |
 | ~~U5~~ (closed by [PR #100](https://github.com/SumukhaK/open-source-projectFinder/pull/100), merged as `69e9cab`) | T09, [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34) | Milvus snippets are cut at 2,048 bytes, possibly mid-word | Truncate on a word/character boundary and confirm the app labels snippets as excerpts (if T15/T25 have not already) Since 2026-11-05: land this before voice V2 if the grounded summary quotes snippets, so the LLM never receives a mid-word cut. **fixed in PR #100, merged as `69e9cab`**: cut at serving time on a word boundary with `…`; cards are labelled "README excerpt"; the summary receives only `full_names`, so no snippet reaches the LLM |
 | ~~U6~~ (closed by [PR #101](https://github.com/SumukhaK/open-source-projectFinder/pull/101), merged as `85ee3cb`) | T09, [PR #34](https://github.com/SumukhaK/open-source-projectFinder/pull/34) | Worker preflight (`ensure_collection`) creates the Milvus collection on first run | Split creation into an explicit operator init step so a misconfigured run cannot silently create an empty collection; **fixed in PR #101, merged as `85ee3cb`**: preflight calls `verify_collection()`, creation only through `python -m app.workers.archive init-collection` |
 | U7 | T11, [PR #38](https://github.com/SumukhaK/open-source-projectFinder/pull/38) | A GitHub 422 (rejected query) is reported as `failed`/`unavailable`; owner accepted this for now | If real logs show 422s, report a distinct `query_rejected` reason |
@@ -266,3 +266,38 @@ fails at 88.79% combined / 85.42% branches, below the unchanged 90% combined
 gate, as on untouched base (88.76% combined /
 85.36% branches). No exclusion, skip, interpreter patch or gate change. Linux CI
 is authoritative; local full verification is not green.
+## U4 execution — 2026-11-13
+
+Base: `36a6953dac6370ccade1db3e921d2fafb6bceb31`; isolated branch
+`codex/hybrid-t30-u4-inline-html`. Owner pulled this slice forward before T29.
+Reverified paragraph-wide HTML rejection and sections-v1 on main. Read T05 evidence
+and PR #20 review 5648843576. Plan: RED prose/version-refresh regressions, remove
+only the paragraph rejection, bump to sections-v2, run fakes and quality gates.
+
+U4 verification (Windows Python 3.11.9, SQLite 3.45.1; `PYTHONPATH=backend`):
+- RED: `python -m pytest backend/tests/test_archive_index.py backend/tests/test_archive_refresh.py -q -k "inline_html or images_html or chunker_v2"`: 3 assertion failures, 90 deselected before production edits.
+- GREEN: `python -m pytest backend/tests/test_archive_index.py backend/tests/test_archive_refresh.py -q`: 93 passed. Real local SQL with fake HTTP/model/vectors publishes under sections-v1, re-embeds once under sections-v2, then the next weekly refresh reports unchanged with zero embedding calls and zero vector upserts.
+- Ruff check/format passed (87 files); Bandit passed with no findings (existing warnings about words in nosec comments); `git diff --check` passed.
+
+All byte, character, token, nesting and chunk limits remain unchanged. HTML tokens
+are ignored by the existing text-token allowlist, block HTML remains dropped, and
+inline content (including script-like text) stays inert plain text. No rendering,
+execution, link following or asset fetch. No new dependency or setting.
+
+Rollout cost: every archived repository (204 today, owner-supplied count) re-embeds
+once on its next real refresh because the chunker version participates in semantic
+identity, even if its README has no HTML. **That refresh needs an approved real run**;
+none was performed here. Existing published revisions serve until the normal T19
+publication/reconciliation flow replaces them. A rollback to v1 changes identities
+again and needs a separately approved refresh; preserve catalogue/content/vectors.
+Fakes only; no Docker, WSL, Milvus server, model or T26 integration edits.
+
+Full Windows gate: `python -m pytest backend/tests scripts/tests --cov=backend/app --cov-branch --cov-report=json:reports/backend-coverage.json`
+-> 21 failed / 1238 passed / 79 skipped (185.87 s). All failures are restore tests
+refused by SQLite 3.45.1's WAL gate. The unchanged base in a separate detached
+worktree reproduces the exact 21 failures (`test_archive_restore.py`: 21 failed,
+21 passed, 1 skipped). No new skip or runtime patch was added. The four environment
+failures mentioned by the owner did not occur. Coverage is 88.78% combined /
+85.39% branches: `python scripts/quality.py coverage reports/backend-coverage.json`
+**fails** the unchanged 90% combined gate. Untouched-base full suite: 21 failed / 1236 passed / 79 skipped (220.19 s),
+with the same coverage gate failure; Linux CI is authoritative and local full verification is not green.
