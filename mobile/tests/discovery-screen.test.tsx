@@ -907,7 +907,7 @@ describe('first-page summary', () => {
     await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
     await act(async () => { resolve(results([item()])); });
     await fireEvent.press(screen.getByRole('tab', { name: 'Home' }));
-    expect(screen.queryByText('compass')).toBeNull();
+    expect(screen.getByText('compass')).toBeTruthy();
     expect(summaryFetch).not.toHaveBeenCalled();
   });
 
@@ -1003,12 +1003,6 @@ describe('spoken summaries', () => {
     if (condition === 'screen reader') jest.mocked(AccessibilityInfo.isScreenReaderEnabled).mockResolvedValue(true);
     if (condition === 'inactive') AppState.currentState = 'inactive';
     const screen = await voiceScreen();
-    if (condition === 'inactive') {
-      await search(screen);
-      expect(api.searchProjects).not.toHaveBeenCalled();
-      expect(createAudioPlayer).not.toHaveBeenCalled();
-      return;
-    }
     await complete(screen, true, condition === 'ungrounded' ? { grounded: false } : condition === 'missing ID' ? { grounded: true, results: 1 } : undefined);
     expect(createAudioPlayer).not.toHaveBeenCalled();
     if (condition === 'missing ID') expect(screen.queryByRole('button', { name: 'Read aloud' })).toBeNull();
@@ -1180,7 +1174,7 @@ describe('automatic search retries', () => {
     expect(api.searchProjects).toHaveBeenCalledTimes(3);
   });
 
-  test.each(['unmount', 'sign-out', 'background', 'tab', 'idea', 'session', 'account'])('%s cancels a retry wait', async action => {
+  test.each(['unmount', 'sign-out', 'background', 'tab', 'session', 'account'])('%s cancels a retry wait', async action => {
     let changed = (_: AppStateStatus) => {};
     jest.spyOn(AppState, 'addEventListener').mockImplementation((_, listener) => {
       const previous = changed; changed = state => { previous(state); listener(state); }; return { remove: jest.fn() };
@@ -1189,7 +1183,6 @@ describe('automatic search retries', () => {
     await search(screen);
     if (action === 'unmount') await screen.unmount();
     else if (action === 'background') await act(async () => { changed('background'); });
-    else if (action === 'idea') await fireEvent.changeText(screen.getByLabelText('Project idea'), 'changed idea');
     else if (action === 'account' || action === 'session') await screen.rerender(
       <AppProvider><DiscoveryScreen token={action === 'session' ? 'new-session' : 'session'} user={action === 'account' ? { login: 'other', github_id: 999 } : user} onSignOut={jest.fn()} signingOut={false} accountError="" onUnauthorized={jest.fn()} /></AppProvider>,
     );
@@ -1199,6 +1192,50 @@ describe('automatic search retries', () => {
     }
     await advance(30000); expect(api.searchProjects).toHaveBeenCalledTimes(1);
     expect(await cache.loadCachedResults('123')).toBeNull();
+    if (['background', 'tab'].includes(action)) {
+      if (action === 'background') await act(async () => { changed('active'); });
+      else await fireEvent.press(screen.getByRole('tab', { name: 'Home' }));
+      expect(screen.getByText('Search was interrupted. Try again.')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Search projects' })).not.toBeDisabled();
+      await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+      expect(api.searchProjects).toHaveBeenCalledTimes(2);
+    } else {
+      expect(screen.queryByText('Search was interrupted. Try again.')).toBeNull();
+    }
+  });
+
+  test('typing during a search or retry wait neither cancels nor unlocks it', async () => {
+    const screen = await setup();
+    jest.mocked(api.searchProjects).mockRejectedValueOnce(starting());
+    await search(screen);
+    await fireEvent.changeText(screen.getByLabelText('Project idea'), 'changed idea');
+    expect(screen.getByRole('button', { name: 'Search projects' })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Search projects' }));
+    expect(api.searchProjects).toHaveBeenCalledTimes(1);
+    await advance(2000);
+    expect(api.searchProjects).toHaveBeenCalledTimes(2);
+    expect(jest.mocked(api.searchProjects).mock.calls[1]).toEqual(jest.mocked(api.searchProjects).mock.calls[0]);
+    expect(screen.getByText('compass')).toBeTruthy();
+    expect(screen.getByLabelText('Project idea').props.value).toBe('changed idea');
+  });
+
+  test('leaving Home during the first request keeps its results', async () => {
+    const screen = await setup();
+    let finish!: (data: api.SearchResults) => void;
+    jest.mocked(api.searchProjects).mockReturnValueOnce(new Promise(done => { finish = done; }));
+    await search(screen);
+    await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
+    await act(async () => { finish(results([item()])); });
+    await fireEvent.press(screen.getByRole('tab', { name: 'Home' }));
+    expect(screen.getByText('compass')).toBeTruthy();
+    expect(screen.queryByText('Search was interrupted. Try again.')).toBeNull();
+  });
+
+  test.each([null, 'unknown'])('AppState %s at launch still allows searching', async state => {
+    AppState.currentState = state as unknown as AppStateStatus;
+    const screen = await setup();
+    await search(screen);
+    expect(api.searchProjects).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -1216,6 +1253,7 @@ test('a voice transcript during a pending search does not launch or queue anothe
   await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressOut');
   await waitFor(() => expect(uploadRecording).toHaveBeenCalled());
   expect(api.searchProjects).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(screen.getByLabelText('Project idea').props.value).toBe('voice maps'));
   await act(async () => { finish(results([])); });
   expect(api.searchProjects).toHaveBeenCalledTimes(1);
 });
