@@ -386,6 +386,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   const openDetails = async (project: Project) => {
     interruptRetry();
     const seq = ++detailsSeq.current;
+    searchContext.current.selected = project;
     setSelected(project);
     setDetails(null);
     setDetailsError('');
@@ -551,7 +552,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       </>}
     </ScrollView>
     <View style={[styles.tabs, { padding: 20, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
-      {(['Home', 'Profile'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name} accessibilityState={{ selected: tab === name }} onPress={() => { interruptRetry(); cancelSummary(); void voice.cancel(); setPendingVoice(''); setHeard(false); setVoiceSettings(false); closeDetails(); setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
+      {(['Home', 'Profile'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name} accessibilityState={{ selected: tab === name }} onPress={() => { interruptRetry(); cancelSummary(); void voice.cancel(); setPendingVoice(''); setHeard(false); setVoiceSettings(false); closeDetails(); searchContext.current.tab = name; setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
         <Text style={{ color: tab === name ? colors.onAccent : colors.text }}>{name}</Text>
       </Pressable>)}
     </View>

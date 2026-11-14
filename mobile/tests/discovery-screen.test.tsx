@@ -1231,6 +1231,80 @@ describe('automatic search retries', () => {
     expect(screen.queryByText('Search was interrupted. Try again.')).toBeNull();
   });
 
+  // The ref only refreshes in the layout effect, so a 503 that lands between a
+  // tab press and the re-render used to still read tab === 'Home' and retry.
+  test('a 503 in the same act as the tab press is interrupted, not retried', async () => {
+    const screen = await setup();
+    let fail!: (failure: unknown) => void;
+    jest.mocked(api.searchProjects).mockReturnValueOnce(new Promise((_, reject) => { fail = reject; }));
+    await search(screen);
+    await act(async () => {
+      // Not awaited: awaiting the press would let the layout effect refresh the
+      // ref before the rejection lands, hiding the race this test pins.
+      fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
+      fail(starting());
+      await Promise.resolve();
+    });
+    await advance(30000);
+    expect(api.searchProjects).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByRole('tab', { name: 'Home' }));
+    expect(screen.getByText('Search was interrupted. Try again.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Search projects' })).not.toBeDisabled();
+  });
+
+  test('a retryable 503 while already off Home is interrupted, not retried', async () => {
+    const screen = await setup();
+    let fail!: (failure: unknown) => void;
+    jest.mocked(api.searchProjects).mockReturnValueOnce(new Promise((_, reject) => { fail = reject; }));
+    await search(screen);
+    await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
+    await act(async () => { fail(starting()); });
+    await advance(30000);
+    expect(api.searchProjects).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByRole('tab', { name: 'Home' }));
+    expect(screen.getByText('Search was interrupted. Try again.')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+    await act(async () => {});
+    expect(api.searchProjects).toHaveBeenCalledTimes(2);
+  });
+
+  test('a 503 in the same act as opening details is interrupted, not retried', async () => {
+    const screen = await setup();
+    await search(screen);
+    expect(screen.getByText('compass')).toBeTruthy();
+    let fail!: (failure: unknown) => void;
+    jest.mocked(api.searchProjects).mockReturnValueOnce(new Promise((_, reject) => { fail = reject; }));
+    const refresh = screen.getByTestId('discovery-list').props.refreshControl.props.onRefresh;
+    await act(async () => { refresh(); });
+    await act(async () => {
+      await fireEvent.press(screen.getByRole('button', { name: 'Open octocat/compass' }));
+      fail(starting());
+      await Promise.resolve();
+    });
+    await advance(30000);
+    expect(api.searchProjects).toHaveBeenCalledTimes(2);
+    await fireEvent.press(screen.getByRole('button', { name: 'Go back' }));
+    expect(screen.getByText('Search was interrupted. Try again.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
+
+  test('a 503 then 200 on Home still succeeds quietly', async () => {
+    const screen = await setup();
+    jest.mocked(api.searchProjects).mockRejectedValueOnce(starting()).mockResolvedValueOnce(results([item()]));
+    await search(screen);
+    expect(screen.getByRole('button', { name: 'Search projects' })).toBeDisabled();
+    await advance(1999);
+    expect(api.searchProjects).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Search projects' })).toBeDisabled();
+    await advance(1);
+    await act(async () => {});
+    expect(api.searchProjects).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('compass')).toBeTruthy();
+    expect(screen.queryByText('Search was interrupted. Try again.')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Search projects' })).not.toBeDisabled();
+  });
+
   test.each([null, 'unknown'])('AppState %s at launch still allows searching', async state => {
     AppState.currentState = state as unknown as AppStateStatus;
     const screen = await setup();
