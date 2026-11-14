@@ -1,22 +1,22 @@
 # RepoRadar: Project Scope
 
-RepoRadar will help people discover whether an open-source project already addresses their idea. A person describes what they want to build by typing or by holding a button and speaking into a mobile app. The service searches public GitHub projects and returns a list of similar repositories, with a short summary of that list that can be read aloud (planned).
+RepoRadar will help people discover whether an open-source project already addresses their idea. A person describes what they want to build by typing or by holding a button and speaking into a mobile app. The service searches public GitHub projects and returns a list of similar repositories, with a short summary of that list that can be read aloud.
 
 It will combine a periodically refreshed collection of repository information with GitHub search. This aims to find projects with related purposes even when their names use different words.
 
 The initial scope is idea submission and discovery of similar public repositories. Detailed screens, result presentation, and additional features will be defined during brainstorming. A match does not prove that an idea is unique, that a repository is suitable, or that its code is ready to reuse.
 
-Current progress: the mobile branding/sign-in foundation and backend authentication, public GitHub repository details and account-specific favourites are implemented. Search also supports controls for how many results to request and how to sort them, with validation and safety tests. Review, automated checks and delivery are recorded in [PR #10](https://github.com/SumukhaK/open-source-projectFinder/pull/10). Semantic matching, combining search sources and repository ingestion remain planned.
+Current progress: the mobile branding/sign-in foundation and backend authentication, public GitHub repository details and account-specific favourites are implemented. Search also supports controls for how many results to request and how to sort them, with validation and safety tests. Review, automated checks and delivery are recorded in [PR #10](https://github.com/SumukhaK/open-source-projectFinder/pull/10). Semantic matching, combining search sources and repository ingestion are implemented (hybrid search, ranking, archive refresh, backup, restore and scheduling are merged); archive capacity on the 16 GB laptop and the D8 response-time bound remain open.
 
 ## Account access
 
-Users sign up or log in with a single GitHub button. RepoRadar does not request private repository access. The app saves its own secure session; GitHub credentials stay on the backend. Signing out ends that app session. Authentication is implemented and automatically tested, while live GitHub and device validation need the app's OAuth setup. Mobile discovery screens and voice remain future features.
+Users sign up or log in with a single GitHub button. RepoRadar does not request private repository access. The app saves its own secure session; GitHub credentials stay on the backend. Signing out ends that app session. Authentication is implemented and automatically tested, while live GitHub and device validation need the app's OAuth setup. Mobile discovery screens are implemented; voice input, grounded summaries and spoken replies are implemented, with device acceptance on a real phone still pending (T30 U16).
 
 ## Quality before new features
 
 Every change is automatically tested and checked for code/security issues before review and merging. The checks use free tools and need no additional account keys. The app can recover from a screen-rendering failure, and the backend records safe local crash events. Production crash monitoring and deployment remain future work. GitHub's included runner allowance still limits hosted automation.
 
-A small local database feasibility experiment now proves CPU and GPU operations on 1,000 synthetic vectors. GPU 1k proof passed; archive capacity remains open. A separate archive catalogue and a compatible SQLite runtime are now tested and merged in T03. It does not ingest GitHub projects or implement hybrid search; weekly archive operation remains planned. This experiment and the component that turns text into searchable vectors have both been reviewed and merged.
+A small local database feasibility experiment now proves CPU and GPU operations on 1,000 synthetic vectors. GPU 1k proof passed; archive capacity remains open. A separate archive catalogue and a compatible SQLite runtime are now tested and merged in T03. It does not ingest GitHub projects; weekly archive operation is implemented (refresh, retire, backup, restore and scheduling are merged) and the archive is live behind the hybrid route, with capacity measurement still open. This experiment and the component that turns text into searchable vectors have both been reviewed and merged.
 
 
 The T03 change adds a private local filing catalogue for repository records and content revisions, separate from account data. It has been tested with synthetic records on this laptop and merged via PR #18. It does not download GitHub projects, refresh them weekly or change the app's search results. Those remain later tasks.

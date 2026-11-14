@@ -2,7 +2,7 @@
 
 Turn a project idea into a search for existing open-source implementations.
 
-RepoRadar is a planned AI-driven discovery service with a React-based mobile client and a Python FastAPI backend. Users describe an idea by text or by holding to talk; the backend combines semantic retrieval from Milvus with GitHub public repository search to find similar projects, and (planned) a small LLM summarises the results, which can be read aloud.
+RepoRadar is an AI-driven discovery service with a React-based mobile client and a Python FastAPI backend. Users describe an idea by text or by holding to talk; the backend combines semantic retrieval from Milvus with GitHub public repository search to find similar projects, and a small LLM summarises the results, which can be read aloud.
 
 ## Planned architecture
 
@@ -11,7 +11,7 @@ RepoRadar is a planned AI-driven discovery service with a React-based mobile cli
 
 [Editable Mermaid source](docs/architecture.mmd) · [Diagram styling](docs/DIAGRAMS.md)
 
-The backend and ingestion worker share integration code and one central backend configuration module. Dashed boxes are planned by the [voice assistant plan](execution-plans/voice-assistant/README.md); see [voice assistant architecture](docs/VOICE_ASSISTANT_ARCHITECTURE.md).
+The backend and ingestion worker share integration code and one central backend configuration module. Voice and summary routes are implemented; device acceptance is still pending. See [voice assistant architecture](docs/VOICE_ASSISTANT_ARCHITECTURE.md).
 
 ## Implemented authentication
 
@@ -35,8 +35,8 @@ GitHub credentials stay encrypted on the backend; the app uses a separate revoca
 | Archive GitHub reads | HTTPX with a dedicated worker token, bounded streaming and conditional requests | T04 merged; not yet called by a worker |
 | Content preparation | `markdown-it-py` 4.2.0 (AST read only, never rendered) and the pinned E5 tokenizer | T05 merged; at most 8 chunks of ≤400 content / ≤512 final tokens |
 | Local runtime | WSL2 (Ubuntu) + Docker Desktop on Windows; NVIDIA driver 617.42 for the GPU profile | Used for Milvus and the embedding smoke checks |
-| Speech to text, text to speech | Deepgram, called only from the backend | Approved 2026-11-05 (VD1); not implemented |
-| Language model | OpenAI-compatible client over switchable profiles: Ollama locally, then Cloudflare Workers AI open models up to about 30B; no frontier model | Approved 2026-11-05 (VD2); not implemented |
+| Speech to text, text to speech | Deepgram, called only from the backend | Approved 2026-11-05 (VD1); implemented (V1a), key never reaches mobile |
+| Language model | OpenAI-compatible client over switchable profiles: Ollama locally, then Cloudflare Workers AI open models up to about 30B; no frontier model | Approved 2026-11-05 (VD2); implemented (V0), grounded summaries (V2a/V2b) and spoken summaries (V3a/V3b) merged |
 | Tests | Unit and integration tests with TDD | pytest, Jest / React Native Testing Library |
 
 ## Repository layout
@@ -128,7 +128,8 @@ The [OpenCode execution handbook](execution-plans/hybrid-search/README.md) conta
 | T23 host scheduling | Merged (PR #105); tasks registered disabled, one real daily run passed | `python -m app.workers.schedule run weekly` (refresh, then backup) and `run daily` (retire) for Windows Task Scheduler templates that import disabled, with catch-up, one job at a time and a sanitized `status` ([runbook](infra/scheduler/README.md), [evidence](execution-plans/hybrid-search/T23_EVIDENCE.md)) |
 | T26 real-HTTP integration lane | Merged (PR #111) | Opt-in `RUN_HYBRID_INTEGRATION=1` lane: real archive worker, CPU Milvus and FastAPI over HTTP, with fake GitHub and fixed embeddings ([evidence](execution-plans/hybrid-search/T26_EVIDENCE.md)) |
 | T27 | Merged: Part A `bf58d1e`, Part B `f039f2f` (results, what-if, D8 options) | Keyword search wins today (nDCG@10 0.695 vs hybrid 0.428); owner chose D8 A+B; owner cross-check of model labels pending |
-| T28-T29 | Not started | Require their task-specific merged prerequisites and policy approvals |
+| T28 | Not started | Measure capacity and foreground fairness before expansion; needs T23, T26 and T27 |
+| T29 | Awaiting review: T29a (operator handbook and docs consistency) | Close rollout readiness and recovery documentation; T29b after T28 |
 | T30 upkeep | Not started; backlog open | Collects non-blocking review notes (currently U7, U9, U12, U15 and U16; U1-U6, U8, U10, U11, U13, U14 and U17-U20 closed) and runs after T29 ([task](execution-plans/hybrid-search/tasks/T30-upkeep.md)) |
 
-Still open: archive and rebuild capacity on the 16 GB development laptop, the D8 quality numbers (set after T27; all eight policy decisions D1-D8 were approved 2026-10-29). The mobile discovery foundation, T24 and T25 are merged; T22 and T26 are merged. T27 measured search quality: the 204-repo archive does not yet help, so it stays out of the top 10 (D8 option A).
+Still open: archive and rebuild capacity on the 16 GB development laptop (T28), the D8 response-time bound (T28/T29b) and the rollout recommendation (T29b). The mobile discovery foundation, T24 and T25 are merged; T22 and T26 are merged. T27 measured search quality: the 204-repo archive does not yet help, so it stays out of the top 10 (D8 option A). D8 option B (nDCG tolerance 0.02, at least 15 owner-labelled archive-only results, at most 3 regressions, archive availability on at least 57 of 58 ideas) failed on run 3: 1 owner-confirmed archive-only pair of 5.
