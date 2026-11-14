@@ -12,7 +12,9 @@ from app.services.live_scope import live_eligible
 RRF_K = 60
 MAX_SOURCE_REPOSITORIES = 100
 # Public ranking contract; a ranking change must bump this value.
-RANKING_VERSION = "rrf-v1"
+RANKING_VERSION = "keyword-first-v1"
+# RRF_K is retained for the reported ``rrf_score``. A later ranking may order
+# by it again only in a new version that passes the D8 B gate.
 ARCHIVE_STATUSES = frozenset({"ok", "incomplete", "failed"})
 ELLIPSIS = "\u2026"
 # The worker stores a chunk's first MILVUS_TEXT_BYTES["snippet"] bytes, dropping
@@ -152,8 +154,14 @@ def _archive_card(hit):
 def fuse_candidates(github, archive=(), *, archive_status="ok"):
     """Fuse the live and archive sources by numeric repository ID.
 
-    Equal source weights and ``RRF_K`` produce an ``rrf_score`` that ranks
-    relevance only; it is not a probability that a repository matches the idea.
+    Order is keyword-first: every repository the GitHub source returned keeps
+    its keyword order, then archive-only repositories follow in archive rank
+    order, with repository ID as the deterministic tie-break. Archive-only
+    results therefore cannot displace a keyword result from the top 10; letting
+    them rank above keyword results again needs a new version that passes the
+    D8 B gate. ``rrf_score`` is still reported for compatibility (equal source
+    weights and ``RRF_K``); it is not a probability and no longer decides the
+    order.
     """
     if not isinstance(github, KeywordCandidates):
         raise TypeError("github must be KeywordCandidates")
@@ -188,7 +196,8 @@ def fuse_candidates(github, archive=(), *, archive_status="ok"):
             archive_spdx = None
         ranked.append(
             (
-                min(source_ranks),
+                (0, live.rank) if live is not None else (1, archived[0]),
+                repo_id,
                 FusedCandidate(
                     rank=0,
                     repo_id=repo_id,
@@ -209,10 +218,10 @@ def fuse_candidates(github, archive=(), *, archive_status="ok"):
                 ),
             )
         )
-    ranked.sort(key=lambda item: (-item[1].rrf_score, item[0], item[1].repo_id))
+    ranked.sort(key=lambda item: (item[0], item[1]))
     return FusedResults(
         candidates=tuple(
-            replace(card, rank=index) for index, (_, card) in enumerate(ranked, 1)
+            replace(card, rank=index) for index, (_, _, card) in enumerate(ranked, 1)
         ),
         github=SourceHealth(github.status, github.reason, github.retry_after),
         archive=SourceHealth(archive_status),

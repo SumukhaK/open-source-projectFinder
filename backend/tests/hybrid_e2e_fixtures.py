@@ -17,10 +17,10 @@ from urllib.parse import urlsplit
 import httpx
 from app.services.embeddings import ModelManifest
 
-# The two source orders are fixed so the RRF result is fully known.
+# The two source orders are fixed so the keyword-first result is fully known.
 KEYWORD_ORDER = ("B", "G", "D", "A")
 ARCHIVE_ORDER = ("A", "B", "C", "D", "E", "F")
-EXPECTED_ORDER = ("B", "A", "D", "G", "C", "E", "F")
+EXPECTED_ORDER = ("B", "G", "D", "A", "C", "E", "F")
 EXPECTED_SOURCES = {
     "B": ("github", "archive"),
     "A": ("github", "archive"),

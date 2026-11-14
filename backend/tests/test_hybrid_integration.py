@@ -147,7 +147,7 @@ def test_mobile_adapter_contract(lane):
     assert body["has_more"] is False
     assert body["degraded"] is False
     assert body["archive_as_of"] is None
-    assert body["ranking_version"] == "rrf-v1"
+    assert body["ranking_version"] == "keyword-first-v1"
     assert isinstance(body["generation"], str) and body["generation"]
     assert set(body["sources"]) == {"github", "archive"}
     for health in body["sources"].values():
@@ -222,8 +222,6 @@ def test_known_fused_ranking_order(lane):
     body = response.json()
     assert keys(body) == list(EXPECTED_ORDER)
     assert [item["rank"] for item in body["items"]] == list(range(1, 8))
-    scores = [item["rrf_score"] for item in body["items"]]
-    assert scores == sorted(scores, reverse=True)
     for item in body["items"]:
         key = KEY_BY_ID[item["id"]]
         assert item["rrf_score"] == pytest.approx(RRF_EXPECTED[key], rel=1e-12)
@@ -248,7 +246,7 @@ def test_fused_cursor_paging_has_no_repeats_or_gaps(lane):
         collected.extend(body["items"])
         cursor = body["next_cursor"]
         assert body["has_more"] is (cursor is not None)
-    assert pages == [["B", "A"], ["D", "G"], ["C", "E"], ["F"]]
+    assert pages == [["B", "G"], ["D", "A"], ["C", "E"], ["F"]]
     assert keys({"items": collected}) == list(EXPECTED_ORDER)
     ids = [item["id"] for item in collected]
     assert len(ids) == len(set(ids))

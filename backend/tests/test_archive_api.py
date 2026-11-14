@@ -26,7 +26,7 @@ from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
 KEY = "k" * 40
-GENERATION = "a" * 40 + ":rrf-v1"
+GENERATION = "a" * 40 + ":keyword-first-v1"
 HEADERS = {"Authorization": "Bearer session1"}
 OTHER_HEADERS = {"Authorization": "Bearer session2"}
 IDEA = "an offline first app for sharing community tools"
@@ -330,7 +330,7 @@ def test_first_page_returns_semantic_cards_and_provenance(serve):
         body = response.json()
         assert body["total"] is None
         assert body["degraded"] is False
-        assert body["ranking_version"] == "rrf-v1"
+        assert body["ranking_version"] == "keyword-first-v1"
         assert body["generation"] == GENERATION
         assert body["next_cursor"] is None and body["has_more"] is False
         assert body["sources"]["github"]["status"] == "ok"
@@ -747,7 +747,7 @@ def test_status_requires_auth_and_returns_the_sanitized_runtime_view(serve):
         "collection": "repo_chunks_e5small_v1",
         "profile": "gpu",
         "model_revision": None,
-        "ranking_version": "rrf-v1",
+        "ranking_version": "keyword-first-v1",
         "generation": None,
         "coverage": "unknown",
         "archive_as_of": None,

@@ -486,11 +486,17 @@ access. It collapses archive chunks to the best chunk per numeric repository ID
 source, and caps each source at 100 repositories. The union never requires a
 repository to appear in both sources, so older or live-only results survive.
 
-Equal-weight reciprocal rank fusion uses `k=60`: `rrf_score` is the sum of
-`1 / (60 + source_rank)` over the sources containing the repository. Final order
-is score descending, then the best source rank, then numeric repository ID, so
-reversed input produces identical output. The score is a ranking value only, not
-a match probability or percentage.
+Order is keyword-first (D8 option A, ranking version `keyword-first-v1`): every
+repository the GitHub keyword source returned keeps its keyword order, then
+archive-only repositories follow in archive rank order, with numeric repository
+ID as the deterministic tie-break. The archive therefore
+cannot displace a keyword result; archive-only results may rank above keyword
+results again only through a new ranking version that passes the D8 B gate.
+`rrf_score` is still reported for the
+mobile contract and keeps its previous definition (equal source weights and
+`k=60`: the sum of `1 / (60 + source_rank)` over the sources containing the
+repository), but it no longer decides the order. The score is a ranking value
+only, not a match probability or percentage.
 
 Snippets the worker cut at the 2,048-byte limit (within 3 bytes of it) are
 served as excerpts ending on a whole word with `…`; shorter snippets are whole
@@ -629,8 +635,8 @@ remaining deadline minus a small margin; anything unverified is dropped, so a
 slow source yields a short page instead of a timeout. Rechecks keep the
 worker-only `ARCHIVE_GITHUB_TOKEN` reader because T10's archive path already
 depends on it and it refuses end-user OAuth tokens. `generation` is the pinned
-embedding manifest revision plus `rrf-v1` and must stay constant on every page;
-the account is the authenticated numeric `github_id`.
+embedding manifest revision plus `keyword-first-v1` and must stay constant on
+every page; the account is the authenticated numeric `github_id`.
 
 Cards keep the legacy fields and add `sources`, `freshness`, `license`,
 `license_conflict`, `matched_section`, `snippet`, `rank` and `rrf_score`; rank
@@ -697,9 +703,10 @@ the CPU container. It is a local lane rather than a hosted CI job: a
 Milvus stack is heavy for a free runner.
 
 The lane covers the mobile response contract, keyword ∪ vector union with
-provenance labels, the exact RRF order, fused-cursor paging without repeats or
-gaps, incomplete sources (`degraded` or `503 SEARCH_INCOMPLETE`, never an empty
-success) and private-repository suppression that survives a server restart. It
+provenance labels, the exact keyword-first order, fused-cursor paging without
+repeats or gaps, incomplete sources (`degraded` or `503 SEARCH_INCOMPLETE`, never
+an empty success) and private-repository suppression that survives a server
+restart. It
 also found a real defect: a repeated search inside the visibility TTL served
 reduced cached metadata, so archive-only cards lost their public fields and the
 route returned 500. `EligibilityService` now keeps a bounded public card subset in
