@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AppState, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AppearanceControls } from '../../../components/appearance-controls';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -62,6 +62,9 @@ function sourceDetail(results: SearchResults): string | null {
 const completeSearch = (results: SearchResults) =>
   !results.degraded && healthy(results.sources.github) && healthy(results.sources.archive);
 
+const INTERRUPTED = 'Search was interrupted. Try again.';
+class SearchInterrupted extends Error {}
+
 export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountError, onUnauthorized }: Props) {
   const { mode } = useTheme();
   const colors = getThemeColors(mode);
@@ -93,14 +96,50 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   const [searchFailed, setSearchFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [favouritesError, setFavouritesError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loadingRequest, setLoadingRequest] = useState<{ account: string; token: string } | null>(null);
+  const loading = loadingRequest?.account === account && loadingRequest.token === token && !signingOut;
+  const [searchLabel, setSearchLabel] = useState('Searching projects');
   const [loadingMore, setLoadingMore] = useState(false);
   const [selected, setSelected] = useState<Project | null>(null);
   const [details, setDetails] = useState<ProjectDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState('');
   const [favouriteBusy, setFavouriteBusy] = useState<string | null>(null);
-  const voice = useVoiceInput(account, token, text => { setIdea(text); setHeard(true); setPendingVoice(text); });
+  const searchBusy = useRef<number | null>(null);
+  const retryWait = useRef<(() => void) | null>(null);
+  // Only 'background' blocks searching: 'inactive' is a brief iOS transition, and
+  // currentState can be null/'unknown' before the first change event.
+  const foreground = useRef(AppState.currentState !== 'background');
+  const searchContext = useRef({ account, token, signingOut, tab, selected });
+  useLayoutEffect(() => { searchContext.current = { account, token, signingOut, tab, selected }; });
+  const cancelSearch = useCallback((updateState = true) => {
+    listSeq.current += 1;
+    searchBusy.current = null;
+    retryWait.current?.();
+    retryWait.current = null;
+    if (updateState) { setLoadingRequest(null); setRefreshing(false); setLoadingMore(false); }
+  }, []);
+  // Leaving Home, opening details or backgrounding stops only a pending retry wait;
+  // a request already in flight finishes and its results are shown.
+  const interruptRetry = useCallback(() => {
+    if (!retryWait.current) return;
+    cancelSearch();
+    setError(INTERRUPTED);
+    setSearchFailed(true);
+  }, [cancelSearch]);
+  useEffect(() => {
+    foreground.current = AppState.currentState !== 'background';
+    const subscription = AppState.addEventListener('change', state => {
+      foreground.current = state !== 'background';
+      if (!foreground.current) interruptRetry();
+    });
+    return () => { sessionSeq.current += 1; cancelSearch(false); subscription.remove(); };
+  }, [account, token, signingOut, cancelSearch, interruptRetry]);
+  const voice = useVoiceInput(account, token, text => {
+    setIdea(text); setHeard(true);
+    // A transcript that arrives mid-search fills the box but never starts a second search.
+    if (searchBusy.current === null) setPendingVoice(text);
+  });
 
   useEffect(() => {
     let active = true;
@@ -114,7 +153,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       setSelected(null);
       setDetails(null);
       setDetailsLoading(false);
-      setLoading(false);
+      setLoadingRequest(null);
       setLoadingMore(false);
       setIdea('');
       setActiveIdea('');
@@ -175,42 +214,73 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   };
 
   const runSearch = async (text: string, { refresh = false, fromVoice = false } = {}) => {
+    if (searchBusy.current !== null || !foreground.current || signingOut || tab !== 'Home' || selected) return;
     cancelSummary();
     const summaryRequest = summarySequence.current;
     const seq = ++listSeq.current;
+    searchBusy.current = seq;
     const session = sessionSeq.current;
+    const valid = () => seq === listSeq.current && session === sessionSeq.current
+      && searchContext.current.account === account
+      && searchContext.current.token === token && !searchContext.current.signingOut;
+    const canRetry = () => foreground.current
+      && searchContext.current.tab === 'Home' && !searchContext.current.selected;
+    setSearchLabel('Searching projects');
     setActiveIdea(text);
     setFromCache(false);
-    setLoading(true);
+    setLoadingRequest({ account, token });
     setRefreshing(refresh);
     setLoadingMore(false);
     setError('');
     setSearchFailed(false);
     if (!refresh) setResults(null);
     try {
-      const data = await searchProjects(token, { idea: text, pageSize: discoveryConfig.pageSize });
-      if (seq !== listSeq.current || session !== sessionSeq.current) return;
+      let data: SearchResults;
+      for (let attempt = 0; ; attempt++) {
+        if (!valid()) return;
+        setSearchLabel('Searching projects');
+        try {
+          data = await searchProjects(token, { idea: text, pageSize: discoveryConfig.pageSize });
+          break;
+        } catch (failure) {
+          if (!valid()) return;
+          if (!(failure instanceof DiscoveryApiError) || failure.status !== 503 || !failure.retryable
+            || !['SEARCH_UNAVAILABLE', 'SEARCH_INCOMPLETE'].includes(failure.code ?? '') || attempt >= 2) throw failure;
+          if (!canRetry()) throw new SearchInterrupted();
+          const delay = failure.retryAfterSeconds === undefined ? 2 ** (attempt + 1)
+            : Math.max(1, Math.min(10, failure.retryAfterSeconds));
+          setSearchLabel(failure.code === 'SEARCH_UNAVAILABLE' ? 'Search is starting…' : 'Waiting to retry search…');
+          await new Promise<void>(resolve => {
+            const finish = () => { clearTimeout(timer); retryWait.current = null; resolve(); };
+            const timer = setTimeout(finish, delay * 1000);
+            retryWait.current = finish;
+          });
+        }
+      }
+      if (!valid()) return;
       setResults(data);
       if (summaryRequest === summarySequence.current && data.items.length) {
         setSummaryPage({ names: data.items.slice(0, 10).map(item => item.full_name), sequence: summaryRequest, fromVoice, account, token });
       }
       await saveCachedResults(account, data);
     } catch (failure) {
-      if (seq !== listSeq.current || session !== sessionSeq.current) return;
-      const message = failureMessage(failure, 'Search failed. Please try again.');
+      if (!valid()) return;
+      const message = failure instanceof SearchInterrupted ? INTERRUPTED : failureMessage(failure, 'Search failed. Please try again.');
       if (message) {
         setError(message);
         setSearchFailed(true);
       }
     } finally {
-      if (seq === listSeq.current) {
-        setLoading(false);
+      if (searchBusy.current === seq) {
+        searchBusy.current = null;
+        setLoadingRequest(null);
         setRefreshing(false);
       }
     }
   };
 
   const submit = async () => {
+    if (searchBusy.current !== null) return;
     setHeard(false);
     void voice.cancel();
     setPendingVoice('');
@@ -314,6 +384,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   };
 
   const openDetails = async (project: Project) => {
+    interruptRetry();
     const seq = ++detailsSeq.current;
     setSelected(project);
     setDetails(null);
@@ -341,6 +412,8 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   };
 
   const leave = async () => {
+    searchContext.current.signingOut = true;
+    cancelSearch();
     cancelSummary();
     setPendingVoice('');
     await speech.signOut();
@@ -377,7 +450,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
       refreshControl={canRefresh
-        ? <RefreshControl refreshing={refreshing} onRefresh={refresh} accessibilityLabel="Refresh results" />
+        ? <RefreshControl refreshing={refreshing && loading} onRefresh={refresh} accessibilityLabel="Refresh results" />
         : undefined}
     >
       {accountError ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.error, { color: colors.text }]}>{accountError}</Text> : null}
@@ -417,7 +490,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
           >
             <Text style={[styles.searchText, { color: colors.onAccent }]}>Search projects</Text>
           </Pressable>
-          {loading && !refreshing ? <BrandLoader mode={mode} label="Searching projects" /> : null}
+          {loading && (!refreshing || searchLabel !== 'Searching projects') ? <BrandLoader mode={mode} label={searchLabel} /> : null}
           {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.error, { color: colors.text }]}>{error}</Text> : null}
           {fromCache && results ? <Text style={[styles.notice, { color: colors.muted }]}>{results.has_more
             ? 'Showing your last results. Search again to load more.'
@@ -478,7 +551,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       </>}
     </ScrollView>
     <View style={[styles.tabs, { padding: 20, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
-      {(['Home', 'Profile'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name} accessibilityState={{ selected: tab === name }} onPress={() => { cancelSummary(); void voice.cancel(); setPendingVoice(''); setHeard(false); setVoiceSettings(false); closeDetails(); setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
+      {(['Home', 'Profile'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name} accessibilityState={{ selected: tab === name }} onPress={() => { interruptRetry(); cancelSummary(); void voice.cancel(); setPendingVoice(''); setHeard(false); setVoiceSettings(false); closeDetails(); setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
         <Text style={{ color: tab === name ? colors.onAccent : colors.text }}>{name}</Text>
       </Pressable>)}
     </View>

@@ -220,7 +220,9 @@ const search = async (screen: Awaited<ReturnType<typeof open>>, idea = 'task man
 };
 
 beforeEach(async () => {
+  AppState.currentState = 'active';
   jest.clearAllMocks();
+  jest.mocked(api.searchProjects).mockReset();
   await AsyncStorage.clear();
   jest.mocked(api.getFavourites).mockResolvedValue({ items: [] });
   jest.mocked(api.searchProjects).mockResolvedValue(results([item()]));
@@ -268,7 +270,7 @@ test.each([
   ['SEARCH_TIMEOUT', 503, 'Search timed out. Try again.'],
   ['SEARCH_UNAVAILABLE', 503, 'Search is starting or unavailable. Try again shortly.'],
 ])('%s shows its own state and never claims no matches', async (code, status, message) => {
-  jest.mocked(api.searchProjects).mockRejectedValue(new api.DiscoveryApiError(message, status, code, true));
+  jest.mocked(api.searchProjects).mockRejectedValue(new api.DiscoveryApiError(message, status, code, false));
   const screen = await open();
   await search(screen);
   await waitFor(() => expect(screen.getByText(message)).toBeTruthy());
@@ -419,7 +421,7 @@ test('switching accounts clears the previous account cache and state', async () 
   await cache.saveCachedResults('123', results([item()]));
   const screen = await open();
   await waitFor(() => expect(screen.getByText('compass')).toBeTruthy());
-  screen.rerender(
+  await screen.rerender(
     <AppProvider>
       <DiscoveryScreen
         token="session"
@@ -1070,4 +1072,188 @@ describe('spoken summaries', () => {
     await fireEvent.press(other.getByRole('tab', { name: 'Profile' })); await fireEvent.press(other.getByText('Voice'));
     expect(other.getByRole('switch', { name: 'Read summaries aloud' }).props.value).toBe(true);
   });
+});
+
+describe('automatic search retries', () => {
+  beforeEach(() => { AppState.currentState = 'active'; });
+  afterEach(() => { jest.useRealTimers(); });
+  const starting = (seconds?: number, code = 'SEARCH_UNAVAILABLE') => Object.assign(
+    new api.DiscoveryApiError('Search is starting or unavailable. Try again shortly.', 503, code, true),
+    { retryAfterSeconds: seconds },
+  );
+  const advance = async (ms: number) => { await act(async () => { jest.advanceTimersByTime(ms); }); };
+  const setup = async () => {
+    const screen = await open();
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+    return screen;
+  };
+
+  test.each([1, 2, 3])('%s startup failures keep the button disabled until final outcome', async failures => {
+    const screen = await setup();
+    for (let i = 0; i < failures; i++) jest.mocked(api.searchProjects).mockRejectedValueOnce(starting());
+    jest.mocked(api.searchProjects).mockResolvedValue(results([item()]));
+    await search(screen);
+    expect(screen.getByRole('button', { name: 'Search projects' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.getByLabelText('Search is starting…')).toBeTruthy();
+    await advance(1999);
+    expect(api.searchProjects).toHaveBeenCalledTimes(1);
+    await advance(1);
+    if (failures > 1) {
+      expect(screen.getByRole('button', { name: 'Search projects' })).toBeDisabled();
+      await advance(3999);
+      expect(api.searchProjects).toHaveBeenCalledTimes(2);
+      await advance(1);
+    }
+    expect(api.searchProjects).toHaveBeenCalledTimes(Math.min(failures + 1, 3));
+    expect(screen.getByRole('button', { name: 'Search projects' })).not.toBeDisabled();
+    if (failures === 3) expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    else { expect(screen.getByText('compass')).toBeTruthy(); expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull(); }
+    await advance(30000);
+    expect(api.searchProjects).toHaveBeenCalledTimes(Math.min(failures + 1, 3));
+  });
+
+  test.each([[3, 3000], [999, 10000], [0, 1000]])('Retry-After %s waits %s ms', async (seconds, delay) => {
+    const screen = await setup();
+    jest.mocked(api.searchProjects).mockRejectedValueOnce(starting(seconds));
+    await search(screen); await advance(delay - 1);
+    expect(api.searchProjects).toHaveBeenCalledTimes(1);
+    await advance(1); expect(api.searchProjects).toHaveBeenCalledTimes(2);
+    expect(jest.mocked(api.searchProjects).mock.calls[1]).toEqual(jest.mocked(api.searchProjects).mock.calls[0]);
+  });
+
+  test('SEARCH_INCOMPLETE retries quietly', async () => {
+    const screen = await setup();
+    jest.mocked(api.searchProjects).mockRejectedValueOnce(starting(undefined, 'SEARCH_INCOMPLETE'));
+    await search(screen); await advance(2000);
+    expect(api.searchProjects).toHaveBeenCalledTimes(2); expect(screen.getByText('compass')).toBeTruthy();
+  });
+
+  test.each([
+    new api.DiscoveryApiError('Limited', 429, 'SEARCH_INCOMPLETE', true),
+    new api.DiscoveryApiError('Sign in', 401), new api.DiscoveryApiError('Forbidden', 403),
+    new api.DiscoveryApiError('Not configured', 503, 'SEARCH_UNAVAILABLE', false),
+    new api.DiscoveryApiError('Busy', 503, 'SEARCH_BUSY', true),
+    new api.DiscoveryNetworkError('Offline'),
+  ])('does not retry %s', async failure => {
+    const screen = await setup(); jest.mocked(api.searchProjects).mockRejectedValueOnce(failure);
+    await search(screen); await advance(30000); expect(api.searchProjects).toHaveBeenCalledTimes(1);
+  });
+
+  test('degraded results remain visible without retry', async () => {
+    const screen = await setup();
+    jest.mocked(api.searchProjects).mockResolvedValueOnce(results([item()], null, { degraded: true }));
+    await search(screen); await advance(30000);
+    expect(api.searchProjects).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Some sources were unavailable. Results may be incomplete.')).toBeTruthy();
+  });
+
+  test('a stale Retry handler cannot start a second search', async () => {
+    const screen = await setup();
+    jest.mocked(api.searchProjects).mockRejectedValueOnce(new api.DiscoveryNetworkError('Offline'));
+    await search(screen);
+    const retryButton = screen.getByRole('button', { name: 'Try again' });
+    const retry = () => fireEvent.press(retryButton);
+    let resolve!: (data: api.SearchResults) => void;
+    jest.mocked(api.searchProjects).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+    await retry();
+    await retry();
+    expect(api.searchProjects).toHaveBeenCalledTimes(2);
+    await act(async () => { resolve(results([])); });
+  });
+
+  test('repeated refresh during a retry wait cannot start a second search', async () => {
+    const screen = await setup(); await search(screen);
+    const refresh = screen.getByTestId('discovery-list').props.refreshControl.props.onRefresh;
+    jest.mocked(api.searchProjects).mockRejectedValueOnce(starting());
+    await act(async () => { refresh(); });
+    await act(async () => { refresh(); refresh(); });
+    expect(api.searchProjects).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('button', { name: 'Search projects' })).toBeDisabled();
+    await advance(2000);
+    expect(api.searchProjects).toHaveBeenCalledTimes(3);
+  });
+
+  test.each(['unmount', 'sign-out', 'background', 'tab', 'session', 'account'])('%s cancels a retry wait', async action => {
+    let changed = (_: AppStateStatus) => {};
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_, listener) => {
+      const previous = changed; changed = state => { previous(state); listener(state); }; return { remove: jest.fn() };
+    });
+    const screen = await setup(); jest.mocked(api.searchProjects).mockRejectedValueOnce(starting());
+    await search(screen);
+    if (action === 'unmount') await screen.unmount();
+    else if (action === 'background') await act(async () => { changed('background'); });
+    else if (action === 'account' || action === 'session') await screen.rerender(
+      <AppProvider><DiscoveryScreen token={action === 'session' ? 'new-session' : 'session'} user={action === 'account' ? { login: 'other', github_id: 999 } : user} onSignOut={jest.fn()} signingOut={false} accountError="" onUnauthorized={jest.fn()} /></AppProvider>,
+    );
+    else {
+      await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
+      if (action === 'sign-out') await fireEvent.press(screen.getByText('Sign out'));
+    }
+    await advance(30000); expect(api.searchProjects).toHaveBeenCalledTimes(1);
+    expect(await cache.loadCachedResults('123')).toBeNull();
+    if (['background', 'tab'].includes(action)) {
+      if (action === 'background') await act(async () => { changed('active'); });
+      else await fireEvent.press(screen.getByRole('tab', { name: 'Home' }));
+      expect(screen.getByText('Search was interrupted. Try again.')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Search projects' })).not.toBeDisabled();
+      await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+      expect(api.searchProjects).toHaveBeenCalledTimes(2);
+    } else {
+      expect(screen.queryByText('Search was interrupted. Try again.')).toBeNull();
+    }
+  });
+
+  test('typing during a search or retry wait neither cancels nor unlocks it', async () => {
+    const screen = await setup();
+    jest.mocked(api.searchProjects).mockRejectedValueOnce(starting());
+    await search(screen);
+    await fireEvent.changeText(screen.getByLabelText('Project idea'), 'changed idea');
+    expect(screen.getByRole('button', { name: 'Search projects' })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Search projects' }));
+    expect(api.searchProjects).toHaveBeenCalledTimes(1);
+    await advance(2000);
+    expect(api.searchProjects).toHaveBeenCalledTimes(2);
+    expect(jest.mocked(api.searchProjects).mock.calls[1]).toEqual(jest.mocked(api.searchProjects).mock.calls[0]);
+    expect(screen.getByText('compass')).toBeTruthy();
+    expect(screen.getByLabelText('Project idea').props.value).toBe('changed idea');
+  });
+
+  test('leaving Home during the first request keeps its results', async () => {
+    const screen = await setup();
+    let finish!: (data: api.SearchResults) => void;
+    jest.mocked(api.searchProjects).mockReturnValueOnce(new Promise(done => { finish = done; }));
+    await search(screen);
+    await fireEvent.press(screen.getByRole('tab', { name: 'Profile' }));
+    await act(async () => { finish(results([item()])); });
+    await fireEvent.press(screen.getByRole('tab', { name: 'Home' }));
+    expect(screen.getByText('compass')).toBeTruthy();
+    expect(screen.queryByText('Search was interrupted. Try again.')).toBeNull();
+  });
+
+  test.each([null, 'unknown'])('AppState %s at launch still allows searching', async state => {
+    AppState.currentState = state as unknown as AppStateStatus;
+    const screen = await setup();
+    await search(screen);
+    expect(api.searchProjects).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+test('a voice transcript during a pending search does not launch or queue another search', async () => {
+  await AsyncStorage.setItem('reporadar.voice.123.consent', 'yes');
+  jest.mocked(uploadRecording).mockResolvedValue('voice maps');
+  let finish!: (data: api.SearchResults) => void;
+  jest.mocked(api.searchProjects).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  const screen = await open();
+  await waitFor(() => expect(screen.queryByText('Hold the mic to say your idea.')).toBeNull());
+  await search(screen);
+  await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressIn');
+  await waitFor(() => expect(screen.getByText(/Let go to search/)).toBeTruthy());
+  await fireEvent(screen.getByLabelText('Hold to record your idea'), 'pressOut');
+  await waitFor(() => expect(uploadRecording).toHaveBeenCalled());
+  expect(api.searchProjects).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(screen.getByLabelText('Project idea').props.value).toBe('voice maps'));
+  await act(async () => { finish(results([])); });
+  expect(api.searchProjects).toHaveBeenCalledTimes(1);
 });

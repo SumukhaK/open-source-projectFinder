@@ -65,7 +65,7 @@ export type SearchInput = {
 };
 
 export class DiscoveryApiError extends Error {
-  constructor(message: string, public status: number, public code?: string, public retryable = false) { super(message); }
+  constructor(message: string, public status: number, public code?: string, public retryable = false, public retryAfterSeconds?: number) { super(message); }
 }
 export class DiscoveryNetworkError extends Error {}
 export class DiscoveryResponseError extends Error {}
@@ -161,7 +161,10 @@ function apiError(response: Response, body: unknown): DiscoveryApiError {
               : response.status === 503 && retryAfter
                 ? `GitHub is rate limited. Try again in ${retryAfter} seconds.`
                 : serverMessage || 'GitHub is temporarily unavailable. Try again later.');
-  return new DiscoveryApiError(message, response.status, code, retryable);
+  let seconds = retryAfter?.trim() ? Number(retryAfter) : NaN;
+  if (retryAfter && !Number.isFinite(seconds)) seconds = (Date.parse(retryAfter) - Date.now()) / 1000;
+  const retryAfterSeconds = Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
+  return new DiscoveryApiError(message, response.status, code, retryable, retryAfterSeconds);
 }
 
 function typedMessage(code: string | undefined): string | undefined {
