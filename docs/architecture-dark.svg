@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="620" viewBox="0 0 1080 620" role="img" aria-labelledby="title desc">
-<title id="title">RepoRadar planned architecture</title>
-<desc id="desc">The mobile app sends a text or hold-to-talk voice idea to the FastAPI backend. Planned: the backend sends audio to Deepgram for speech to text and uses an LLM step, on Ollama and later Cloudflare Workers AI, to tidy the query and write a grounded summary that Deepgram can speak back. Hybrid search queries the live GitHub Search API and the 365-day Milvus archive in parallel and returns one merged list. A separate ingestion worker reads permissively licensed public repositories pushed in the last 365 days, prepares README and metadata chunks, embeds them with the E5 model and publishes them to Milvus.</desc>
+<title id="title">RepoRadar architecture</title>
+<desc id="desc">The mobile app sends a text or hold-to-talk voice idea to the FastAPI backend. The backend sends audio to Deepgram for speech to text and uses an LLM step, on Ollama and Cloudflare Workers AI profiles, to tidy the query and write a grounded summary that Deepgram can speak back. Hybrid search queries the live GitHub Search API and the 365-day Milvus archive in parallel and returns one merged list. A separate ingestion worker reads permissively licensed public repositories pushed in the last 365 days, prepares README and metadata chunks, embeds them with the E5 model and publishes them to Milvus. Device acceptance for voice and summary output is still pending.</desc>
 <rect width="1080" height="620" fill="#0D1117"/>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#8B949E"/></marker></defs>
 <g fill="none" stroke="#8B949E" stroke-width="1.7" stroke-linejoin="round" marker-end="url(#arrow)">
@@ -21,8 +21,8 @@
 <rect x="60" y="180" width="280" height="76" rx="8" fill="#161B22" stroke="#30363D"/>
 <text x="200" y="206" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">FastAPI backend</text>
 <text x="200" y="227" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Auth, sessions, central config</text>
-<text x="200" y="245" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Voice and summary routes planned</text>
-<rect x="400" y="180" width="280" height="76" rx="8" fill="#161B22" stroke="#8B949E" stroke-dasharray="6 4"/>
+<text x="200" y="245" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Voice and summary routes implemented</text>
+<rect x="400" y="180" width="280" height="76" rx="8" fill="#161B22" stroke="#30363D"/>
 <text x="540" y="206" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Deepgram speech</text>
 <text x="540" y="227" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Speech to text, text to speech</text>
 <text x="540" y="245" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Key stays on the backend</text>
@@ -30,7 +30,7 @@
 <text x="200" y="336" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">Hybrid search</text>
 <text x="200" y="357" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Live and archive in parallel</text>
 <text x="200" y="375" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Merged, deduplicated list</text>
-<rect x="400" y="310" width="280" height="76" rx="8" fill="#161B22" stroke="#8B949E" stroke-dasharray="6 4"/>
+<rect x="400" y="310" width="280" height="76" rx="8" fill="#161B22" stroke="#30363D"/>
 <text x="540" y="336" text-anchor="middle" fill="#E6EDF3" font-family="Arial, sans-serif" font-size="17" font-weight="600">LLM step</text>
 <text x="540" y="357" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Tidy query, grounded summary</text>
 <text x="540" y="375" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Ollama, then Workers AI profiles</text>
@@ -55,6 +55,6 @@
 <text x="880" y="375" text-anchor="middle" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">E5 model on CPU</text>
 <rect x="60" y="566" width="36" height="20" rx="4" fill="#161B22" stroke="#30363D"/>
 <text x="106" y="581" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Implemented or in progress</text>
-<rect x="330" y="566" width="36" height="20" rx="4" fill="#161B22" stroke="#8B949E" stroke-dasharray="6 4"/>
-<text x="376" y="581" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Planned (voice assistant plan V1-V3)</text>
+<rect x="330" y="566" width="36" height="20" rx="4" fill="#161B22" stroke="#30363D"/>
+<text x="376" y="581" fill="#8B949E" font-family="Arial, sans-serif" font-size="13">Device acceptance pending (T30 U16)</text>
 </svg>

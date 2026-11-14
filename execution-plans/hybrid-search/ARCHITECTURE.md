@@ -1,7 +1,7 @@
 # Local Milvus archive, weekly refresh and hybrid discovery
 
-Planning date: **2026-10-24**. Status: **proposed design; not implemented**.
-This is the proposed architecture snapshot. The executable slices and review evidence live in [TRACKER.md](TRACKER.md); the root PROJECT_TRACKER.md records the delivery phase. Existing unfinished search/mobile/security work is preserved.
+Planning date: **2026-10-24**. Status: **proposed design; phases A-F implemented and merged, phase G open**.
+This is the architecture snapshot behind the merged system. The executable slices and review evidence live in [TRACKER.md](TRACKER.md); the root PROJECT_TRACKER.md records the delivery phase. Existing unfinished search/mobile/security work is preserved.
 
 ## 1. Confirmed goal and scope
 
@@ -186,9 +186,7 @@ The last column uses Milvus's rough 1.8× CAGRA estimate, not a memory guarantee
 
 ## 8. Weekly refresh and retention
 
-Proposed schedule: **Sunday 03:30 Asia/Kolkata**, equivalent to Saturday 22:00 UTC. Use Windows Task Scheduler to start a WSL worker command, with missed-run catch-up and no concurrent instance. Persist the weekly due-period key in SQL so scheduled/manual/restarted attempts resume the same run. On a Linux deployment, replace the host task with one persistent systemd timer; do not activate both schedulers.
-
-No task is created by this plan. A sleeping/offline laptop cannot guarantee a weekly completion SLA. On the next permitted launch, catch up from durable progress, expose the actual last successful refresh and pause cleanly if the network, quota, memory or disk budget is unavailable.
+Implemented schedule: **Sunday 03:30 Asia/Kolkata**, equivalent to Saturday 22:00 UTC, via Windows Task Scheduler templates that start a WSL worker command, with missed-run catch-up and no concurrent instance. The weekly due-period key is persisted in SQL so scheduled, catch-up and manual attempts resume the same run. The templates import disabled and need the owner's explicit approval to enable (T23, [infra/scheduler/README.md](../../infra/scheduler/README.md)). A sleeping/offline laptop cannot guarantee a weekly completion SLA; on the next permitted launch it catches up from durable progress, exposes the actual last successful refresh and pauses cleanly if the network, quota, memory or disk budget is unavailable.
 
 | Stage | Required behavior |
 | --- | --- |
@@ -204,7 +202,7 @@ No task is created by this plan. A sleeping/offline laptop cannot guarantee a we
 
 An ambiguous 404 is not proof that a repository was deleted: it may be private, transferred, inaccessible or an invalid credential. Suppress the unsafe result, retain a content-free tombstone for diagnosis, and retry the canonical identity check under a valid public-read credential. A missing README is a separate condition. Do not permanently purge the entire catalogue because a credential expired.
 
-Proposed retention: active latest content while eligible; superseded raw revisions for 30 days for operational rollback, not annual historical analytics; 90 days of content-free run/coverage summaries. Confirmed private/inaccessible status overrides superseded-content retention: purge live raw/normalized content and published snippets promptly, retaining only content-free suppression records. Encrypted offline backups may contain previously public content until a proposed maximum seven-day expiry; they are never searchable or directly served. This backup-retention exception requires approval and is not immediate erasure from every copy. Expired-window records are hidden immediately by the dynamic cutoff and physically swept weekly. Favourite snapshots remain user data under the existing contract and do not keep archive vectors alive.
+Proposed retention: active latest content while eligible; superseded raw revisions for 30 days for operational rollback, not annual historical analytics; 90 days of content-free run/coverage summaries. Confirmed private/inaccessible status overrides superseded-content retention: purge live raw/normalized content and published snippets promptly, retaining only content-free suppression records. Encrypted offline backups may contain previously public content until the approved maximum seven-day expiry; they are never searchable or directly served. Expired-window records are hidden immediately by the dynamic cutoff and physically swept weekly. Favourite snapshots remain user data under the existing contract and do not keep archive vectors alive.
 
 For strict public-only serving, freshly validate archived candidate repository visibility before emitting results, with only a bounded short-lived validation cache (proposed 15 minutes). A matching repository returned as public by the live GitHub branch can supply the fresh metadata for that ID in the same request; do not make a redundant validation call for it. Never show a known private/inaccessible record. If validation cannot complete, suppress that item and mark archive retrieval degraded; if no verified result is available and a source is incomplete/unavailable, return an explicit 503. Weekly checks alone cannot promise immediate detection of a public-to-private transition. This also means an archive is not automatically a GitHub-independent availability guarantee. Accepting longer-lived public snapshots would be a separate product decision.
 
@@ -333,7 +331,7 @@ Treat vectors as rebuildable but test an actual restore of metadata/content/mode
 
 ## 11. Phased delivery and verification gates
 
-All phases are **planned**. Each feature gets its own `codex/` branch/PR, meaningful failing tests before behavioral changes, focused checks, exact-commit review and the existing quality gates. Do not include the unrelated mobile/security draft in an archive feature PR.
+Phases A through F are **implemented and merged**; phase G (scale validation and expansion) is open and depends on T28. Each feature got its own `codex/` branch/PR, meaningful failing tests before behavioral changes, focused checks, exact-commit review and the existing quality gates. Do not include the unrelated mobile/security draft in an archive feature PR.
 
 | Phase | Feature slices and dependencies | Exit criteria |
 | --- | --- | --- |
@@ -355,7 +353,7 @@ Suggested performance acceptance hypotheses, to confirm in Phase A: semantic ret
 
 ## 12. Decisions still needed and blocking dependencies
 
-Confirmed: hybrid search as the app's normal flow, combining GitHub and local Milvus; local 4 GB GPU preference; pushed-within-365-days archive eligibility; weekly refresh. Preserve broader live GitHub scope by default. Recommendations awaiting approval: bounded pilot/corpus selection, licensed-content policy, 30-day superseded retention, short-lived live visibility verification, schedule time and strict freshness behavior during GitHub outages. The source-specific scope assumption is explicit and may be changed only by a later shared-filter requirement.
+Confirmed and implemented: hybrid search as the app's normal flow, combining GitHub and local Milvus; local 4 GB GPU preference; pushed-within-365-days archive eligibility; weekly refresh; D1 hard cap of 1,000 archived repositories; D2 licensed-content allowlist; D3 retention (30-day superseded content, 90-day run history); D4 suppression/retirement sweep; D5 encrypted backups with 7-day expiry; D6 restore into quarantine and `--activate`; D7 scheduled weekly/daily jobs; D8 option A keyword-first ranking with option B re-entry gate. Live GitHub scope stays broader than the archive by default. The source-specific scope assumption is explicit and may be changed only by a later shared-filter requirement.
 
 Still unverified: running Docker engine; container CUDA/driver pair; runtime/SDK/model pins; patched SQLite in WSL; free disk after image/model download; measured query/build/embedding performance; GPU index compatibility for scalar filters/upserts in the chosen release. Current docs serve both v3.0.x and v2.6.x; do not combine version-specific defaults or claim `gpu.maxMemSize` limits total process VRAM.
 

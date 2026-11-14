@@ -31,7 +31,7 @@ This document records initial requirements, not a finalized implementation contr
 - The result list always comes from the hybrid search route and appears first. An LLM may tidy the query and writes a summary of only the listed results; a summary naming any other repository is rejected. Voice, LLM or TTS failures fall back to text search.
 - Spoken summaries use Deepgram text to speech when voice output is on; the list shows either way.
 - LLMs are switchable settings profiles behind one OpenAI-compatible client: Ollama locally, then Cloudflare Workers AI open models up to about 30B. No frontier model. A profile becomes the default only after the shared eval set.
-- No audio, transcript, idea or summary is stored or logged. Provider keys stay on the backend. Microphone permission and a Deepgram processing notice are required, with a full text-only path.
+- No audio, transcript, idea or summary is stored or logged (confirmed in code: they exist only in request memory). Provider keys stay on the backend. Microphone permission and a Deepgram processing notice are required, with a full text-only path.
 - UX: a Home/Profile bottom bar with settings on Profile; "Read summaries aloud" in Profile › Voice, on for voice searches only, never while a screen reader runs; a visible mic button; a one-time voice explainer before the microphone prompt and a "How voice works" page ([docs/VOICE_UX.md](docs/VOICE_UX.md)).
 - Design: [docs/VOICE_ASSISTANT_ARCHITECTURE.md](docs/VOICE_ASSISTANT_ARCHITECTURE.md). Tasks: [execution-plans/voice-assistant](execution-plans/voice-assistant/README.md).
 
@@ -65,7 +65,7 @@ Follow Bulletproof React feature-based organization, adapted for Expo / React Na
 - Sanitized local crash capture and retry, with centralized/native crash reporting deferred until deployment is defined.
 - Bounded/cached jobs and minimal report retention; hosted runner quotas are not unlimited.
 
-Discovery API integration now exposes account-scoped app favourites and GitHub public repository details. Standalone keyword search controls and their contract tests are implemented and verified locally. Review, CI and delivery evidence is recorded in [PR #10](https://github.com/SumukhaK/open-source-projectFinder/pull/10). Milvus semantic matching remains planned. Optional details must be omitted when GitHub supplies no data.
+Discovery API integration now exposes account-scoped app favourites and GitHub public repository details. Standalone keyword search controls and their contract tests are implemented and verified locally. Review, CI and delivery evidence is recorded in [PR #10](https://github.com/SumukhaK/open-source-projectFinder/pull/10). Milvus semantic matching is implemented and combined with GitHub search in one ranked list (hybrid search merged; ranking version `keyword-first-v1`). Optional details must be omitted when GitHub supplies no data.
 
 ## Standalone GitHub search improvements
 
@@ -75,9 +75,9 @@ Discovery API integration now exposes account-scoped app favourites and GitHub p
 - Retained keyword text, including spaces but excluding qualifiers, must fit the 256-character limit. Validate raw idea length separately at 1,000 characters. Reject invalid requests before provider calls and preserve explicit provider failures and incomplete-result metadata.
 - Search reads use a separate centralized 1 MiB response budget, configurable between 1 KiB and 2 MiB, while other GitHub reads keep the 512 KiB default. Reject over-budget responses and preserve bounded timeouts/retries. Provider rate limits return 503 with `Retry-After` when GitHub supplies (or requires) a wait.
 - Verify actual outbound parameters and response values, configured defaults, exact boundaries, compatibility, authentication, throttling, body limits, defensive public filtering and search response budgets. Delivery requires the full backend suite, coverage gates, review of the exact PR commit and all required repository checks.
-- Advanced qualifiers/quoted phrases and Boolean expressions are later phases requiring an explicit input contract. Semantic search and combining retrieval results remain separate planned work.
+- Advanced qualifiers/quoted phrases and Boolean expressions are later phases requiring an explicit input contract. Semantic search and combining retrieval results are implemented.
 
-T01 feasibility uses pinned Milvus2.6.26 / PyMilvus2.6.17 and 1k synthetic384-dimensional normalized vectors. CPU and real GPU 1k proofs passed on driver 617.42; host/archive capacity remains open; T03 now records a WAL-fixed worker runtime and catalogue verification, merged via PR #18. A WAL-fixed worker is required before T03 WAL use, not T01 review. See [evidence](execution-plans/hybrid-search/T01_EVIDENCE.md).
+T01 feasibility uses pinned Milvus2.6.26 / PyMilvus2.6.17 and 1k synthetic384-dimensional normalized vectors. CPU and real GPU 1k proofs passed on driver 617.42; host/archive capacity remains open; T03 now records a WAL-fixed worker runtime and catalogue verification, merged via PR #18. A WAL-fixed worker is required before T03 WAL use, not T01 review. See [evidence](execution-plans/hybrid-search/T01_EVIDENCE.md). The archive is live (T09-T27 merged) and the hybrid route is the normal search flow; capacity on the 16 GB laptop and the D8 response-time bound remain open.
 
 
 ## Isolated archive catalogue (T03, merged)
