@@ -26,6 +26,7 @@
 ## Git and review workflow
 - Once project scope and repository identity are established, create a GitHub repository in the user's account with a README and push work feature by feature.
 - Use a separate branch for each feature and clear commit messages describing the change.
+- On the owner's laptop, create every git worktree under `E:\OpenSourceProjectFinder-worktrees\<short-task-name>` (for example `git worktree add E:\OpenSourceProjectFinder-worktrees\t28 -b <branch> origin/main`), never directly in `E:\`. Remove the worktree (`git worktree remove`) once its PR is merged or closed.
 - Open a pull request for each feature, review its diff and verification results, and merge only after review passes and required checks and repository rules are satisfied.
 - Address requested changes, rerun affected checks, and review the updated diff before merging. Do not bypass review restrictions or invent approvals.
 - Update the tracker and documentation with each successfully completed feature or phase.
