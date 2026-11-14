@@ -336,7 +336,7 @@ def test_runtime_status_is_sanitized_and_never_invents_a_last_success(tmp_path):
     assert status["coverage"] == "unknown"
     assert status["archive_as_of"] is None
     assert status["latest_run"] is None
-    assert status["ranking_version"] == "rrf-v1"
+    assert status["ranking_version"] == "keyword-first-v1"
     assert status["search_configured"] is False
     assert status["generation"] is None
     rendered = json.dumps(status)
@@ -425,7 +425,7 @@ def test_runtime_serves_live_only_when_milvus_is_down(monkeypatch):
     target = runtime.target()
 
     assert target.archive_online is False
-    assert target.generation == f"{'a' * 40}:rrf-v1"
+    assert target.generation == f"{'a' * 40}:keyword-first-v1"
     assert target.revalidator is not None
     assert len(loads) == 1 and len(connects) == 1
 
@@ -445,7 +445,7 @@ def test_runtime_serves_live_only_when_the_model_cannot_load(monkeypatch):
 
     assert target.archive_online is False
     # The manifest still names the pinned revision even without weights.
-    assert target.generation == f"{'m' * 40}:rrf-v1"
+    assert target.generation == f"{'m' * 40}:keyword-first-v1"
 
 
 def test_live_only_target_reports_the_archive_as_failed(monkeypatch):

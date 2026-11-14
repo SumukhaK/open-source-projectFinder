@@ -334,7 +334,7 @@ def test_collect_records_three_runs_from_one_search_without_the_token():
     runs = data["ideas"][0]["runs"]
     assert [r["repo_id"] for r in runs["keyword"]["results"]] == [1, 2]
     assert [r["repo_id"] for r in runs["archive"]["results"]] == [3, 1]
-    assert [r["repo_id"] for r in runs["hybrid"]["results"]] == [1, 3, 2]
+    assert [r["repo_id"] for r in runs["hybrid"]["results"]] == [1, 2, 3]
     # README excerpts are never frozen: the sheet does not use them and they
     # can hold third-party text such as e-mail addresses.
     assert all(
@@ -503,7 +503,7 @@ def test_an_idea_whose_archive_times_out_is_searched_again_whole():
     assert budget["attempts"] == 2 and notes["attempts"] == 1
     assert budget["runs"]["archive"]["status"] == "ok"
     assert [r["repo_id"] for r in budget["runs"]["archive"]["results"]] == [3, 1]
-    assert [r["repo_id"] for r in budget["runs"]["hybrid"]["results"]] == [1, 3, 2]
+    assert [r["repo_id"] for r in budget["runs"]["hybrid"]["results"]] == [1, 2, 3]
 
 
 def test_idea_retries_are_bounded_and_the_report_counts_them():

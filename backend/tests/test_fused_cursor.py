@@ -8,6 +8,7 @@ import threading
 
 import pytest
 from app.core.config import Settings
+from app.services.eligibility import ArchiveEvidence
 from app.services.fused_cursor import (
     CursorCodec,
     CursorExpired,
@@ -16,11 +17,17 @@ from app.services.fused_cursor import (
     SnapshotStore,
 )
 from app.services.hybrid_search import HybridSearchResult
+from app.services.keyword_candidates import KeywordCandidate, KeywordCandidates
 from app.services.live_scope import live_eligible
-from app.services.rank_fusion import FusedCandidate, FusedResults, SourceHealth
+from app.services.rank_fusion import (
+    FusedCandidate,
+    FusedResults,
+    SourceHealth,
+    fuse_candidates,
+)
 
 IDEA = "an offline first app for sharing community tools"
-GENERATION = "614241f622f53c4eeff9890bdc4f31cfecc418b3:rrf-v1"
+GENERATION = "614241f622f53c4eeff9890bdc4f31cfecc418b3:keyword-first-v1"
 KEY = "k" * 40
 
 
@@ -162,6 +169,55 @@ def test_pages_cover_the_snapshot_once_without_duplicates_or_rank_splicing(build
     assert page.next_cursor is None
 
 
+def keyword_source(rank, repo_id):
+    return KeywordCandidate(rank, card(rank, repo_id).metadata)
+
+
+def archive_source(repo_id, score):
+    hit = {
+        "repo_id": repo_id,
+        "revision": f"{repo_id:064x}",
+        "chunk_id": f"{repo_id:064x}",
+        "score": score,
+        "snippet": f"snippet for {repo_id}",
+        "section": "Overview",
+        "ordinal": 0,
+        "language": "Python",
+        "license": "MIT",
+        "pushed_at": 1793059200,
+    }
+    return ArchiveEvidence(hit, card(1, repo_id).metadata)
+
+
+def test_mixed_source_pages_keep_the_keyword_first_order_without_repeats(build):
+    fused = fuse_candidates(
+        KeywordCandidates(
+            (keyword_source(1, 10), keyword_source(2, 20), keyword_source(3, 30))
+        ),
+        (archive_source(40, 0.9), archive_source(20, 0.8), archive_source(50, 0.7)),
+    )
+    assert [item.repo_id for item in fused.candidates] == [10, 20, 30, 40, 50]
+    pager = build(FakeService(result(list(fused.candidates))))
+
+    page = first(pager)
+    seen = [item.repo_id for item in page.items]
+    sources = [item.sources for item in page.items]
+    ranks = [item.rank for item in page.items]
+    while page.next_cursor:
+        page = next_page(pager, page.next_cursor)
+        seen.extend(item.repo_id for item in page.items)
+        sources.extend(item.sources for item in page.items)
+        ranks.extend(item.rank for item in page.items)
+
+    assert seen == [10, 20, 30, 40, 50]
+    assert ranks == [1, 2, 3, 4, 5]
+    assert sources[1] == ("github", "archive")
+    assert sources[3] == ("archive",)
+    assert len(seen) == len(set(seen))
+    assert page.has_more is False
+    assert page.next_cursor is None
+
+
 def test_repeating_a_page_is_stable(build):
     pager = build(FakeService(result([card(i, 300 + i) for i in range(1, 5)])))
     cursor = first(pager).next_cursor
@@ -186,7 +242,7 @@ def test_repeating_a_page_is_stable(build):
         lambda token: token[0] + ("A" if token[0] != "A" else "B") + token[2:],
         lambda token: token.split(".")[1],
         lambda token: token.split(".")[0] + ".",
-        lambda token: "é." + token.split(".")[1],
+        lambda token: "Ã©." + token.split(".")[1],
         lambda token: token + ".",
         lambda token: "",
         lambda token: "not-a-cursor",
