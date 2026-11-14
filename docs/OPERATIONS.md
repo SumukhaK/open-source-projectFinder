@@ -1,6 +1,6 @@
 # Operator handbook
 
-Status: **T29a, awaiting review** (2026-11-14). This handbook covers the merged
+Status: **T29a, merged** (2026-11-14, `b88f5f5`). This handbook covers the merged
 system at `50663f7`. It is the only operator document; the detailed task evidence
 stays in [TRACKER](../execution-plans/hybrid-search/TRACKER.md) and the per-task
 evidence files.
@@ -484,7 +484,7 @@ its own history and `LastTaskResult`.
 | `WriterBusy` | Another worker holds the writer lease | Wait for expiry; do not delete locks |
 | `retry_at` set | GitHub rate limit or quota | Wait until that Unix time; an early retry makes no requests |
 | `milvus_unavailable` | Milvus never became ready | Check `GET /v1/archive/status` and the Milvus runbook; backup still ran |
-| `SEARCH_UNAVAILABLE` "starting" | Cold build still running | Retry after `HYBRID_BUILD_WAIT_SECONDS`; the runtime caches the build |
+| `SEARCH_UNAVAILABLE` "starting" | Cold build still running | The app retries quietly up to twice; the runtime retries the build after `HYBRID_BUILD_RETRY_SECONDS` (30 s) |
 | `degraded` page | Archive source failed | Check Milvus/model; live results are still served |
 | WSL `ERROR_NO_SYSTEM_RESOURCES` | WSL VM stuck or host RAM exhausted | Close heavy apps, then Windows **Restart** |
 | Restore refuses an unsafe ledger | Ledger unreadable or missing live decisions | Repair the ledger first; do not bypass the check |
