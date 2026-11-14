@@ -1,7 +1,11 @@
 from app.services.eligibility import ArchiveEvidence
 from app.services.keyword_candidates import KeywordCandidate, KeywordCandidates
-from app.services.rank_fusion import SourceHealth, fuse_candidates
-from pytest import approx, raises
+from app.services.rank_fusion import (
+    RANKING_VERSION,
+    SourceHealth,
+    fuse_candidates,
+)
+from pytest import approx, mark, raises
 
 K = 60
 
@@ -61,13 +65,13 @@ def test_union_keeps_github_only_archive_only_and_common_repositories():
 
     assert result.total is None
     assert [(card.repo_id, card.sources) for card in result.candidates] == [
-        (20, ("github", "archive")),
         (10, ("github",)),
+        (20, ("github", "archive")),
         (30, ("archive",)),
     ]
-    assert result.candidates[0].metadata["full_name"] == "owner/repo-20"
-    assert result.candidates[0].archive.snippet == "snippet for 20"
-    assert result.candidates[1].archive is None
+    assert result.candidates[0].metadata["full_name"] == "owner/repo-10"
+    assert result.candidates[0].archive is None
+    assert result.candidates[1].archive.snippet == "snippet for 20"
     assert result.candidates[2].metadata["full_name"] == "owner/repo-30"
     assert result.candidates[2].archive.snippet == "snippet for 30"
 
@@ -88,7 +92,7 @@ def test_archive_chunks_collapse_to_one_card_with_the_best_chunk():
     assert result.candidates[0].archive.section == "Overview"
 
 
-def test_hand_computed_equal_weight_rrf_ranks():
+def test_hand_computed_equal_weight_rrf_scores():
     github = KeywordCandidates((keyword(1, 10), keyword(2, 20), keyword(3, 30)))
     archive = (evidence(20, 0.9), evidence(40, 0.8), evidence(10, 0.7))
 
@@ -99,19 +103,18 @@ def test_hand_computed_equal_weight_rrf_ranks():
     assert scores[10] == approx(1 / (K + 1) + 1 / (K + 3))
     assert scores[40] == approx(1 / (K + 2))
     assert scores[30] == approx(1 / (K + 3))
-    assert [card.repo_id for card in result.candidates] == [20, 10, 40, 30]
+    assert [card.repo_id for card in result.candidates] == [10, 20, 30, 40]
     assert all(0 < card.rrf_score < 1 for card in result.candidates)
 
 
-def test_equal_scores_break_by_best_source_rank_then_repo_id():
+def test_an_archive_score_tie_does_not_lift_an_archive_only_result():
     github = KeywordCandidates((keyword(1, 10), keyword(2, 40)))
-    archive = (evidence(20, 0.9), evidence(30, 0.9))
+    archive = (evidence(20, 0.9),)
 
     result = fuse_candidates(github, archive)
 
-    assert [card.repo_id for card in result.candidates] == [10, 20, 30, 40]
-    assert result.candidates[0].rrf_score == result.candidates[1].rrf_score
-    assert result.candidates[2].rrf_score == result.candidates[3].rrf_score
+    assert [card.repo_id for card in result.candidates] == [10, 40, 20]
+    assert result.candidates[0].rrf_score == result.candidates[2].rrf_score
 
 
 def test_fusion_is_identical_for_repeated_input_order():
@@ -358,3 +361,93 @@ def test_a_whole_short_chunk_snippet_is_returned_unchanged():
     text = "A complete chunk that was never cut. It ends mid-sente"
     assert archive_snippet(text) == text
     assert archive_snippet("y" * (SNIPPET_LIMIT - 4)) == "y" * (SNIPPET_LIMIT - 4)
+
+
+# D8 option A: keyword results first, archive-only results after them. The
+# archive stays out of the top 10 until a new ranking version passes the D8 B
+# gate (scripts/relevance_eval.py gate).
+
+
+def test_keyword_results_come_first_and_archive_only_results_follow():
+    # Keyword order A, B, C; archive order X, B, Y.
+    github = KeywordCandidates((keyword(1, 10), keyword(2, 20), keyword(3, 30)))
+    archive = (evidence(40, 0.9), evidence(20, 0.8), evidence(50, 0.7))
+
+    result = fuse_candidates(github, archive)
+
+    assert [card.repo_id for card in result.candidates] == [10, 20, 30, 40, 50]
+    assert [card.rank for card in result.candidates] == [1, 2, 3, 4, 5]
+    common = result.candidates[1]
+    assert common.sources == ("github", "archive")
+    assert common.archive.snippet == "snippet for 20"
+    assert result.candidates[3].sources == ("archive",)
+
+
+def test_an_archive_only_result_never_displaces_a_keyword_result():
+    github = KeywordCandidates(
+        tuple(keyword(rank, 1000 + rank) for rank in range(1, 101))
+    )
+    archive = (evidence(5000, 1.0), evidence(5001, 0.9))
+
+    result = fuse_candidates(github, archive)
+
+    ids = [card.repo_id for card in result.candidates]
+    assert ids[:100] == [1000 + rank for rank in range(1, 101)]
+    assert ids[100:] == [5000, 5001]
+    assert [card.rank for card in result.candidates] == list(range(1, 103))
+
+
+@mark.parametrize(
+    "github",
+    [
+        KeywordCandidates((), status="failed", reason="unavailable"),
+        KeywordCandidates((), status="failed", reason="rate_limited", retry_after=30),
+        KeywordCandidates(),
+        KeywordCandidates(status="query_not_supported", reason="empty"),
+    ],
+    ids=["failed", "rate_limited", "empty", "query_not_supported"],
+)
+def test_keyword_failure_or_emptiness_serves_the_archive_order(github):
+    archive = (evidence(30, 0.5), evidence(10, 0.9), evidence(20, 0.7))
+
+    result = fuse_candidates(github, archive)
+
+    assert [card.repo_id for card in result.candidates] == [10, 20, 30]
+    assert all(card.sources == ("archive",) for card in result.candidates)
+    assert result.github == SourceHealth(
+        github.status, github.reason, github.retry_after
+    )
+    assert result.archive == SourceHealth("ok")
+
+
+@mark.parametrize("archive_status", ["failed", "incomplete"])
+def test_archive_failure_or_incompleteness_serves_the_keyword_order(archive_status):
+    github = KeywordCandidates((keyword(1, 20), keyword(2, 10)))
+
+    result = fuse_candidates(github, (), archive_status=archive_status)
+
+    assert [card.repo_id for card in result.candidates] == [20, 10]
+    assert all(card.sources == ("github",) for card in result.candidates)
+    assert result.github == SourceHealth("ok")
+    assert result.archive == SourceHealth(archive_status)
+
+
+def test_ranking_version_names_the_keyword_first_order():
+    assert RANKING_VERSION == "keyword-first-v1"
+
+
+def test_rrf_score_is_still_reported_but_no_longer_orders_the_list():
+    # Archive rank 1 has the highest score, yet it stays behind both keyword
+    # results; the reported score keeps its previous definition.
+    github = KeywordCandidates((keyword(1, 10), keyword(2, 20)))
+    archive = (evidence(30, 0.9), evidence(40, 0.8), evidence(10, 0.7))
+
+    result = fuse_candidates(github, archive)
+    scores = {card.repo_id: card.rrf_score for card in result.candidates}
+
+    assert [card.repo_id for card in result.candidates] == [10, 20, 30, 40]
+    assert scores[10] == approx(1 / (K + 1) + 1 / (K + 3))
+    assert scores[20] == approx(1 / (K + 2))
+    assert scores[30] == approx(1 / (K + 1))
+    assert scores[40] == approx(1 / (K + 2))
+    assert scores[30] > scores[20]  # ordering is not score order any more

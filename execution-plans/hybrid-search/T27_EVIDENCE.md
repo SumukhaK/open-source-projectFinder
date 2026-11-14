@@ -243,7 +243,10 @@ archive is much larger. D8's rule ("at least as relevant as today's") is
   0.75 or less, which equals keyword-only here: nDCG@10 0.695, 0 ideas worse.
   Rerun T27 with the same ideas after the 10k pilot, and only then let the
   archive into the top 10. This needs a ranking change (a new
-  `RANKING_VERSION`) in its own reviewed task; not done here.
+  `RANKING_VERSION`) in its own reviewed task, not in this one; it was
+  implemented 2026-11-14 in
+  [PR #125](https://github.com/SumukhaK/open-source-projectFinder/pull/125) (see
+  "Option A implemented" below).
 - **B. Set a numeric acceptance bar for any later hybrid ranking,** checked
   with this tool on a fresh snapshot. For example: hybrid nDCG@10 at least
   keyword minus 0.02, AND at least N relevant archive-only results in hybrid
@@ -348,6 +351,25 @@ Only its verdict table is included in the PR; the report's missing-label list
 stays local. No production ranking, `RANKING_VERSION`, API, migration or config
 changes. Reverting this PR removes only the offline gate; existing subcommands
 remain compatible. Independently reviewed by Claude and merged as `875f71b`.
+
+### Option A implemented (2026-11-14)
+
+The separate ranking task the owner asked for in the D8 options is
+[PR #125](https://github.com/SumukhaK/open-source-projectFinder/pull/125) on base
+`b3e81a7c6d1f96942cd91f759e417c37e79b79b0` (branch
+`opencode/hybrid-d8a-keyword-first`), awaiting review. `RANKING_VERSION` is now
+`keyword-first-v1`: the served order is every GitHub keyword result in keyword
+order, then archive-only repositories in archive rank order, tie-broken by
+numeric repository ID. The archive therefore cannot push a keyword result out of
+the top 10. `rrf_score` is still computed and returned exactly as before (the
+mobile contract requires it) but no longer decides the order. If the keyword
+source fails, is rate limited or returns nothing, the archive results are served
+alone in archive order with unchanged source health; eligibility, visibility,
+cursors and pagination are unchanged. This is the `keyword_then_archive` row of
+the what-if table above (nDCG@10 0.695, the same as keyword-only), implemented
+in the service rather than re-ranked offline. No snapshot was re-collected and no
+new relevance number is claimed; archive-only results may rank above keyword
+results again only through a new ranking version that passes the D8 B gate.
 
 ### Part B tool changes
 

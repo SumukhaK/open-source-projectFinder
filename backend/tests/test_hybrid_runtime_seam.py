@@ -46,4 +46,4 @@ def test_injected_reader_and_embeddings_are_used_by_the_build(monkeypatch):
     assert target.revalidator.reader is reader
     assert target.pager.service.embeddings is embeddings
     assert target.pager.service.vectors is vectors
-    assert target.generation == "a" * 40 + ":rrf-v1"
+    assert target.generation == "a" * 40 + ":keyword-first-v1"

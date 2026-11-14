@@ -20,7 +20,7 @@ from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
 KEY = "k" * 40
-GENERATION = "a" * 40 + ":rrf-v1"
+GENERATION = "a" * 40 + ":keyword-first-v1"
 HEADERS = {"Authorization": "Bearer session1"}
 IDEA = "an offline first app for sharing community tools"
 SUMMARY_PATH = "/v1/projects/search/summary"
