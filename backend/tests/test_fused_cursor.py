@@ -242,7 +242,7 @@ def test_repeating_a_page_is_stable(build):
         lambda token: token[0] + ("A" if token[0] != "A" else "B") + token[2:],
         lambda token: token.split(".")[1],
         lambda token: token.split(".")[0] + ".",
-        lambda token: "Ã©." + token.split(".")[1],
+        lambda token: "é." + token.split(".")[1],
         lambda token: token + ".",
         lambda token: "",
         lambda token: "not-a-cursor",

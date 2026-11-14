@@ -357,7 +357,7 @@ remain compatible. Independently reviewed by Claude and merged as `875f71b`.
 The separate ranking task the owner asked for in the D8 options is
 [PR #125](https://github.com/SumukhaK/open-source-projectFinder/pull/125) on base
 `b3e81a7c6d1f96942cd91f759e417c37e79b79b0` (branch
-`opencode/hybrid-d8a-keyword-first`), awaiting review. `RANKING_VERSION` is now
+`opencode/hybrid-d8a-keyword-first`), merged as `0c1752b` after independent review. `RANKING_VERSION` is now
 `keyword-first-v1`: the served order is every GitHub keyword result in keyword
 order, then archive-only repositories in archive rank order, tie-broken by
 numeric repository ID. The archive therefore cannot push a keyword result out of
