@@ -6,7 +6,7 @@ This folder is a portable execution contract. The user's selected DeepSeek model
 
 1. Read README, REQUEST, ARCHITECTURE, this guide, TRACKER and the chosen task. Inspect current callers, tests, fixtures, settings, exports and CI before editing. Resolve any mismatch against merged main; a draft task's proposed path is not an existing interface.
 2. Verify prerequisite PRs are actually merged into main. An accepted checkbox alone is insufficient. Resolve only decisions the task depends on; record other blockers and continue independent work.
-3. Inspect git status. Preserve unrelated work; never reset, stash, clean or cherry-pick someone else's changes. If the checkout is dirty, use a clean approved worktree or report the isolation needed. Do not overwrite an existing branch.
+3. Inspect git status. Preserve unrelated work; never reset, stash, clean or cherry-pick someone else's changes. If the checkout is dirty, use a clean approved worktree (on the owner's laptop, under `E:\OpenSourceProjectFinder-worktrees\`, see AGENTS.md) or report the isolation needed. Do not overwrite an existing branch.
 4. Fetch origin main, then cut the task's named `codex/` branch **from origin/main**, not another feature branch. Example for a clean checkout: `git fetch origin main`, then `git switch -c codex/hybrid-t03-catalogue origin/main`. Record base SHA. Do not create another GitHub repository.
 5. Run the relevant baseline checks; distinguish inherited failures from your changes. Do not hide either. Read official docs for changed APIs and pin a compatible runtime/library set when needed. Capture source links/version, not copied outdated examples.
 
