@@ -1,5 +1,5 @@
 flowchart LR
-    %% Dashed nodes are planned by the voice assistant plan (V1-V3).
+    %% Voice and summary routes are implemented (V1a-V3b); device checks are pending (T30 U16).
     User[User: text or hold-to-talk voice] --> Mobile[React mobile app: result list, optional voice reply]
     Mobile <--> API[Python FastAPI backend: auth, sessions, central config]
     API <--> Speech[Deepgram speech: STT and TTS, key on backend]
@@ -10,5 +10,3 @@ flowchart LR
     Public[Public GitHub repositories: permissive, pushed in 365 days] --> Worker[Ingestion worker: capped backfill, weekly refresh, sweeps]
     Worker --> Embed[README and metadata chunks, E5 embeddings]
     Embed --> Milvus
-    classDef planned stroke-dasharray: 6 4
-    class Speech,LLM planned
