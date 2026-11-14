@@ -128,7 +128,7 @@ The [OpenCode execution handbook](execution-plans/hybrid-search/README.md) conta
 | T23 host scheduling | Merged (PR #105); tasks registered disabled, one real daily run passed | `python -m app.workers.schedule run weekly` (refresh, then backup) and `run daily` (retire) for Windows Task Scheduler templates that import disabled, with catch-up, one job at a time and a sanitized `status` ([runbook](infra/scheduler/README.md), [evidence](execution-plans/hybrid-search/T23_EVIDENCE.md)) |
 | T26 real-HTTP integration lane | Merged (PR #111) | Opt-in `RUN_HYBRID_INTEGRATION=1` lane: real archive worker, CPU Milvus and FastAPI over HTTP, with fake GitHub and fixed embeddings ([evidence](execution-plans/hybrid-search/T26_EVIDENCE.md)) |
 | T27 | Merged: Part A `bf58d1e`, Part B `f039f2f` (results, what-if, D8 options) | Keyword search wins today (nDCG@10 0.695 vs hybrid 0.428); owner chose D8 A+B; owner cross-check of model labels pending |
-| T28 | In progress (T28a, current corpus) | Measure capacity and foreground fairness before expansion; needs T23, T26 and T27 |
+| T28 | In progress: T28a merged (capacity on the current corpus; [evidence](execution-plans/hybrid-search/T28_EVIDENCE.md)); D8 bound proposed; T28b 10k needs approval | Measure capacity and foreground fairness before expansion; needs T23, T26 and T27 |
 | T29 | In progress: T29a merged (operator handbook `docs/OPERATIONS.md`) | Close rollout readiness and recovery documentation; T29b after T28 |
 | T30 upkeep | Not started; backlog open | Collects non-blocking review notes (currently U7, U9, U12, U15 and U16; U1-U6, U8, U10, U11, U13, U14 and U17-U20 closed) and runs after T29 ([task](execution-plans/hybrid-search/tasks/T30-upkeep.md)) |
 
