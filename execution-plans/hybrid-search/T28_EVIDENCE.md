@@ -1,6 +1,6 @@
 # T28a evidence: capacity on the current corpus (2026-11-14)
 
-Status: **Awaiting review (slice T28a).** Base `50663f7f14d1c1be11c318f5371dc20792cc2413`, branch `claude/hybrid-t28-capacity`. Measured on the real local stack with the current published archive (**204 repositories**); nothing was ingested beyond it. The 10k measurement is a later slice (**T28b**) that needs the owner's separate 10k approval (D1 caps the archive at 1,000 until then). No behaviour, limit or setting was changed.
+Status: **Merged (slice T28a), `b6a835e`, 2026-11-14.** The D8 bound and expansion gates below are proposals awaiting the owner. Base `50663f7f14d1c1be11c318f5371dc20792cc2413`, branch `claude/hybrid-t28-capacity`. Measured on the real local stack with the current published archive (**204 repositories**); nothing was ingested beyond it. The 10k measurement is a later slice (**T28b**) that needs the owner's separate 10k approval (D1 caps the archive at 1,000 until then). No behaviour, limit or setting was changed.
 
 Raw sanitized numbers, one JSON object per run: [T28_results.jsonl](T28_results.jsonl). They hold timings, counts, memory and sizes only: no ideas, results, tokens or paths.
 
