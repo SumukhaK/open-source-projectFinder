@@ -204,3 +204,16 @@ test('invalid repository paths are rejected before a request', () => {
   expect(() => getProject('session', 'owner')).toThrow('Invalid repository name');
   expect(() => saveFavourite('session', 'owner/name/extra')).toThrow('Invalid repository name');
 });
+
+test.each([['3', 3], ['999', 999], ['invalid', undefined], ['', undefined]])('retains numeric Retry-After %s for bounded search retries', async (header, expected) => {
+  jest.spyOn(global, 'fetch').mockResolvedValue(response(503, { detail: { code: 'SEARCH_UNAVAILABLE', retryable: true } }, { 'Retry-After': header }) as Response);
+  const failure = await searchProjects('session', { idea: 'task manager' }).catch(error => error);
+  expect(failure.retryAfterSeconds).toBe(expected);
+});
+
+test('retains HTTP-date Retry-After as seconds without exposing server details', async () => {
+  jest.spyOn(Date, 'now').mockReturnValue(Date.parse('Fri, 01 Jan 2027 00:00:00 GMT'));
+  jest.spyOn(global, 'fetch').mockResolvedValue(response(503, { detail: { code: 'SEARCH_UNAVAILABLE', retryable: true } }, { 'Retry-After': 'Fri, 01 Jan 2027 00:00:03 GMT' }) as Response);
+  const failure = await searchProjects('session', { idea: 'task manager' }).catch(error => error);
+  expect(failure.retryAfterSeconds).toBe(3);
+});

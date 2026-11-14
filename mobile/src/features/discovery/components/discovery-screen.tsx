@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AppState, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AppearanceControls } from '../../../components/appearance-controls';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -93,14 +93,39 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   const [searchFailed, setSearchFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [favouritesError, setFavouritesError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loadingRequest, setLoadingRequest] = useState<{ account: string; token: string } | null>(null);
+  const loading = loadingRequest?.account === account && loadingRequest.token === token && !signingOut;
+  const [searchLabel, setSearchLabel] = useState('Searching projects');
   const [loadingMore, setLoadingMore] = useState(false);
   const [selected, setSelected] = useState<Project | null>(null);
   const [details, setDetails] = useState<ProjectDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState('');
   const [favouriteBusy, setFavouriteBusy] = useState<string | null>(null);
-  const voice = useVoiceInput(account, token, text => { setIdea(text); setHeard(true); setPendingVoice(text); });
+  const searchBusy = useRef<number | null>(null);
+  const retryWait = useRef<(() => void) | null>(null);
+  const foreground = useRef(AppState.currentState === 'active');
+  const searchContext = useRef({ account, token, signingOut, tab, selected });
+  useLayoutEffect(() => { searchContext.current = { account, token, signingOut, tab, selected }; });
+  const cancelSearch = useCallback((updateState = true) => {
+    listSeq.current += 1;
+    searchBusy.current = null;
+    retryWait.current?.();
+    retryWait.current = null;
+    if (updateState) { setLoadingRequest(null); setRefreshing(false); setLoadingMore(false); }
+  }, []);
+  useEffect(() => {
+    foreground.current = AppState.currentState === 'active';
+    const subscription = AppState.addEventListener('change', state => {
+      foreground.current = state === 'active';
+      if (!foreground.current) cancelSearch();
+    });
+    return () => { sessionSeq.current += 1; cancelSearch(false); subscription.remove(); };
+  }, [account, token, signingOut, cancelSearch]);
+  const voice = useVoiceInput(account, token, text => {
+    if (searchBusy.current !== null) return;
+    setIdea(text); setHeard(true); setPendingVoice(text);
+  });
 
   useEffect(() => {
     let active = true;
@@ -114,7 +139,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       setSelected(null);
       setDetails(null);
       setDetailsLoading(false);
-      setLoading(false);
+      setLoadingRequest(null);
       setLoadingMore(false);
       setIdea('');
       setActiveIdea('');
@@ -175,42 +200,71 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   };
 
   const runSearch = async (text: string, { refresh = false, fromVoice = false } = {}) => {
+    if (searchBusy.current !== null || !foreground.current || signingOut || tab !== 'Home' || selected) return;
     cancelSummary();
     const summaryRequest = summarySequence.current;
     const seq = ++listSeq.current;
+    searchBusy.current = seq;
     const session = sessionSeq.current;
+    const valid = () => seq === listSeq.current && session === sessionSeq.current
+      && foreground.current && searchContext.current.account === account
+      && searchContext.current.token === token && !searchContext.current.signingOut
+      && searchContext.current.tab === 'Home' && !searchContext.current.selected;
+    setSearchLabel('Searching projects');
     setActiveIdea(text);
     setFromCache(false);
-    setLoading(true);
+    setLoadingRequest({ account, token });
     setRefreshing(refresh);
     setLoadingMore(false);
     setError('');
     setSearchFailed(false);
     if (!refresh) setResults(null);
     try {
-      const data = await searchProjects(token, { idea: text, pageSize: discoveryConfig.pageSize });
-      if (seq !== listSeq.current || session !== sessionSeq.current) return;
+      let data: SearchResults;
+      for (let attempt = 0; ; attempt++) {
+        if (!valid()) return;
+        setSearchLabel('Searching projects');
+        try {
+          data = await searchProjects(token, { idea: text, pageSize: discoveryConfig.pageSize });
+          break;
+        } catch (failure) {
+          if (!valid()) return;
+          if (!(failure instanceof DiscoveryApiError) || failure.status !== 503 || !failure.retryable
+            || !['SEARCH_UNAVAILABLE', 'SEARCH_INCOMPLETE'].includes(failure.code ?? '') || attempt >= 2) throw failure;
+          const delay = failure.retryAfterSeconds === undefined ? 2 ** (attempt + 1)
+            : Math.max(1, Math.min(10, failure.retryAfterSeconds));
+          setSearchLabel(failure.code === 'SEARCH_UNAVAILABLE' ? 'Search is starting…' : 'Waiting to retry search…');
+          await new Promise<void>(resolve => {
+            const finish = () => { clearTimeout(timer); retryWait.current = null; resolve(); };
+            const timer = setTimeout(finish, delay * 1000);
+            retryWait.current = finish;
+          });
+        }
+      }
+      if (!valid()) return;
       setResults(data);
       if (summaryRequest === summarySequence.current && data.items.length) {
         setSummaryPage({ names: data.items.slice(0, 10).map(item => item.full_name), sequence: summaryRequest, fromVoice, account, token });
       }
       await saveCachedResults(account, data);
     } catch (failure) {
-      if (seq !== listSeq.current || session !== sessionSeq.current) return;
+      if (!valid()) return;
       const message = failureMessage(failure, 'Search failed. Please try again.');
       if (message) {
         setError(message);
         setSearchFailed(true);
       }
     } finally {
-      if (seq === listSeq.current) {
-        setLoading(false);
+      if (searchBusy.current === seq) {
+        searchBusy.current = null;
+        setLoadingRequest(null);
         setRefreshing(false);
       }
     }
   };
 
   const submit = async () => {
+    if (searchBusy.current !== null) return;
     setHeard(false);
     void voice.cancel();
     setPendingVoice('');
@@ -314,6 +368,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   };
 
   const openDetails = async (project: Project) => {
+    cancelSearch();
     const seq = ++detailsSeq.current;
     setSelected(project);
     setDetails(null);
@@ -341,6 +396,8 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
   };
 
   const leave = async () => {
+    searchContext.current.signingOut = true;
+    cancelSearch();
     cancelSummary();
     setPendingVoice('');
     await speech.signOut();
@@ -377,7 +434,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
       refreshControl={canRefresh
-        ? <RefreshControl refreshing={refreshing} onRefresh={refresh} accessibilityLabel="Refresh results" />
+        ? <RefreshControl refreshing={refreshing && loading} onRefresh={refresh} accessibilityLabel="Refresh results" />
         : undefined}
     >
       {accountError ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.error, { color: colors.text }]}>{accountError}</Text> : null}
@@ -400,7 +457,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
             placeholder="Describe your idea"
             placeholderTextColor={colors.muted}
             value={idea}
-            onChangeText={text => { setHeard(false); setIdea(text); setPendingVoice(''); void voice.cancel(); }}
+            onChangeText={text => { if (text !== idea) cancelSearch(); setHeard(false); setIdea(text); setPendingVoice(''); void voice.cancel(); }}
             maxLength={discoveryConfig.maxIdeaLength}
             multiline
             style={[styles.input, { paddingRight: 64, backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
@@ -417,7 +474,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
           >
             <Text style={[styles.searchText, { color: colors.onAccent }]}>Search projects</Text>
           </Pressable>
-          {loading && !refreshing ? <BrandLoader mode={mode} label="Searching projects" /> : null}
+          {loading && (!refreshing || searchLabel !== 'Searching projects') ? <BrandLoader mode={mode} label={searchLabel} /> : null}
           {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.error, { color: colors.text }]}>{error}</Text> : null}
           {fromCache && results ? <Text style={[styles.notice, { color: colors.muted }]}>{results.has_more
             ? 'Showing your last results. Search again to load more.'
@@ -478,7 +535,7 @@ export function DiscoveryScreen({ token, user, onSignOut, signingOut, accountErr
       </>}
     </ScrollView>
     <View style={[styles.tabs, { padding: 20, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
-      {(['Home', 'Profile'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name} accessibilityState={{ selected: tab === name }} onPress={() => { cancelSummary(); void voice.cancel(); setPendingVoice(''); setHeard(false); setVoiceSettings(false); closeDetails(); setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
+      {(['Home', 'Profile'] as const).map(name => <Pressable key={name} accessibilityRole="tab" accessibilityLabel={name} accessibilityState={{ selected: tab === name }} onPress={() => { cancelSearch(); cancelSummary(); void voice.cancel(); setPendingVoice(''); setHeard(false); setVoiceSettings(false); closeDetails(); setTab(name); }} style={[styles.tab, { minHeight: 48, backgroundColor: tab === name ? colors.accent : colors.surface, borderColor: colors.border }]}>
         <Text style={{ color: tab === name ? colors.onAccent : colors.text }}>{name}</Text>
       </Pressable>)}
     </View>
