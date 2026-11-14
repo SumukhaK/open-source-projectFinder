@@ -245,7 +245,7 @@ archive is much larger. D8's rule ("at least as relevant as today's") is
   archive into the top 10. This needs a ranking change (a new
   `RANKING_VERSION`) in its own reviewed task, not in this one; it was
   implemented 2026-11-14 in
-  [PR #__](https://github.com/SumukhaK/open-source-projectFinder/pull/__) (see
+  [PR #125](https://github.com/SumukhaK/open-source-projectFinder/pull/125) (see
   "Option A implemented" below).
 - **B. Set a numeric acceptance bar for any later hybrid ranking,** checked
   with this tool on a fresh snapshot. For example: hybrid nDCG@10 at least
@@ -355,7 +355,7 @@ remain compatible. Independently reviewed by Claude and merged as `875f71b`.
 ### Option A implemented (2026-11-14)
 
 The separate ranking task the owner asked for in the D8 options is
-[PR #__](https://github.com/SumukhaK/open-source-projectFinder/pull/__) on base
+[PR #125](https://github.com/SumukhaK/open-source-projectFinder/pull/125) on base
 `b3e81a7c6d1f96942cd91f759e417c37e79b79b0` (branch
 `opencode/hybrid-d8a-keyword-first`), awaiting review. `RANKING_VERSION` is now
 `keyword-first-v1`: the served order is every GitHub keyword result in keyword
