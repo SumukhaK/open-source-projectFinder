@@ -116,6 +116,10 @@ A usable GPU exists and Milvus runs on its GPU profile (372 MiB VRAM at peak). *
    - **25k / 50k:** not proposed for this host. The VM cap (~6 GB), the 4 GB GPU and the observed host memory pressure (Docker Desktop start alone took about 2.7 GB) need a separate measured plan and approval.
 3. **Host operating note:** run archive jobs with heavy apps closed. Starting Docker with the usual apps open took Windows below 1 GB available.
 
+## Follow-up: concurrent visibility re-checks (PR #135)
+
+Not measured here. `EligibilityService.check` now fetches the uncached archive hits with a per-call `ThreadPoolExecutor` bounded by `VISIBILITY_CHECK_CONCURRENCY = 4`, then applies suppressions and issues in the original candidate order. The per-repository in-flight sharing from T30 U22 (#133) is kept, and a waiting check now gives up with `unavailable` after a bound derived from the reader's own retry budget instead of waiting indefinitely. Cache contents, TTL and size are unchanged, and a credential failure still returns without waiting for the remaining fetches. Branch `opencode/hybrid-visibility-concurrency`, base `110165cdc68827d51fd7296c3f768fce76d1ad8e` (merged with `b9415f6`). No latency claim is made; a re-measure on the laptop comes later.
+
 ## Not measured / limits
 
 - 1k and 10k corpora (T28b; 1k growth is allowed by D1 but was out of this slice's scope, 10k needs approval).
