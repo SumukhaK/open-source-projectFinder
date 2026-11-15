@@ -1,6 +1,6 @@
 # T28: Measure capacity and foreground fairness before expansion
 
-Status: Not started. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: Merged (T28a); T28b (10k) deferred by the owner on 2026-11-15. Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
