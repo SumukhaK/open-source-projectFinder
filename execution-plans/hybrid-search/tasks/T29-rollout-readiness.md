@@ -1,6 +1,6 @@
 # T29: Close rollout readiness and recovery documentation
 
-Status: T29a merged (`b88f5f5`, 2026-11-14); T29b **Awaiting review** (2026-11-15, branch `opencode/hybrid-t29b-rollout`). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
+Status: T29a merged (`b88f5f5`, 2026-11-14); T29b merged (`4e0eceb`, 2026-11-15). Review/merge evidence belongs in [TRACKER](../TRACKER.md).
 
 | Control | Value |
 | --- | --- |
