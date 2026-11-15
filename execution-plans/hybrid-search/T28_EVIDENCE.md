@@ -107,6 +107,8 @@ A usable GPU exists and Milvus runs on its GPU profile (372 MiB VRAM at peak). *
 
 ## Proposals (need owner approval; nothing is activated)
 
+**Approved by the owner on 2026-11-15** (decision recorded in [TRACKER](TRACKER.md)), with one correction to the finding below: T28's own outcomes show no `validation_failed` result in any run, so uncached negative decisions cannot be the main cause of the repeated re-checks. A real-stack diagnosis follows.
+
 1. **D8 response time (proposed):** the server always answers within its 8 s budget (`hybrid_search_budget`), degrading rather than hanging. Measured today: hybrid p50 3.7 s, p95 8.0 s. The planned hypothesis "hybrid p95 < 5 s, warm semantic p95 < 2 s" **is not met** end to end. The semantic part alone is about 0.1 s. Proposed target: **hybrid p95 ≤ 5 s at concurrency 1 after the visibility-cache follow-up lands**, measured with this script; until then the bound is the 8 s budget.
 2. **Expansion gates (proposed):**
    - Growing toward the approved **1,000** cap is within measured capacity: about 20 min of embedding, Milvus under 1 GB, disk in MB.
