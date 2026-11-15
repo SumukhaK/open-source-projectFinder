@@ -471,8 +471,8 @@ measurement.
   the lowest available memory during completed re-measure runs was 1,222 MB.
 - **Growth.** Embedding the full 1,000-repository cap takes about 20 minutes at
   the measured ~7 passages/s, and 10,000 repositories about 3.3 hours. Growing
-  to 1,000 is inside measured capacity; 10k is not measured and needs the
-  owner's separate approval (T28b).
+  to 1,000 is inside measured capacity; 10k is not measured; the owner
+  deferred it (T28b) on 2026-11-15, and it needs separate approval.
 
 **D8 response-time bound (approved by the owner on 2026-11-15).** Hybrid p95
 must stay at or below **7 s at concurrency 1** — measured 6.6 s — inside the
@@ -508,8 +508,8 @@ archive grows and the gate is re-run, so the archive stays out of the top 10.
 - The pilot archive holds about 204 repositories. **D1 hard cap: 1,000 archived
   repositories** until the owner separately approves 10k. T28a measured disk,
   RAM and latency at the current corpus
-  ([capacity and limits](#capacity-and-limits)); the 10k measurement (T28b) is
-  still not approved
+  ([capacity and limits](#capacity-and-limits)); the 10k measurement (T28b) was
+  deferred by the owner on 2026-11-15
   ([TRACKER](../execution-plans/hybrid-search/TRACKER.md)).
 - T27 measured keyword nDCG@10 0.695 versus hybrid 0.428 on 58 ideas, so the
   archive stays out of the top 10 (D8 option A). Option B is the re-entry gate:
