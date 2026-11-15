@@ -135,7 +135,7 @@ Same real stack and 58 frozen ideas as T28a; each run is a fresh process, so the
 - Hybrid c=4 was not measured: the 1 GB memory guard stopped it at 938 MB available.
 - The first request of each run is still about 8 s (cold model, collection and cache).
 - Peaks: Milvus 682 MiB, VRAM 372 MiB, bench process 1.25 GB; lowest Windows available memory during completed runs 1,222 MB.
-- Hybrid p95 (6.6 s) still misses the proposed 5 s target. The remaining time is GitHub's keyword search (p50 3.6 s, p95 5.6 s, max 6.6 s), which hybrid waits for. The D8 bound choice is with the owner.
+- Hybrid p95 (6.6 s) still misses the proposed 5 s target. The remaining time is GitHub's keyword search (p50 3.6 s, p95 5.6 s, max 6.6 s), which hybrid waits for. The owner then set the D8 bound to hybrid p95 ≤ 7 s at concurrency 1 (2026-11-15), replacing the 5 s target.
 
 ## Not measured / limits
 
