@@ -1,15 +1,17 @@
 # Operator handbook
 
-Status: **T29a, merged** (2026-11-14, `b88f5f5`). This handbook covers the merged
-system at `50663f7`. It is the only operator document; the detailed task evidence
-stays in [TRACKER](../execution-plans/hybrid-search/TRACKER.md) and the per-task
-evidence files.
+Status: **T29b, awaiting review** (2026-11-15), on top of T29a (`b88f5f5`,
+2026-11-14) and the merged system at `fa9ab34`. It is the only operator
+document; the detailed task evidence stays in
+[TRACKER](../execution-plans/hybrid-search/TRACKER.md) and the per-task evidence
+files.
 
 Every command below names the file it comes from. Where documents disagreed, the
 code and the merged evidence won and the other document was corrected in the
-same change. T29b will add measured capacity outcomes, the D8 response-time
-bound, a rollout recommendation and a real-stack recovery rehearsal after T28;
-it does not exist yet.
+same change. T29b adds the measured capacity outcomes and the D8 bound
+([section 10](#10-limits)), the rollout recommendation
+([section 11](#11-rollout-recommendation-recommendation-needs-owner-approval))
+and a real restore rehearsal ([section 8](#8-restore)).
 
 ## 1. Before you start
 
@@ -100,6 +102,12 @@ the 1k synthetic proof on driver 617.42, and the runbook baseline is 576.57 or
 newer ([Milvus runbook](../infra/milvus/README.md#gpu-verification)). The
 `reporadar-t01` Compose project belongs to this archive alone.
 
+On the laptop the running stack lives in its own worktree,
+`<worktrees>/t01-milvus/infra/milvus`, moved there on 2026-11-15 from the old
+T01 checkout. Run the same commands from that folder; the private `.env` must sit
+beside its `compose.yaml`, because Compose reads it from there. Use whichever
+folder exists on the machine you are on.
+
 ### 2.4 Archive worker
 
 Run the worker from the worker checkout's `backend/` with its WSL interpreter,
@@ -127,13 +135,33 @@ Open it on a device with the matching Expo Go version or a development build.
 GitHub login needs the configured backend and an iOS/Android development build;
 Expo Go and web are visual previews only.
 
-### 2.6 Scheduled jobs (optional, disabled)
+### 2.6 Scheduled jobs (enabled and running)
 
-The two Windows Task Scheduler templates import **disabled**. Enabling them needs
-the owner's explicit approval. Import, dry-run, enable/disable and retry steps are
-in the [scheduler runbook](../infra/scheduler/README.md#import-disabled); the
-templates contain no secret and the task stores none
+The two Windows Task Scheduler templates import **disabled**, and enabling them
+needs the owner's explicit approval. On the laptop the owner has enabled both and
+they are running. Import, dry-run, enable/disable and retry steps are in the
+[scheduler runbook](../infra/scheduler/README.md#import-disabled); the templates
+contain no secret and the task stores none
 ([scheduler runbook](../infra/scheduler/README.md#credentials)).
+
+Check the real state from PowerShell (do not assume it from this page):
+
+```powershell
+schtasks /query /fo LIST /v /tn "\RepoRadar\archive-weekly"
+schtasks /query /fo LIST /v /tn "\RepoRadar\archive-daily"
+```
+
+`Status: Ready` means the task is enabled and waiting. `Last Result: 0` means
+every step of the last run exited 0. Observed on 2026-11-15:
+
+| Task | Status | Last run (local) | Last result | Next run (local) |
+| --- | --- | --- | --- | --- |
+| `\RepoRadar\archive-weekly` | Ready | 2026-11-15 16:09:32 | 0 | 2026-11-22 03:30:00 |
+| `\RepoRadar\archive-daily` | Ready | 2026-11-14 22:00:01 | 0 | 2026-11-15 22:00:00 |
+
+The weekly task's 2026-11-15 run started well after its 03:30 trigger, which is
+the documented catch-up behaviour, not a second schedule. Record what
+`schtasks` prints rather than reinterpreting it.
 
 ## 3. Start and stop
 
@@ -303,6 +331,15 @@ python -m app.workers.archive restore [--snapshot ID]
 python -m app.workers.archive restore --activate
 ```
 
+A restore deletes any existing `restore-quarantine/` folder when it starts, so a
+previous quarantine is never preserved and must be reviewed before another
+restore begins. A successful run prints one JSON line — `result`
+`quarantined`, `ready` true, `repositories` served, `snapshot`,
+`backup_created_at`, `restored_at`, `schema_version`, `model_revision`,
+`catalogue_sha256`, the ledger state (`trusted`, `missing` or `stale`),
+`reapplied`, `purged`, `expired`, `rechecked` and `timings_ms` — and writes the
+same facts to `restore-quarantine/verdict.json`.
+
 Both commands refuse to start unless `ARCHIVE_LICENSE_ALLOWLIST` is exactly the
 approved D2 list. `--activate` also needs Milvus, the offline model
 (`HF_HUB_OFFLINE=1`) and `MILVUS_TOKEN`.
@@ -342,6 +379,50 @@ Keep `restore-previous-*` until you are satisfied. To roll back, stop the API an
 rename that folder back. Delete it afterwards, because the retirement sweep does
 not look inside it.
 
+### Rehearsal (2026-11-15)
+
+The quarantine half of this section was rehearsed for real on the laptop with
+the API running. Nothing was activated, the API was not stopped and no live data
+was deleted; only the quarantine copy this run created was removed afterwards.
+
+| Item | Value |
+| --- | --- |
+| Command | `python -m app.workers.archive restore` from the worker checkout's `backend/`, `HF_HUB_OFFLINE=1` |
+| Date | 2026-11-15 |
+| Exit code | 0 |
+| Wall time | 7 s (worker-reported `timings_ms.total` 3,551.7 ms) |
+| Snapshot | `latest`, created 2026-11-15T10:51:16Z |
+| Verdict | `ready` true, `repositories` 204, `ledger` `trusted`, `reapplied` [0, 0], `purged` 0, `expired` 0, `rechecked` 0, schema 7 |
+| Quarantine checks | `PRAGMA integrity_check` ok, no foreign-key violations, catalogue SHA-256 matched the verdict, 204 repositories and 1,142 chunks with the same repository IDs as the live catalogue, 401 referenced content files with the same paths and hashes |
+| Cleanup | `restore-quarantine/` (5.7 MB) deleted; live counts unchanged at 204 repositories and 1,142 chunks, no writer lease left behind |
+
+The live content folder holds 205 more files than the snapshot, because only
+referenced content is backed up. Unreferenced files are older README revisions
+that the retirement sweep keeps for 30 days (D3, see
+[privacy and retention](#privacy-and-retention)) before deleting them, so this
+difference is expected and is not a restore failure. It would be unexpected if
+the snapshot were missing a file the live catalogue references (the restore
+refuses that), or if unreferenced files older than 30 days survived a daily
+retirement run.
+
+Not rehearsed in this run: `backup --verify` (the private restore and hash check
+of the latest snapshot). Its first real run passed on 2026-11-12 (T21), and the
+weekly job exports a backup every Sunday; re-run it by hand outside the 22:00 IST
+daily and Sunday 03:30 IST weekly windows if you need fresh evidence.
+
+Milvus and the catalogue need not match one for one. On 2026-11-15 Milvus held
+1,150 vectors across 205 repository IDs, against the catalogue's 1,142 chunks
+across 204 repositories. The extra vectors are retired or old-revision entries:
+search drops them (`filter_active_hits`), and the retire and reconcile jobs
+remove them. Treat it as a problem only if the gap keeps growing across daily
+runs, or if a search returns a repository that is not in the catalogue.
+
+Section 9 was checked at the same time without changing anything:
+`ARCHIVE_GITHUB_TOKEN`, `MILVUS_TOKEN` and `HYBRID_BUILD_RETRY_SECONDS` exist in
+[`backend/app/core/config.py`](../backend/app/core/config.py), the `gpu` Compose
+profile exists in the Milvus stack, and the task names below match what
+`schtasks` reports. The live `.env` was not edited.
+
 ## 9. Turn the archive off (keyword-only fallback)
 
 There is no user-facing mode switch, and the archive is not a separate product
@@ -353,8 +434,8 @@ results are served alone with unchanged source health
 
 To run live/keyword-only:
 
-1. Stop Milvus and leave it stopped:
-   `docker compose --profile gpu down`
+1. Stop Milvus and leave it stopped: `docker compose --profile gpu down` from the
+   Milvus folder in [section 2.3](#23-milvus)
    ([Milvus runbook](../infra/milvus/README.md#stop-preserve-and-recover)).
 2. Disable the scheduled tasks so nothing writes to the archive:
    `Disable-ScheduledTask -TaskPath '\RepoRadar\' -TaskName archive-weekly` (and
@@ -377,6 +458,50 @@ from the live-only target expire, so the client restarts the search
 
 ## 10. Limits
 
+### Capacity and limits
+
+Measured on the real local stack with the published archive of 204
+repositories. Every number below comes from
+[T28 evidence](../execution-plans/hybrid-search/T28_EVIDENCE.md): T28a measured
+on 2026-11-14 and the T30 U22 re-measure on 2026-11-15. Nothing was ingested
+beyond the published archive, and no limit or setting was changed by the
+measurement.
+
+| Measure | Value |
+| --- | --- |
+| Archive search p50 / p95, concurrency 1 | 210 ms / 802 ms |
+| Archive search p50 / p95, concurrency 4 | 1,630 ms / 2,728 ms |
+| Hybrid search p50 / p95, concurrency 1 | 3,675 ms / 6,581 ms |
+| First request after a process start | about 8 s (cold model, collection and cache) |
+| Milvus container memory | 682 MiB (re-measure) to 849 MiB (T28a) |
+| Benchmark process memory | 1.25 GB (re-measure) / 1,262 MB RSS (T28a search process) |
+| Archive corpus | 204 repositories; D1 cap 1,000; 10k deferred |
+
+- **Concurrency.** The archive serves at most 4 searches at once. Above that
+  lock, requests are rejected as busy **by design**: at concurrency 8, 94 of 100
+  archive searches were rejected busy. Capacity claims above concurrency 4 are
+  not supported on this host.
+- **Memory.** Milvus holds about 0.7-0.85 GiB (682-849 MiB) and the benchmark
+  process about 1.25 GB, so a run needs both. At 16 GB, close heavy apps before
+  archive runs: starting Docker Desktop alone with the owner's apps open took
+  Windows available memory from 3.3 GB to 0.57 GB and aborted a T28a run, and
+  the lowest available memory during completed re-measure runs was 1,222 MB.
+- **Growth.** Embedding the full 1,000-repository cap takes about 20 minutes at
+  the measured ~7 passages/s, and 10,000 repositories about 3.3 hours. Growing
+  to 1,000 is inside measured capacity; 10k is not measured; the owner
+  deferred it (T28b) on 2026-11-15, and it needs separate approval.
+
+**D8 response-time bound (approved by the owner on 2026-11-15).** Hybrid p95
+must stay at or below **7 s at concurrency 1** — measured 6.6 s — inside the
+server's 8 s `hybrid_search_budget`. Most of that time is GitHub keyword search
+(p95 5.6 s), which hybrid waits for; the semantic part alone is about 0.1 s. This
+replaces the 5 s target proposed in T28a, which the re-measure did not meet.
+
+**D8 option B quality gate stays unmet.** The gate (nDCG tolerance 0.02, at least
+15 owner-labelled archive-only results, at most 3 regressions) failed on T27 run
+3 with 1 owner-confirmed archive-only pair of 5. It remains unmet until the
+archive grows and the gate is re-run, so the archive stays out of the top 10.
+
 ### Availability
 
 - Single laptop, single API host, no high availability, failover or multi-host
@@ -398,8 +523,10 @@ from the live-only target expire, so the client restarts the search
   the preceding 365 days. The live GitHub branch keeps its broader public,
   unarchived scope.
 - The pilot archive holds about 204 repositories. **D1 hard cap: 1,000 archived
-  repositories** until T28 measures disk/RAM/latency and the owner separately
-  approves 10k
+  repositories** until the owner separately approves 10k. T28a measured disk,
+  RAM and latency at the current corpus
+  ([capacity and limits](#capacity-and-limits)); the 10k measurement (T28b) was
+  deferred by the owner on 2026-11-15
   ([TRACKER](../execution-plans/hybrid-search/TRACKER.md)).
 - T27 measured keyword nDCG@10 0.695 versus hybrid 0.428 on 58 ideas, so the
   archive stays out of the top 10 (D8 option A). Option B is the re-entry gate:
@@ -409,8 +536,9 @@ from the live-only target expire, so the client restarts the search
   rank above keyword results again only through a new ranking version that
   passes that gate
   ([T27 evidence](../execution-plans/hybrid-search/T27_EVIDENCE.md#option-b-bar-owner-approved-2026-11-13)).
-- The D8 response-time bound and capacity outcomes belong to T28/T29b, not this
-  handbook.
+- Capacity, the D8 response-time bound and the growth limits are in
+  [capacity and limits](#capacity-and-limits). The rollout recommendation is
+  [section 11](#11-rollout-recommendation-recommendation-needs-owner-approval).
 
 ### Privacy and retention
 
@@ -453,7 +581,47 @@ holds these operator-visible items; this handbook does not claim they are fixed:
 - **U16:** voice device acceptance on a physical phone has not run; the owner
   performs it manually once the app is complete end to end.
 
-## 11. Logs and private files
+## 11. Rollout recommendation (recommendation, needs owner approval)
+
+Written 2026-11-15 from T28a, the T30 U22 re-measure and the T27 relevance
+results. It is advice only: it activates nothing, changes no setting and starts
+no deployment.
+
+1. **Keep `keyword-first-v1` as the default ranking.** Keyword results keep their
+   GitHub order and archive-only repositories follow. T27 measured keyword
+   nDCG@10 0.695 against hybrid 0.428, and the D8 option B re-entry gate is still
+   unmet, so no archive result should rank above a keyword result yet.
+2. **Keep the archive enabled at the 1,000 cap on this laptop, as a pilot for one
+   user.** The archive is what exercises Milvus, the worker, the scheduler,
+   backup, restore and the hybrid path. Measured capacity supports it: archive
+   p95 802 ms at concurrency 1 and 2,728 ms at concurrency 4, hybrid p95 6.6 s at
+   concurrency 1 inside the 7 s D8 bound, and Milvus under 1 GiB.
+3. **Grow the archive toward 1,000 repositories before re-running the D8 option B
+   gate.** The gate needs at least 15 owner-labelled archive-only results, and
+   204 repositories produced 1 owner-confirmed pair on run 3. Growth is inside
+   measured capacity (about 20 minutes of embedding per 1,000 repositories) but
+   still needs the owner's explicit `--cap` approval for each run under D1.
+4. **Do not deploy beyond the laptop.** Phase 7 stays open. There is one host,
+   no failover, no multi-host rate limiting, process-local caches and the
+   4-search archive lock. A second host, a second user or any hosted deployment
+   needs its own plan, its own measurements and the owner's approval.
+5. **What would change this recommendation:**
+   - the option B gate passing on the grown archive — that would justify
+     revisiting keyword-first and letting archive results rank above keyword
+     results;
+   - hybrid p95 above 7 s at concurrency 1, busy rejections at concurrency ≤ 4,
+     OOM, or host available memory repeatedly under 1 GB — that would justify
+     lowering the cap, not raising it;
+   - an owner decision to approve and run T28b at 10k — that is a separate slice,
+     not part of this pilot;
+   - a need for more than one user or more than one host — that needs a
+     deployment plan before any further rollout.
+
+Until the owner records a decision, the current state stands: keyword-first
+ranking, the archive on at the 1,000 cap, the scheduled jobs running, and nothing
+deployed beyond this laptop.
+
+## 12. Logs and private files
 
 All archive files sit beside the catalogue (`ARCHIVE_DATABASE_PATH`, default
 `./data/archive/catalogue.sqlite3` relative to `backend/`); content lives under
@@ -475,7 +643,7 @@ reach it ([scheduler runbook](../infra/scheduler/README.md#status)). The API log
 counts and durations, not request bodies or ideas. Windows Task Scheduler keeps
 its own history and `LastTaskResult`.
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 | Symptom | Meaning | Action |
 | --- | --- | --- |
@@ -490,7 +658,7 @@ its own history and `LastTaskResult`.
 | Restore refuses an unsafe ledger | Ledger unreadable or missing live decisions | Repair the ledger first; do not bypass the check |
 | Activation refuses the quarantine | No ready verdict or the catalogue changed | Re-run `restore` and review the quarantine again |
 
-## 13. Sources
+## 14. Sources
 
 - [Backend commands and settings](../backend/README.md) and
   [`backend/.env.example`](../backend/.env.example).
@@ -500,4 +668,5 @@ its own history and `LastTaskResult`.
 - [Hybrid architecture and decisions](../execution-plans/hybrid-search/ARCHITECTURE.md).
 - [Task tracker and acceptance evidence](../execution-plans/hybrid-search/TRACKER.md).
 - [T27 relevance and D8 evidence](../execution-plans/hybrid-search/T27_EVIDENCE.md).
+- [T28 capacity and D8 response-time evidence](../execution-plans/hybrid-search/T28_EVIDENCE.md).
 - [T30 upkeep backlog](../execution-plans/hybrid-search/tasks/T30-upkeep.md).

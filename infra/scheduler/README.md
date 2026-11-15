@@ -9,7 +9,7 @@ Two Windows Task Scheduler templates start the archive worker inside WSL. Window
 
 Both tasks run one command, `python -m app.workers.schedule run weekly|daily`, from the worker checkout's `backend/` folder. That command runs each step as `python -m app.workers.archive <step>` with that step's defaults. `refresh` therefore runs with `--cap 0`: no new repositories are admitted until the owner approves a cap under D1.
 
-**The templates are imported disabled.** Importing them does not activate anything. Enabling them needs the owner's explicit approval. Until then, run the weekly job by hand after each refresh, as before.
+**The templates are imported disabled.** Importing them does not activate anything. Enabling them needs the owner's explicit approval. On the laptop the owner has enabled both tasks and they run on schedule; on 2026-11-15 `schtasks /query` showed both `Ready`, the weekly task's last run 2026-11-15 16:09:32 with result 0 (next 2026-11-22 03:30) and the daily task's last run 2026-11-14 22:00:01 with result 0 (next 2026-11-15 22:00). A weekly run that starts hours after its 03:30 trigger is the catch-up behaviour below, not a second schedule. Run the weekly job by hand only when a period was missed.
 
 ## How a run is identified, caught up and kept single
 
@@ -32,7 +32,7 @@ The log gets one `milvus` line per job, with `milvus_started`, `docker_started`,
 
 The commands are JSON argument lists in the worker checkout's ignored `backend/.env`. They run without a shell, the program must be an absolute path, and a command containing `-v`, `--volumes` or `--rmi` is refused, so a stop can never delete the Milvus volumes. Leave them empty (the default) to only check Milvus and never start it.
 
-On the laptop, everything goes through Docker Desktop's Windows `docker.exe`, which WSL runs through interop. WSL integration is off, so there is no `/usr/bin/docker` in the distro. Docker Desktop is a per-user install, so find the path with `Get-Command docker.exe` in PowerShell, or look under `C:\Users\<user>\AppData\Local\Programs\DockerDesktop\resources\bin\`, and write it as a `/mnt/c/...` path. `docker.exe` is a Windows program, so the compose file must be given as a **Windows path** (`E:\...`). A `/mnt/e/...` path is not translated. The live GPU Milvus stack is the `reporadar-t01` Compose project in the T01 checkout. Its private `.env`, which holds the Milvus and MinIO passwords, must sit in the same folder as `compose.yaml`, because Compose reads it from there.
+On the laptop, everything goes through Docker Desktop's Windows `docker.exe`, which WSL runs through interop. WSL integration is off, so there is no `/usr/bin/docker` in the distro. Docker Desktop is a per-user install, so find the path with `Get-Command docker.exe` in PowerShell, or look under `C:\Users\<user>\AppData\Local\Programs\DockerDesktop\resources\bin\`, and write it as a `/mnt/c/...` path. `docker.exe` is a Windows program, so the compose file must be given as a **Windows path** (`E:\...`). A `/mnt/e/...` path is not translated. The live GPU Milvus stack is the `reporadar-t01` Compose project in its own worktree, `<worktrees>\t01-milvus` (moved there on 2026-11-15); the example below uses that folder. Its private `.env`, which holds the Milvus and MinIO passwords, must sit in the same folder as `compose.yaml`, because Compose reads it from there.
 
 ```sh
 ARCHIVE_SCHEDULE_DOCKER_STATUS=["/mnt/c/Users/<user>/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe","info"]
