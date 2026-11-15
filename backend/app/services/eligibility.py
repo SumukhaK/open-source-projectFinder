@@ -5,7 +5,7 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from threading import Lock
+from threading import Event, Lock
 
 from app.core.config import ARCHIVE_VISIBILITY_CACHE_SIZE
 from app.integrations.archive_github import (
@@ -67,6 +67,16 @@ def _within_window(value, now):
     return pushed.tzinfo is not None and now - timedelta(days=365) <= pushed <= now
 
 
+class _Flight:
+    """One in-flight GitHub visibility call that concurrent checks share."""
+
+    def __init__(self):
+        self.done = Event()
+        self.body = None
+        self.checked = None
+        self.error = None
+
+
 class EligibilityService:
     """Pass bounded raw live metadata keyed by expected numeric ID per request.
 
@@ -81,6 +91,7 @@ class EligibilityService:
         self.settings = settings
         self.now = now or (lambda: datetime.now(timezone.utc))
         self._cache = OrderedDict()
+        self._flights = {}
         self._lock = Lock()
 
     def _suppress(self, repo_id, reason, now):
@@ -101,23 +112,67 @@ class EligibilityService:
         with self._lock:
             self._cache.pop(repo_id, None)
 
-    def _cached(self, repo_id, now):
-        with self._lock:
-            cached = self._cache.get(repo_id)
-            if cached:
-                checked, metadata = cached
-                if (
-                    0
-                    <= (now - checked).total_seconds()
-                    < self.settings.archive_visibility_ttl_seconds
-                ):
-                    return _cached_copy(metadata), checked
-                self._cache.pop(repo_id)
+    def _cached_locked(self, repo_id, now):
+        cached = self._cache.get(repo_id)
+        if cached:
+            checked, metadata = cached
+            if (
+                0
+                <= (now - checked).total_seconds()
+                < self.settings.archive_visibility_ttl_seconds
+            ):
+                return _cached_copy(metadata), checked
+            self._cache.pop(repo_id)
         return None
 
-    def _fetch_metadata(self, repo_id, name):
-        result = self.reader.fetch_metadata(repo_id, name)
-        return json.loads(result.response.body)
+    def _cached(self, repo_id, now):
+        with self._lock:
+            return self._cached_locked(repo_id, now)
+
+    def _flight_timeout(self):
+        """Upper bound on one fetch, derived from the reader's own retries."""
+        attempts = self.settings.archive_github_attempts
+        return (
+            attempts * self.settings.archive_github_timeout
+            + (attempts - 1) * self.settings.archive_github_retry_max_wait
+        )
+
+    def _fetch_metadata(self, repo_id, name, checked):
+        """Fetch one repository, sharing an in-flight call with other checks.
+
+        A search that hit its deadline leaves its check running in a worker
+        thread; the next search must reuse that call, not repeat it (T28).
+        Returns ``(metadata, checked)`` using the leader's start time.
+        """
+        with self._lock:
+            hit = self._cached_locked(repo_id, checked)
+            if hit is not None:
+                return hit
+            flight = self._flights.get(repo_id)
+            leader = flight is None
+            if leader:
+                flight = self._flights[repo_id] = _Flight()
+        if not leader:
+            # A stalled leader must not pin a search open indefinitely.
+            if not flight.done.wait(self._flight_timeout()):
+                raise ArchiveUnavailable("in-flight visibility check did not finish")
+            if flight.error is not None:
+                raise flight.error
+            return json.loads(flight.body), flight.checked
+        try:
+            result = self.reader.fetch_metadata(repo_id, name)
+            metadata = json.loads(result.response.body)
+            if live_eligible(repo_id, metadata):
+                self._remember(repo_id, metadata, checked)
+            flight.body, flight.checked = result.response.body, checked
+            return metadata, checked
+        except BaseException as error:
+            flight.error = error
+            raise
+        finally:
+            with self._lock:
+                self._flights.pop(repo_id, None)
+            flight.done.set()
 
     def _prefetch(self, pending, fetched, errors):
         """Fetch uncached metadata concurrently, at most the fixed bound at once.
@@ -133,7 +188,7 @@ class EligibilityService:
         )
         try:
             futures = {
-                pool.submit(self._fetch_metadata, repo_id, full_name): (
+                pool.submit(self._fetch_metadata, repo_id, full_name, checked): (
                     repo_id,
                     checked,
                 )
@@ -142,7 +197,7 @@ class EligibilityService:
             for future in as_completed(futures):
                 repo_id, checked = futures[future]
                 try:
-                    fetched[repo_id] = (future.result(), checked)
+                    fetched[repo_id] = future.result()
                 except ArchiveAuthenticationError as error:
                     errors[repo_id] = error
                     rejected = repo_id
@@ -304,8 +359,6 @@ class EligibilityService:
                     raise error
                 if repo_id in fetched:
                     metadata, checked = fetched[repo_id]
-                    if live_eligible(repo_id, metadata):
-                        self._remember(repo_id, metadata, checked)
                 else:
                     metadata, checked = cached[repo_id]
             if metadata.get("archived") is True:

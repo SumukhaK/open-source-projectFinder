@@ -66,7 +66,7 @@ Stage times inside those requests:
 
 Semantic retrieval itself (embedding + Milvus) is about **0.1 s**. End-to-end latency is set by GitHub: the keyword search (about 3.6 s) and the per-hit visibility rechecks, which hit the 8 s search budget (`hybrid_search_budget`) for 5% of single searches and 16–42% at concurrency 4.
 
-**Finding (cause of the tail):** `EligibilityService._metadata` only caches a repository that is currently live-eligible. Archive hits that fail the live check are fetched from GitHub again on every search, so about 400 visibility calls were made for 100 searches over 58 ideas. Proposed follow-up, not changed here: also cache the negative decision for the same 15-minute TTL (safe direction: it can only hide a result longer) and/or run the per-hit rechecks concurrently within the existing bounds.
+**Finding (cause of the tail), corrected 2026-11-15:** the first reading (uncached negative decisions) was wrong; no run produced a `validation_failed` outcome. A follow-up diagnosis against real GitHub (60 catalogue repositories, no Docker) found two causes. (1) `EligibilityService.check` fetches uncached repositories one at a time (about 0.9 s each), so a cold search touching 10 or more misses the 8 s budget. (2) When it does, `hybrid_search.py` stops waiting but cannot cancel the worker thread, so the check keeps fetching; the next search then fetches the same still-uncached repositories again, because `_metadata` had no in-flight guard. Two overlapping cold checks made 119 calls for 60 repositories; a repeat check in the same process made 0. Fixes: a per-repository in-flight guard in `_metadata` (this follow-up) and bounded concurrent fetches inside `check` (separate PR). A re-measure on the laptop follows both.
 
 ### Admission and busy behaviour
 
@@ -107,6 +107,8 @@ A usable GPU exists and Milvus runs on its GPU profile (372 MiB VRAM at peak). *
 
 ## Proposals (need owner approval; nothing is activated)
 
+**Approved by the owner on 2026-11-15** (decision recorded in [TRACKER](TRACKER.md)), with one correction to the finding below: T28's own outcomes show no `validation_failed` result in any run, so uncached negative decisions cannot be the main cause of the repeated re-checks. A real-stack diagnosis follows.
+
 1. **D8 response time (proposed):** the server always answers within its 8 s budget (`hybrid_search_budget`), degrading rather than hanging. Measured today: hybrid p50 3.7 s, p95 8.0 s. The planned hypothesis "hybrid p95 < 5 s, warm semantic p95 < 2 s" **is not met** end to end. The semantic part alone is about 0.1 s. Proposed target: **hybrid p95 ≤ 5 s at concurrency 1 after the visibility-cache follow-up lands**, measured with this script; until then the bound is the 8 s budget.
 2. **Expansion gates (proposed):**
    - Growing toward the approved **1,000** cap is within measured capacity: about 20 min of embedding, Milvus under 1 GB, disk in MB.
@@ -116,7 +118,7 @@ A usable GPU exists and Milvus runs on its GPU profile (372 MiB VRAM at peak). *
 
 ## Follow-up: concurrent visibility re-checks (PR #135)
 
-Not measured here. `EligibilityService.check` now fetches the uncached archive hits with a per-call `ThreadPoolExecutor` bounded by `VISIBILITY_CHECK_CONCURRENCY = 4`, then applies suppressions and issues in the original candidate order. Cache contents, TTL and size are unchanged, and a credential failure still returns without waiting for the remaining fetches. Branch `opencode/hybrid-visibility-concurrency`, base `110165cdc68827d51fd7296c3f768fce76d1ad8e`. No latency claim is made; a re-measure on the laptop comes later.
+Not measured here. `EligibilityService.check` now fetches the uncached archive hits with a per-call `ThreadPoolExecutor` bounded by `VISIBILITY_CHECK_CONCURRENCY = 4`, then applies suppressions and issues in the original candidate order. The per-repository in-flight sharing from T30 U22 (#133) is kept, and a waiting check now gives up with `unavailable` after a bound derived from the reader's own retry budget instead of waiting indefinitely. Cache contents, TTL and size are unchanged, and a credential failure still returns without waiting for the remaining fetches. Branch `opencode/hybrid-visibility-concurrency`, base `110165cdc68827d51fd7296c3f768fce76d1ad8e` (merged with `b9415f6`). No latency claim is made; a re-measure on the laptop comes later.
 
 ## Not measured / limits
 
