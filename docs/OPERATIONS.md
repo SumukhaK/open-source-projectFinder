@@ -396,9 +396,26 @@ was deleted; only the quarantine copy this run created was removed afterwards.
 | Quarantine checks | `PRAGMA integrity_check` ok, no foreign-key violations, catalogue SHA-256 matched the verdict, 204 repositories and 1,142 chunks with the same repository IDs as the live catalogue, 401 referenced content files with the same paths and hashes |
 | Cleanup | `restore-quarantine/` (5.7 MB) deleted; live counts unchanged at 204 repositories and 1,142 chunks, no writer lease left behind |
 
-The live catalogue holds 205 more content files than the snapshot, because only
-referenced content is backed up. That difference is expected and is not a
-restore failure.
+The live content folder holds 205 more files than the snapshot, because only
+referenced content is backed up. Unreferenced files are older README revisions
+that the retirement sweep keeps for 30 days (D3, see
+[privacy and retention](#privacy-and-retention)) before deleting them, so this
+difference is expected and is not a restore failure. It would be unexpected if
+the snapshot were missing a file the live catalogue references (the restore
+refuses that), or if unreferenced files older than 30 days survived a daily
+retirement run.
+
+Not rehearsed in this run: `backup --verify` (the private restore and hash check
+of the latest snapshot). Its first real run passed on 2026-11-12 (T21), and the
+weekly job exports a backup every Sunday; re-run it by hand outside the 22:00 IST
+daily and Sunday 03:30 IST weekly windows if you need fresh evidence.
+
+Milvus and the catalogue need not match one for one. On 2026-11-15 Milvus held
+1,150 vectors across 205 repository IDs, against the catalogue's 1,142 chunks
+across 204 repositories. The extra vectors are retired or old-revision entries:
+search drops them (`filter_active_hits`), and the retire and reconcile jobs
+remove them. Treat it as a problem only if the gap keeps growing across daily
+runs, or if a search returns a repository that is not in the catalogue.
 
 Section 9 was checked at the same time without changing anything:
 `ARCHIVE_GITHUB_TOKEN`, `MILVUS_TOKEN` and `HYBRID_BUILD_RETRY_SECONDS` exist in
