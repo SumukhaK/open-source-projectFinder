@@ -1,6 +1,6 @@
 # Operator handbook
 
-Status: **T29b, awaiting review** (2026-11-15), on top of T29a (`b88f5f5`,
+Status: **T29b, merged** (2026-11-15, `4e0eceb`), on top of T29a (`b88f5f5`,
 2026-11-14) and the merged system at `fa9ab34`. It is the only operator
 document; the detailed task evidence stays in
 [TRACKER](../execution-plans/hybrid-search/TRACKER.md) and the per-task evidence
