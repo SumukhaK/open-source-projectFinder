@@ -454,13 +454,25 @@ class HybridRuntime:
         except EmbeddingError:
             return "unavailable"
 
+    def _api_reader(self):
+        token = self.settings.api_github_token.get_secret_value().strip()
+        if token:
+            return ArchiveGitHubReader(token, settings=self.settings)
+        # Fallback keeps today's behaviour: the worker's ARCHIVE_GITHUB_TOKEN.
+        logger.warning(
+            json.dumps(
+                {"event": "hybrid_shared_github_token", "set": "API_GITHUB_TOKEN"}
+            )
+        )
+        return ArchiveGitHubReader(settings=self.settings)
+
     def _build(self):
         key = self.settings.hybrid_cursor_signing_key.get_secret_value()
         if len(key) < 32:
             raise HybridUnavailable("hybrid search is not configured")
         try:
             store = self._archive_store()
-            reader = self._reader or ArchiveGitHubReader(settings=self.settings)
+            reader = self._reader or self._api_reader()
         except (ArchiveGitHubError, OSError, RuntimeError):
             raise HybridUnavailable("hybrid search is unavailable") from None
         try:

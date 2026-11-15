@@ -146,6 +146,9 @@ class Settings(BaseSettings):
     archive_busy_timeout_ms: int = Field(default=5000, ge=1, le=30000)
     archive_visibility_ttl_seconds: int = Field(default=900, ge=1, le=900)
     archive_github_token: str = ""
+    # The API's own read-only public-metadata token (T30 U12), so serving
+    # traffic does not spend the archive worker's GitHub rate limit.
+    api_github_token: SecretStr = Field(default=SecretStr(""), repr=False)
     archive_github_api_url: str = "https://api.github.com"
     archive_github_timeout: float = Field(default=10, gt=0, le=30)
     archive_github_attempts: int = Field(default=3, ge=1, le=5)

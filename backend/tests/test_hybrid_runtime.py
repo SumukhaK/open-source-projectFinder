@@ -366,15 +366,17 @@ class FakeStore:
 
 
 class FakeArchiveReader:
-    def __init__(self, settings=None):
+    def __init__(self, token=None, *, settings=None):
+        self.token = token
         self.settings = settings
 
 
-def runtime_with(monkeypatch, *, load, connect, clock=None, retry=30):
+def runtime_with(monkeypatch, *, load, connect, clock=None, retry=30, **extra):
     settings = Settings(
         _env_file=None,
         hybrid_cursor_signing_key="k" * 40,
         hybrid_build_retry_seconds=retry,
+        **extra,
     )
     monkeypatch.setattr(
         "app.services.hybrid_runtime.EmbeddingAdapter.load",
@@ -565,6 +567,71 @@ def test_runtime_still_refuses_without_the_archive_reader(monkeypatch):
     with pytest.raises(HybridUnavailable):
         runtime.target()
     assert loads == []
+
+
+def test_api_visibility_checks_use_the_api_token_not_the_worker_token(
+    monkeypatch, caplog
+):
+    readers = []
+
+    class RecordingReader(FakeArchiveReader):
+        def __init__(self, token=None, *, settings=None):
+            super().__init__(token, settings=settings)
+            readers.append(self)
+
+    runtime = runtime_with(
+        monkeypatch,
+        load=loaded_model([]),
+        connect=milvus_down([]),
+        archive_github_token="worker-token",
+        api_github_token="  api-token  ",
+    )
+    monkeypatch.setattr(
+        "app.services.hybrid_runtime.ArchiveGitHubReader", RecordingReader
+    )
+
+    with caplog.at_level("WARNING", logger="reporadar.hybrid"):
+        runtime.target()
+
+    assert [reader.token for reader in readers] == ["api-token"]
+    assert "shared_github_token" not in caplog.text
+
+
+def test_api_falls_back_to_the_worker_token_with_one_content_free_warning(
+    monkeypatch, caplog
+):
+    readers = []
+
+    class RecordingReader(FakeArchiveReader):
+        def __init__(self, token=None, *, settings=None):
+            super().__init__(token, settings=settings)
+            readers.append(self)
+
+    runtime = runtime_with(
+        monkeypatch,
+        load=loaded_model([]),
+        connect=milvus_down([]),
+        archive_github_token="worker-token",
+    )
+    monkeypatch.setattr(
+        "app.services.hybrid_runtime.ArchiveGitHubReader", RecordingReader
+    )
+
+    with caplog.at_level("WARNING", logger="reporadar.hybrid"):
+        runtime.target()
+
+    # None means the reader keeps today's ARCHIVE_GITHUB_TOKEN default.
+    assert [reader.token for reader in readers] == [None]
+    warnings = [r for r in caplog.records if "shared_github_token" in r.getMessage()]
+    assert len(warnings) == 1
+    assert "worker-token" not in caplog.text
+
+
+def test_api_github_token_is_never_shown_in_settings_repr():
+    settings = Settings(_env_file=None, api_github_token="api-secret-value")
+
+    assert "api-secret-value" not in repr(settings)
+    assert "api-secret-value" not in str(settings.model_dump())
 
 
 def test_cold_build_waiters_leave_pool_workers_free(monkeypatch):

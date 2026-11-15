@@ -122,6 +122,14 @@ python -m app.workers.archive init-collection
 `init-collection` is the only command that creates the collection; the worker
 preflight only verifies and loads it.
 
+The API uses its own GitHub token for archive visibility re-checks (T30 U12):
+`API_GITHUB_TOKEN` in the same private `.env`, a fine-grained token with
+"Public repositories (read-only)" access and no permissions. Leave it empty to
+share the worker's `ARCHIVE_GITHUB_TOKEN` (today's behaviour); the API then logs
+one `hybrid_shared_github_token` warning each time it builds the hybrid stack.
+Neither value is ever logged. Revoke or rotate it on GitHub at any time; the
+worker's token is unaffected.
+
 ### 2.5 Mobile client
 
 From `mobile/` ([mobile README](../mobile/README.md#run-locally)):
@@ -574,8 +582,6 @@ holds these operator-visible items; this handbook does not claim they are fixed:
 - **U7:** a GitHub 422 (rejected query) is reported as `failed`/`unavailable`,
   not a distinct `query_rejected` reason.
 - **U9:** the compressed-response burst bound is documented, not measured.
-- **U12:** later-page live rechecks reuse the worker-only
-  `ARCHIVE_GITHUB_TOKEN`, so serving traffic can spend the worker's rate limit.
 - **U15:** the T25 mobile notices/buttons/refresh/focus/touch-target inspection
   on a phone-sized device in both themes has not run.
 - **U16:** voice device acceptance on a physical phone has not run; the owner
