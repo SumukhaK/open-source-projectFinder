@@ -38,8 +38,8 @@ On the laptop, everything goes through Docker Desktop's Windows `docker.exe`, wh
 ARCHIVE_SCHEDULE_DOCKER_STATUS=["/mnt/c/Users/<user>/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe","info"]
 ARCHIVE_SCHEDULE_DOCKER_START=["/mnt/c/Users/<user>/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe","desktop","start"]
 ARCHIVE_SCHEDULE_DOCKER_STOP=["/mnt/c/Users/<user>/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe","desktop","stop"]
-ARCHIVE_SCHEDULE_MILVUS_UP=["/mnt/c/Users/<user>/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe","compose","-f","E:\\OpenSourceProjectFinder-t01\\infra\\milvus\\compose.yaml","--profile","gpu","up","-d","--wait","--wait-timeout","180"]
-ARCHIVE_SCHEDULE_MILVUS_DOWN=["/mnt/c/Users/<user>/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe","compose","-f","E:\\OpenSourceProjectFinder-t01\\infra\\milvus\\compose.yaml","--profile","gpu","down"]
+ARCHIVE_SCHEDULE_MILVUS_UP=["/mnt/c/Users/<user>/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe","compose","-f","E:\\OpenSourceProjectFinder-worktrees\\t01-milvus\\infra\\milvus\\compose.yaml","--profile","gpu","up","-d","--wait","--wait-timeout","180"]
+ARCHIVE_SCHEDULE_MILVUS_DOWN=["/mnt/c/Users/<user>/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe","compose","-f","E:\\OpenSourceProjectFinder-worktrees\\t01-milvus\\infra\\milvus\\compose.yaml","--profile","gpu","down"]
 ARCHIVE_SCHEDULE_MILVUS_READY_SECONDS=300
 ```
 
