@@ -120,6 +120,23 @@ A usable GPU exists and Milvus runs on its GPU profile (372 MiB VRAM at peak). *
 
 Not measured here. `EligibilityService.check` now fetches the uncached archive hits with a per-call `ThreadPoolExecutor` bounded by `VISIBILITY_CHECK_CONCURRENCY = 4`, then applies suppressions and issues in the original candidate order. The per-repository in-flight sharing from T30 U22 (#133) is kept, and a waiting check now gives up with `unavailable` after a bound derived from the reader's own retry budget instead of waiting indefinitely. Cache contents, TTL and size are unchanged, and a credential failure still returns without waiting for the remaining fetches. Branch `opencode/hybrid-visibility-concurrency`, base `110165cdc68827d51fd7296c3f768fce76d1ad8e` (merged with `b9415f6`). No latency claim is made; a re-measure on the laptop comes later.
 
+## Re-measure after T30 U22 (2026-11-15, main 18d94f0)
+
+Same real stack and 58 frozen ideas as T28a; each run is a fresh process, so the visibility cache starts empty. ChatGPT/Codex stayed open, so the host had less free memory than in T28a and p50 comparisons are not strictly like-for-like. Raw numbers are kept on the laptop at `<worktrees>/_archive/remeasure-u22/results.jsonl` and are not committed.
+
+| Run | p50 ms (T28a → now) | p95 ms | max ms | Outcomes |
+| --- | --- | --- | --- | --- |
+| Archive, c=1, 100 searches | 120 → 210 | 5,485 → 802 | 8,009 → 7,939 | 5 timeouts → 0 |
+| Archive, c=4, 100 searches | 864 → 1,630 | 8,009 → 2,728 | 8,013 → 7,483 | 16 timeouts → 0 |
+| Archive, c=8 | — | — | — | 94/100 busy above the 4-search lock (unchanged by design) |
+| Hybrid, c=1, 39 searches | 3,674 → 3,675 | 8,014 → 6,581 | 8,014 → 7,453 | 4 degraded → 0 |
+
+- GitHub visibility calls per 100 archive searches: about 400 → 150 (about 0.5 s each, up to 4 at once).
+- Hybrid c=4 was not measured: the 1 GB memory guard stopped it at 938 MB available.
+- The first request of each run is still about 8 s (cold model, collection and cache).
+- Peaks: Milvus 682 MiB, VRAM 372 MiB, bench process 1.25 GB; lowest Windows available memory during completed runs 1,222 MB.
+- Hybrid p95 (6.6 s) still misses the proposed 5 s target. The remaining time is GitHub's keyword search (p50 3.6 s, p95 5.6 s, max 6.6 s), which hybrid waits for. The D8 bound choice is with the owner.
+
 ## Not measured / limits
 
 - 1k and 10k corpora (T28b; 1k growth is allowed by D1 but was out of this slice's scope, 10k needs approval).
