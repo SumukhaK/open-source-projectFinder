@@ -1,5 +1,7 @@
 import json
 import sqlite3
+import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
@@ -516,3 +518,70 @@ def test_validation_expiring_during_another_check_is_not_returned(connect):
     assert [entry.hit["repo_id"] for entry in result.archive] == [43]
     assert result.incomplete
     assert result.issues[0].code == "validation_expired"
+
+
+def _concurrent_checks(checker, hit, first_call, settle=0.3):
+    """Start one check, wait until its GitHub call is in flight, then start a
+    second check of the same hit, as the next search does after the first one
+    hit its deadline (the abandoned check keeps running in its worker thread)."""
+    results = []
+    threads = [
+        threading.Thread(target=lambda: results.append(checker.check([hit])))
+        for _ in range(2)
+    ]
+    threads[0].start()
+    assert first_call.wait(5)
+    threads[1].start()
+    time.sleep(settle)
+    return threads, results
+
+
+def test_concurrent_checks_share_one_in_flight_visibility_call(connect):
+    """T28 diagnosis: a second search must reuse an in-flight check, not repeat it."""
+    hit = seed(connect, pushed_at="2026-10-27T00:00:00Z")
+    first_call, release = threading.Event(), threading.Event()
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        first_call.set()
+        if len(calls) == 1:
+            assert release.wait(5)
+        return httpx.Response(200, json=payload())
+
+    checker = service(connect, handler)
+    threads, results = _concurrent_checks(checker, hit, first_call)
+    release.set()
+    for thread in threads:
+        thread.join(5)
+    assert len(calls) == 1
+    assert [len(result.archive) for result in results] == [1, 1]
+    results[0].archive[0].metadata["id"] = 99
+    assert results[1].archive[0].metadata["id"] == 42
+
+
+def test_a_shared_in_flight_failure_reaches_every_waiting_check(connect):
+    hit = seed(connect, pushed_at="2026-10-27T00:00:00Z")
+    first_call, release = threading.Event(), threading.Event()
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        first_call.set()
+        if len(calls) == 1:
+            assert release.wait(5)
+        return httpx.Response(503)
+
+    checker = service(connect, handler)
+    threads, results = _concurrent_checks(checker, hit, first_call)
+    release.set()
+    for thread in threads:
+        thread.join(5)
+    assert len(calls) == 1
+    assert [[issue.code for issue in result.issues] for result in results] == [
+        ["unavailable"],
+        ["unavailable"],
+    ]
+    # Nothing is remembered after a failure: the next check asks GitHub again.
+    checker.check([hit])
+    assert len(calls) == 2

@@ -4,7 +4,7 @@ import json
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from threading import Lock
+from threading import Event, Lock
 
 from app.core.config import ARCHIVE_VISIBILITY_CACHE_SIZE
 from app.integrations.archive_github import (
@@ -64,6 +64,16 @@ def _within_window(value, now):
     return pushed.tzinfo is not None and now - timedelta(days=365) <= pushed <= now
 
 
+class _Flight:
+    """One in-flight GitHub visibility call that concurrent checks share."""
+
+    def __init__(self):
+        self.done = Event()
+        self.body = None
+        self.checked = None
+        self.error = None
+
+
 class EligibilityService:
     """Pass bounded raw live metadata keyed by expected numeric ID per request.
 
@@ -78,6 +88,7 @@ class EligibilityService:
         self.settings = settings
         self.now = now or (lambda: datetime.now(timezone.utc))
         self._cache = OrderedDict()
+        self._flights = {}
         self._lock = Lock()
 
     def _suppress(self, repo_id, reason, now):
@@ -110,11 +121,31 @@ class EligibilityService:
                 ):
                     return _cached_copy(metadata), checked
                 self._cache.pop(repo_id)
-        result = self.reader.fetch_metadata(repo_id, name)
-        metadata = json.loads(result.response.body)
-        if live_eligible(repo_id, metadata):
-            self._remember(repo_id, metadata, now)
-        return metadata, now
+            # A search that hit its deadline leaves its check running in a
+            # worker thread; the next search must reuse that call (T28).
+            flight = self._flights.get(repo_id)
+            leader = flight is None
+            if leader:
+                flight = self._flights[repo_id] = _Flight()
+        if not leader:
+            flight.done.wait()
+            if flight.error is not None:
+                raise flight.error
+            return json.loads(flight.body), flight.checked
+        try:
+            result = self.reader.fetch_metadata(repo_id, name)
+            metadata = json.loads(result.response.body)
+            if live_eligible(repo_id, metadata):
+                self._remember(repo_id, metadata, now)
+            flight.body, flight.checked = result.response.body, now
+            return metadata, now
+        except BaseException as error:
+            flight.error = error
+            raise
+        finally:
+            with self._lock:
+                self._flights.pop(repo_id, None)
+            flight.done.set()
 
     def _remember(self, repo_id, metadata, now):
         # Store a bounded public card subset plus the validation fields, never
