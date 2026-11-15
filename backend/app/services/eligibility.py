@@ -2,6 +2,7 @@
 
 import json
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from threading import Lock
@@ -19,6 +20,8 @@ from app.integrations.archive_github import (
 from app.services.archive_publication import filter_active_hits
 from app.services.archive_retirement import SuppressionLedger, suppress
 from app.services.live_scope import live_eligible
+
+VISIBILITY_CHECK_CONCURRENCY = 4
 
 
 @dataclass(frozen=True)
@@ -98,7 +101,7 @@ class EligibilityService:
         with self._lock:
             self._cache.pop(repo_id, None)
 
-    def _metadata(self, repo_id, name, now):
+    def _cached(self, repo_id, now):
         with self._lock:
             cached = self._cache.get(repo_id)
             if cached:
@@ -110,11 +113,47 @@ class EligibilityService:
                 ):
                     return _cached_copy(metadata), checked
                 self._cache.pop(repo_id)
+        return None
+
+    def _fetch_metadata(self, repo_id, name):
         result = self.reader.fetch_metadata(repo_id, name)
-        metadata = json.loads(result.response.body)
-        if live_eligible(repo_id, metadata):
-            self._remember(repo_id, metadata, now)
-        return metadata, now
+        return json.loads(result.response.body)
+
+    def _prefetch(self, pending, fetched, errors):
+        """Fetch uncached metadata concurrently, at most the fixed bound at once.
+
+        ``pending`` holds ``(repo_id, full_name, checked)`` in candidate order.
+        Returns the repository whose credential was rejected, if any, so the
+        caller can return without waiting for the other fetches.
+        """
+        rejected = None
+        pool = ThreadPoolExecutor(
+            max_workers=min(VISIBILITY_CHECK_CONCURRENCY, len(pending)),
+            thread_name_prefix="visibility-check",
+        )
+        try:
+            futures = {
+                pool.submit(self._fetch_metadata, repo_id, full_name): (
+                    repo_id,
+                    checked,
+                )
+                for repo_id, full_name, checked in pending
+            }
+            for future in as_completed(futures):
+                repo_id, checked = futures[future]
+                try:
+                    fetched[repo_id] = (future.result(), checked)
+                except ArchiveAuthenticationError as error:
+                    errors[repo_id] = error
+                    rejected = repo_id
+                    break
+                except Exception as error:  # re-raised in candidate order
+                    errors[repo_id] = error
+        finally:
+            # Never wait for a fetch that is still running; the caller may
+            # already have a definitive credential failure.
+            pool.shutdown(wait=False, cancel_futures=True)
+        return rejected
 
     def _remember(self, repo_id, metadata, now):
         # Store a bounded public card subset plus the validation fields, never
@@ -195,7 +234,38 @@ class EligibilityService:
         verified = {}
         validated_at = {}
         issues = []
+
+        # Resolve cache hits in candidate order and queue the rest. The fetches
+        # run concurrently, but suppressions, issues and cache writes below are
+        # still applied in the original candidate order.
+        cached = {}
+        pending = []
         for repo_id, full_name in names.items():
+            if repo_id in current:
+                continue
+            if live is not None and repo_id in live:
+                # Malformed or ineligible live metadata never falls back to a
+                # cached public record and never spends an HTTP call.
+                continue
+            checked = self.now()
+            hit = self._cached(repo_id, checked)
+            if hit is not None:
+                cached[repo_id] = hit
+            else:
+                pending.append((repo_id, full_name, checked))
+
+        fetched = {}
+        errors = {}
+        if pending:
+            rejected = self._prefetch(pending, fetched, errors)
+            if rejected is not None:
+                return EligibilityResult(
+                    tuple(current.values()),
+                    (),
+                    (EligibilityIssue(rejected, "credential_invalid"),),
+                )
+
+        for repo_id in names:
             metadata = current.get(repo_id)
             checked = now
             if live is not None and repo_id in live and metadata is None:
@@ -204,36 +274,40 @@ class EligibilityService:
                 issues.append(EligibilityIssue(repo_id, "validation_failed"))
                 continue
             if metadata is None:
-                try:
-                    metadata, checked = self._metadata(repo_id, full_name, self.now())
-                except (
-                    RepositoryNotFound,
-                    RepositoryNotPublic,
-                    RepositoryIdentityMismatch,
-                ) as error:
-                    reason = {
-                        RepositoryNotFound: "not_found",
-                        RepositoryNotPublic: "not_public",
-                        RepositoryIdentityMismatch: "identity_mismatch",
-                    }[type(error)]
-                    self._suppress(repo_id, reason, now)
-                    continue
-                except ArchiveAuthenticationError:
-                    return EligibilityResult(
-                        tuple(current.values()),
-                        (),
-                        (EligibilityIssue(repo_id, "credential_invalid"),),
-                    )
-                except ArchiveGitHubError as error:
-                    code = (
-                        "rate_limited"
-                        if isinstance(error, ArchiveRateLimited)
-                        else "unavailable"
-                        if isinstance(error, ArchiveUnavailable)
-                        else "validation_failed"
-                    )
-                    issues.append(EligibilityIssue(repo_id, code))
-                    continue
+                error = errors.get(repo_id)
+                if error is not None:
+                    if isinstance(
+                        error,
+                        (
+                            RepositoryNotFound,
+                            RepositoryNotPublic,
+                            RepositoryIdentityMismatch,
+                        ),
+                    ):
+                        reason = {
+                            RepositoryNotFound: "not_found",
+                            RepositoryNotPublic: "not_public",
+                            RepositoryIdentityMismatch: "identity_mismatch",
+                        }[type(error)]
+                        self._suppress(repo_id, reason, now)
+                        continue
+                    if isinstance(error, ArchiveGitHubError):
+                        code = (
+                            "rate_limited"
+                            if isinstance(error, ArchiveRateLimited)
+                            else "unavailable"
+                            if isinstance(error, ArchiveUnavailable)
+                            else "validation_failed"
+                        )
+                        issues.append(EligibilityIssue(repo_id, code))
+                        continue
+                    raise error
+                if repo_id in fetched:
+                    metadata, checked = fetched[repo_id]
+                    if live_eligible(repo_id, metadata):
+                        self._remember(repo_id, metadata, checked)
+                else:
+                    metadata, checked = cached[repo_id]
             if metadata.get("archived") is True:
                 self._suppress(repo_id, "archived", now)
                 continue

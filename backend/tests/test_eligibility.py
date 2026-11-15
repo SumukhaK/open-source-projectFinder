@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
@@ -8,7 +9,11 @@ import pytest
 from app.core.archive_store import MIGRATIONS
 from app.core.config import Settings
 from app.integrations.archive_github import ArchiveGitHubReader
-from app.services.eligibility import EligibilityService, live_eligible
+from app.services.eligibility import (
+    VISIBILITY_CHECK_CONCURRENCY,
+    EligibilityService,
+    live_eligible,
+)
 from pydantic import ValidationError
 
 NOW = datetime(2026, 10, 28, 12, tzinfo=timezone.utc)
@@ -55,14 +60,22 @@ def payload(repo_id=42, **changes):
     }
 
 
-def seed(connect, repo_id=42, *, pushed_at=CUTOFF, state="published", written=True):
+def seed(
+    connect,
+    repo_id=42,
+    *,
+    full_name="owner/project",
+    pushed_at=CUTOFF,
+    state="published",
+    written=True,
+):
     revision = str(repo_id) + "-revision"
     hit = {"repo_id": repo_id, "revision": revision, "chunk_id": str(repo_id) + "-0"}
     with connect(write=True) as db:
         db.execute(
             "INSERT INTO archive_repositories (repo_id, full_name, metadata_json) "
-            "VALUES (?, 'owner/project', ?)",
-            (repo_id, json.dumps({"pushed_at": pushed_at})),
+            "VALUES (?, ?, ?)",
+            (repo_id, full_name, json.dumps({"pushed_at": pushed_at})),
         )
         db.execute(
             "INSERT INTO archive_documents (repo_id, revision, state) VALUES (?, ?, ?)",
@@ -236,18 +249,18 @@ def test_current_metadata_can_disqualify_archive_without_hiding_old_live_result(
 
 
 def test_cutoff_is_fixed_at_request_start_across_validation_calls(connect):
-    hits = [seed(connect, repo_id=repo_id) for repo_id in (42, 43)]
+    hits = [
+        seed(connect, repo_id=repo_id, full_name=f"owner/repo-{repo_id}")
+        for repo_id in (42, 43)
+    ]
     clock = [NOW]
-
-    def respond(request):
-        clock[0] += timedelta(seconds=1)
-        return httpx.Response(200, json=payload(41 + len(calls)))
-
     calls = []
 
     def handler(request):
         calls.append(request)
-        return respond(request)
+        clock[0] += timedelta(seconds=1)
+        repo_id = int(request.url.path.rsplit("-", 1)[-1])
+        return httpx.Response(200, json=payload(repo_id))
 
     result = service(connect, handler, now=lambda: clock[0]).check(hits)
     assert [entry.hit for entry in result.archive] == hits
@@ -516,3 +529,124 @@ def test_validation_expiring_during_another_check_is_not_returned(connect):
     assert [entry.hit["repo_id"] for entry in result.archive] == [43]
     assert result.incomplete
     assert result.issues[0].code == "validation_expired"
+
+
+def test_uncached_visibility_checks_run_concurrently_within_the_bound(connect):
+    ids = list(range(100, 108))
+    hits = [
+        seed(connect, repo_id=repo_id, full_name=f"owner/repo-{repo_id}")
+        for repo_id in ids
+    ]
+    lock = threading.Lock()
+    in_flight = 0
+    peak = 0
+    overlapped = threading.Event()
+    release = threading.Event()
+
+    def handler(request):
+        nonlocal in_flight, peak
+        with lock:
+            in_flight += 1
+            peak = max(peak, in_flight)
+            if in_flight > 1:
+                overlapped.set()
+        try:
+            assert release.wait(2), "visibility checks were never released"
+        finally:
+            with lock:
+                in_flight -= 1
+        repo_id = int(request.url.path.rsplit("-", 1)[-1])
+        return httpx.Response(200, json=payload(repo_id))
+
+    def release_when_parallel():
+        overlapped.wait(2)
+        release.set()
+
+    watcher = threading.Thread(target=release_when_parallel)
+    watcher.start()
+    try:
+        result = service(connect, handler).check(hits)
+    finally:
+        release.set()
+        watcher.join(2)
+
+    assert overlapped.is_set(), "uncached visibility checks ran one at a time"
+    assert peak <= VISIBILITY_CHECK_CONCURRENCY
+    assert [entry.hit["repo_id"] for entry in result.archive] == ids
+
+
+def test_mixed_visibility_outcomes_keep_candidate_and_issue_order(connect):
+    responses = {
+        200: lambda: httpx.Response(200, json=payload(200)),
+        201: lambda: httpx.Response(404, json={}),
+        202: lambda: httpx.Response(
+            200, json=payload(202, private=True, visibility="private")
+        ),
+        203: lambda: httpx.Response(503, json={}),
+        204: lambda: httpx.Response(200, json=payload(204, archived=True)),
+        205: lambda: httpx.Response(429, json={}),
+        206: lambda: httpx.Response(403, json={}),
+    }
+    hits = [
+        seed(connect, repo_id=repo_id, full_name=f"owner/repo-{repo_id}")
+        for repo_id in responses
+    ]
+
+    def handler(request):
+        repo_id = int(request.url.path.rsplit("-", 1)[-1])
+        return responses[repo_id]()
+
+    result = service(connect, handler).check(hits)
+
+    assert [entry.hit["repo_id"] for entry in result.archive] == [200]
+    assert [(issue.repo_id, issue.code) for issue in result.issues] == [
+        (203, "unavailable"),
+        (205, "rate_limited"),
+        (206, "validation_failed"),
+    ]
+    with connect() as db:
+        reasons = dict(db.execute("SELECT repo_id, reason FROM archive_suppressions"))
+    assert reasons == {201: "not_found", 202: "not_public", 204: "archived"}
+
+
+def test_auth_error_returns_before_the_other_visibility_checks_finish(connect):
+    ids = list(range(300, 308))
+    hits = [
+        seed(connect, repo_id=repo_id, full_name=f"owner/repo-{repo_id}")
+        for repo_id in ids
+    ]
+    lock = threading.Lock()
+    blocked = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    waiting = 0
+
+    def handler(request):
+        nonlocal waiting
+        repo_id = int(request.url.path.rsplit("-", 1)[-1])
+        if repo_id == 300:
+            assert blocked.wait(2), "no other visibility check was running"
+            return httpx.Response(401, json={})
+        with lock:
+            waiting += 1
+            blocked.set()
+        try:
+            assert release.wait(2), "visibility checks were never released"
+        finally:
+            with lock:
+                waiting -= 1
+                if waiting == 0:
+                    finished.set()
+        return httpx.Response(200, json=payload(repo_id))
+
+    result = service(connect, handler).check(hits)
+
+    assert not release.is_set(), "check waited for the remaining fetches"
+    assert result.live == ()
+    assert result.archive == ()
+    assert [(issue.repo_id, issue.code) for issue in result.issues] == [
+        (300, "credential_invalid")
+    ]
+
+    release.set()
+    assert finished.wait(2), "background visibility checks did not stop"
