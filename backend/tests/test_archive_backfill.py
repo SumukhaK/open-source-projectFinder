@@ -564,3 +564,128 @@ def test_protocol_failure_marks_only_that_repository_failed(tmp_path):
     assert rows[1] == ("failed", "failed")
     assert rows[2][0] == "published"
     assert completed == 0
+
+
+def _page_of(ids):
+    return {
+        "total_count": len(ids),
+        "incomplete_results": False,
+        "items": [{"id": repo_id} for repo_id in ids],
+    }
+
+
+def test_examine_bound_lets_licence_skips_pass_the_published_cap(tmp_path):
+    runtime, requests, clock = setup(
+        tmp_path,
+        pages=[_page_of([1, 2, 3, 4, 5])],
+        metadata={
+            1: {"license": {"spdx_id": "GPL-3.0"}},
+            2: {"license": {"spdx_id": "GPL-3.0"}},
+        },
+    )
+    result = api()(runtime, clock=lambda: clock[0]).run(cap=2, examine=5)
+
+    assert result["discovered"] == 4
+    assert result["published"] == result["eligible"] == 2
+    assert result["skipped"] == {"licence": 2}
+    assert result["stop_reason"] == "cap" and result["coverage"] == "curated"
+    assert result["cap"] == 2 and result["examine"] == 5
+    assert not any(request.url.path == "/repositories/5" for request in requests)
+
+
+def test_examine_bound_stops_admissions_before_the_published_cap(tmp_path):
+    gpl = {"license": {"spdx_id": "GPL-3.0"}}
+    runtime, requests, clock = setup(
+        tmp_path,
+        pages=[_page_of([1, 2, 3, 4])],
+        metadata={1: gpl, 2: gpl, 3: gpl, 4: gpl},
+    )
+    result = api()(runtime, clock=lambda: clock[0]).run(cap=2, examine=3)
+
+    assert result["discovered"] == 3 and result["published"] == 0
+    assert result["stop_reason"] == "examine" and result["coverage"] == "curated"
+    assert not any(request.url.path == "/repositories/4" for request in requests)
+
+
+def test_resume_examines_past_an_earlier_admission_cap(tmp_path):
+    gpl = {"license": {"spdx_id": "GPL-3.0"}}
+    runtime, requests, clock = setup(
+        tmp_path, pages=[_page_of([1, 2, 3])], metadata={1: gpl, 2: gpl}
+    )
+    first = api()(runtime, clock=lambda: clock[0]).run(cap=2)
+    assert first["stop_reason"] == "cap" and first["published"] == 0
+
+    clock[0] += 301
+    second = api()(runtime, clock=lambda: clock[0]).run(cap=2, examine=10)
+
+    assert second["run_id"] == first["run_id"]
+    assert second["discovered"] == 3 and second["published"] == 1
+    assert second["stop_reason"] == "finished"
+
+
+def test_pending_repositories_count_against_the_published_cap(tmp_path):
+    order = [[1, 2]]
+    runtime, requests, clock = setup(tmp_path, pages=lambda _: _page_of(order[0]))
+    failing = replace(
+        runtime,
+        adapter=FailingAdapter(runtime.adapter, EmbeddingError("model unavailable")),
+    )
+    first = api()(failing, clock=lambda: clock[0]).run(cap=1, examine=5)
+    assert first["stop_reason"] == "dependency" and first["pending"] == 1
+
+    order[0] = [2, 1]
+    clock[0] += 301
+    second = api()(runtime, clock=lambda: clock[0]).run(cap=1, examine=5)
+
+    assert second["stop_reason"] == "cap" and second["published"] == 0
+    assert not any(request.url.path == "/repositories/2" for request in requests)
+
+
+@pytest.mark.parametrize(
+    "cap,examine", [(2, 1), (1, 5001), (1, True), (1, "5"), (1001, 2000)]
+)
+def test_examine_bound_is_validated(tmp_path, cap, examine):
+    runtime, requests, clock = setup(tmp_path)
+    with pytest.raises(ValueError):
+        api()(runtime, clock=lambda: clock[0]).run(cap=cap, examine=examine)
+    assert requests == []
+
+
+def test_cli_passes_the_examine_bound_to_the_backfill(tmp_path, monkeypatch, capsys):
+    from app.workers import archive as worker
+    from app.workers import backfill
+
+    settings = make_settings(
+        tmp_path, archive_license_allowlist=list(ARCHIVE_BACKFILL_LICENSES)
+    )
+    calls = []
+
+    class Recorder:
+        def __init__(self, runtime, *, clock):
+            pass
+
+        def run(self, **kwargs):
+            calls.append(kwargs)
+            return {"stop_reason": "cap"}
+
+    monkeypatch.setattr(worker, "Settings", lambda: settings)
+    monkeypatch.setattr(
+        worker, "build_runtime", lambda _: type("Runtime", (), {"vectors": None})()
+    )
+    monkeypatch.setattr(backfill, "Backfill", Recorder)
+
+    assert worker.main(["backfill", "--cap", "1000", "--examine", "5000"]) == 0
+    assert worker.main(["backfill"]) == 0
+    assert calls == [{"cap": 1000, "examine": 5000}, {"cap": 1000, "examine": None}]
+
+    Recorder.run = lambda self, **kwargs: {"stop_reason": "examine"}
+    assert worker.main(["backfill", "--examine", "5000"]) == 0
+
+
+@pytest.mark.parametrize("value", ["0", "5001", "-1", "1e3"])
+def test_cli_rejects_an_out_of_range_examine_bound(value, capsys):
+    from app.workers import archive as worker
+
+    with pytest.raises(SystemExit):
+        worker.main(["backfill", "--examine", value])
+    assert "--examine must be an integer from 1 through 5000" in capsys.readouterr().err

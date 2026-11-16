@@ -26,6 +26,10 @@ from app.services.archive_runs import LeaseLost, RunStore
 from app.workers.archive import IneligibleRepository, IngestError, ingest_one
 
 _PERIOD = datetime(1970, 1, 1, tzinfo=timezone.utc)
+# Upper bound on repositories examined (admitted) by one backfill run. About
+# one candidate in five passes the D2 licence allowlist, so reaching the D1
+# 1,000-repository cap needs roughly 5,000 examined candidates.
+EXAMINE_LIMIT = 5000
 
 
 class Backfill:
@@ -42,6 +46,7 @@ class Backfill:
         self._run_id = None
         self._stop = None
         self._retry_at = None
+        self._cap = self._examine = None
 
     def _free_disk(self):
         return min(
@@ -49,9 +54,21 @@ class Backfill:
             shutil.disk_usage(self.runtime.content.root).free,
         )
 
-    def run(self, *, cap):
+    def run(self, *, cap, examine=None):
+        """``cap`` bounds kept repositories (D1); ``examine`` bounds admissions.
+
+        ``examine`` defaults to ``cap``, which is the original pilot behaviour.
+        A larger value lets licence and policy skips be replaced by further
+        candidates until ``cap`` repositories are kept.
+        """
         if type(cap) is not int or not 1 <= cap <= 1000:
             raise ValueError("--cap must be an integer from 1 through 1000")
+        examine = cap if examine is None else examine
+        if type(examine) is not int or not cap <= examine <= EXAMINE_LIMIT:
+            raise ValueError(
+                f"--examine must be an integer from --cap through {EXAMINE_LIMIT}"
+            )
+        self._cap, self._examine = cap, examine
         run_id = self.store.create_run("backfill", _PERIOD)
         self._run_id, self._stop, self._retry_at = run_id, None, None
         state = self._state(run_id)
@@ -213,8 +230,12 @@ class Backfill:
             return
         for repo_id in result.ids:
             existing = self._repo_status(run_id, repo_id)
-            if existing is None and self._admitted(run_id) >= cap:
+            if existing is None and self._kept_or_pending(run_id) >= cap:
                 self._stop = "cap"
+                return
+            if existing is None and self._admitted(run_id) >= self._examine:
+                # With the default examine == cap this is the original cap stop.
+                self._stop = "cap" if self._examine == cap else "examine"
                 return
             if not self._claim_repo(run_id, repo_id):
                 continue
@@ -353,6 +374,15 @@ class Backfill:
                 (run_id,),
             ).fetchone()[0]
 
+    def _kept_or_pending(self, run_id):
+        """Kept plus in-flight rows, so a resume can never exceed ``cap``."""
+        with self.runtime.connect() as db:
+            return db.execute(
+                "SELECT count(*) FROM archive_backfill_repositories WHERE run_id=? "
+                "AND status IN ('published','unchanged','pending')",
+                (run_id,),
+            ).fetchone()[0]
+
     def _partition_count(self, run_id):
         with self.runtime.connect() as db:
             return db.execute(
@@ -474,13 +504,15 @@ class Backfill:
                 skipped[row["reason"]] = skipped.get(row["reason"], 0) + 1
         unresolved_repos = self._unresolved_repos(run_id)
         curated = (
-            stop_reason in ("finished", "cap")
+            stop_reason in ("finished", "cap", "examine")
             and not unresolved
             and not unresolved_repos
         )
         return {
             "run_id": run_id,
             "discovered": self._admitted(run_id),
+            "cap": self._cap,
+            "examine": self._examine,
             **counts,
             "skipped": skipped,
             "bytes": self.bytes,
