@@ -35,7 +35,7 @@ and a real restore rehearsal ([section 8](#8-restore)).
   ([Milvus runbook](../infra/milvus/README.md#stop-preserve-and-recover)).
 - **Respect the archive cap.** The owner set a hard cap of 1,000 archived
   repositories until T28 measures disk/RAM/latency and separately approves the
-  10k step. The pilot holds about 204
+  10k step. The pilot holds 980 (grown 2026-11-16)
   ([TRACKER](../execution-plans/hybrid-search/TRACKER.md)).
 - **Archive commands are operator commands.** `app.workers.archive` and
   `app.workers.schedule` are local commands, not API routes. Nothing schedules
@@ -483,7 +483,7 @@ measurement.
 | First request after a process start | about 8 s (cold model, collection and cache) |
 | Milvus container memory | 682 MiB (re-measure) to 849 MiB (T28a) |
 | Benchmark process memory | 1.25 GB (re-measure) / 1,262 MB RSS (T28a search process) |
-| Archive corpus | 204 repositories; D1 cap 1,000; 10k deferred |
+| Archive corpus | 204 repositories when measured (980 since the 2026-11-16 growth; not yet re-measured); D1 cap 1,000; 10k deferred |
 
 - **Concurrency.** The archive serves at most 4 searches at once. Above that
   lock, requests are rejected as busy **by design**: at concurrency 8, 94 of 100
@@ -530,7 +530,11 @@ archive grows and the gate is re-run, so the archive stays out of the top 10.
 - The archive holds public repositories with a permissive licence and a push in
   the preceding 365 days. The live GitHub branch keeps its broader public,
   unarchived scope.
-- The pilot archive holds about 204 repositories. **D1 hard cap: 1,000 archived
+- The pilot archive holds 980 repositories (grown from 204 on 2026-11-16).
+  The backfill cap counts backfill rows, so suppressed repositories still count
+  toward it (982 kept, 2 suppressed). D1 is enforced per backfill run; weekly
+  `refresh --cap` admissions are bounded separately (0 today, and any value
+  above 0 needs owner approval). **D1 hard cap: 1,000 archived
   repositories** until the owner separately approves 10k. T28a measured disk,
   RAM and latency at the current corpus
   ([capacity and limits](#capacity-and-limits)); the 10k measurement (T28b) was
@@ -579,7 +583,11 @@ archive grows and the gate is re-run, so the archive stays out of the top 10.
 The [T30 backlog](../execution-plans/hybrid-search/tasks/T30-upkeep.md) still
 holds these operator-visible items; this handbook does not claim they are fixed:
 
-- **U9:** the compressed-response burst bound is documented, not measured.
+- **U23:** after the growth to 980 repositories, cold-cache searches re-check
+  about 50 archive repositories each; 10 cold in-process searches measured p50
+  6.9 s and p95 8.0 s, with 3 hitting the 8 s budget. Warm searches (15-minute
+  cache) are unaffected. The 7 s D8 bound is at risk until this is fixed and
+  re-measured.
 - **U15:** the T25 mobile notices/buttons/refresh/focus/touch-target inspection
   on a phone-sized device in both themes has not run.
 - **U16:** voice device acceptance on a physical phone has not run; the owner
@@ -605,6 +613,8 @@ no deployment.
    204 repositories produced 1 owner-confirmed pair on run 3. Growth is inside
    measured capacity (about 20 minutes of embedding per 1,000 repositories) but
    still needs the owner's explicit `--cap` approval for each run under D1.
+   **Done 2026-11-16:** 204 to 980 repositories in 82 minutes (one GitHub quota
+   wait); the run stopped on `examine` at 5,000 examined with 982 kept.
    Only about one candidate in five passes the D2 licence allowlist, so the run
    uses `backfill --cap 1000 --examine 5000`: `--cap` bounds kept (published,
    unchanged or still pending) repositories and `--examine` bounds admitted
