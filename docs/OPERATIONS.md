@@ -10,7 +10,7 @@ Every command below names the file it comes from. Where documents disagreed, the
 code and the merged evidence won and the other document was corrected in the
 same change. T29b adds the measured capacity outcomes and the D8 bound
 ([section 10](#10-limits)), the rollout recommendation
-([section 11](#11-rollout-recommendation-recommendation-needs-owner-approval))
+([section 11](#11-rollout-recommendation-approved-by-the-owner-2026-11-16))
 and a real restore rehearsal ([section 8](#8-restore)).
 
 ## 1. Before you start
@@ -546,7 +546,7 @@ archive grows and the gate is re-run, so the archive stays out of the top 10.
   ([T27 evidence](../execution-plans/hybrid-search/T27_EVIDENCE.md#option-b-bar-owner-approved-2026-11-13)).
 - Capacity, the D8 response-time bound and the growth limits are in
   [capacity and limits](#capacity-and-limits). The rollout recommendation is
-  [section 11](#11-rollout-recommendation-recommendation-needs-owner-approval).
+  [section 11](#11-rollout-recommendation-approved-by-the-owner-2026-11-16).
 
 ### Privacy and retention
 
@@ -587,7 +587,7 @@ holds these operator-visible items; this handbook does not claim they are fixed:
 - **U16:** voice device acceptance on a physical phone has not run; the owner
   performs it manually once the app is complete end to end.
 
-## 11. Rollout recommendation (recommendation, needs owner approval)
+## 11. Rollout recommendation (approved by the owner 2026-11-16)
 
 Written 2026-11-15 from T28a, the T30 U22 re-measure and the T27 relevance
 results. It is advice only: it activates nothing, changes no setting and starts
@@ -623,9 +623,11 @@ no deployment.
    - a need for more than one user or more than one host — that needs a
      deployment plan before any further rollout.
 
-Until the owner records a decision, the current state stands: keyword-first
-ranking, the archive on at the 1,000 cap, the scheduled jobs running, and nothing
-deployed beyond this laptop.
+The owner approved this recommendation on 2026-11-16. It describes the current
+state, so approving it changed nothing: keyword-first ranking, the archive on at
+the 1,000 cap, the scheduled jobs running, and nothing deployed beyond this
+laptop. Any item under "what would change this recommendation" needs a new owner
+decision.
 
 ## 12. Logs and private files
 
