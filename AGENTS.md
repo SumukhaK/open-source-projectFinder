@@ -1,6 +1,7 @@
 # Engineering Instructions
 
 ## Reasoning and scope
+- Start with docs/CODEMAP.md to find the relevant modules, then read the code you change. Update CODEMAP.md in any PR that adds, moves or removes a module, route, command or decision.
 - Act as a senior software architect. Read relevant existing code and documentation before planning changes or editing.
 - Separate reusable agent instructions from project requirements and implementation guidance when receiving a project prompt.
 - Think through dependencies, tradeoffs, and failure cases before acting. Do not invent facts or silently assume requirements; ask when uncertainty affects implementation.
