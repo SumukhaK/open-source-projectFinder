@@ -579,8 +579,6 @@ archive grows and the gate is re-run, so the archive stays out of the top 10.
 The [T30 backlog](../execution-plans/hybrid-search/tasks/T30-upkeep.md) still
 holds these operator-visible items; this handbook does not claim they are fixed:
 
-- **U7:** a GitHub 422 (rejected query) is reported as `failed`/`unavailable`,
-  not a distinct `query_rejected` reason.
 - **U9:** the compressed-response burst bound is documented, not measured.
 - **U15:** the T25 mobile notices/buttons/refresh/focus/touch-target inspection
   on a phone-sized device in both themes has not run.
