@@ -575,6 +575,20 @@ def _backfill_cap(value):
     return int(value)
 
 
+def _backfill_examine(value):
+    from app.workers.backfill import EXAMINE_LIMIT
+
+    if (
+        not value.isascii()
+        or not value.isdigit()
+        or not 1 <= int(value) <= EXAMINE_LIMIT
+    ):
+        raise argparse.ArgumentTypeError(
+            f"--examine must be an integer from 1 through {EXAMINE_LIMIT}"
+        )
+    return int(value)
+
+
 def _sweep_buckets(value):
     if not value.isascii() or not value.isdigit() or not 1 <= int(value) <= 14:
         raise argparse.ArgumentTypeError(
@@ -639,6 +653,12 @@ def main(argv=None):
         "backfill", help="Resume the bounded local archive pilot"
     )
     backfill.add_argument("--cap", type=_backfill_cap, default=1000)
+    backfill.add_argument(
+        "--examine",
+        type=_backfill_examine,
+        default=None,
+        help="Most repositories to examine (default: --cap); stops once --cap are kept",
+    )
     refresh = commands.add_parser(
         "refresh", help="Run one manual weekly archive refresh"
     )
@@ -767,7 +787,9 @@ def main(argv=None):
             runtime = build_runtime(settings)
             from app.workers.backfill import Backfill
 
-            summary = Backfill(runtime, clock=time.time).run(cap=args.cap)
+            summary = Backfill(runtime, clock=time.time).run(
+                cap=args.cap, examine=args.examine
+            )
         else:
             runtime = build_runtime(settings)
             summary = ingest_one(runtime, args.repo_id)
@@ -841,6 +863,7 @@ def main(argv=None):
             "unchanged",
             "finished",
             "cap",
+            "examine",
             "quota",
             "rate_limit",
             "exported",

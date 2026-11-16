@@ -605,6 +605,15 @@ no deployment.
    204 repositories produced 1 owner-confirmed pair on run 3. Growth is inside
    measured capacity (about 20 minutes of embedding per 1,000 repositories) but
    still needs the owner's explicit `--cap` approval for each run under D1.
+   Only about one candidate in five passes the D2 licence allowlist, so the run
+   uses `backfill --cap 1000 --examine 5000`: `--cap` bounds kept (published,
+   unchanged or still pending) repositories and `--examine` bounds admitted
+   candidates. It stops with `cap` once 1,000 are kept, or `examine` once 5,000
+   are admitted. It resumes the existing backfill run, so the 1,000 already
+   examined count toward the 5,000. Check `bytes` against
+   `ARCHIVE_BACKFILL_BYTE_LIMIT` (default 512 MiB) and the partition count against
+   `ARCHIVE_BACKFILL_PARTITION_LIMIT` (2,048) in the summary; a `bytes` or
+   `partition` stop is resumable after the owner raises that setting.
 4. **Do not deploy beyond the laptop.** Phase 7 stays open. There is one host,
    no failover, no multi-host rate limiting, process-local caches and the
    4-search archive lock. A second host, a second user or any hosted deployment
