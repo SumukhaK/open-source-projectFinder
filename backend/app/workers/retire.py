@@ -23,6 +23,7 @@ from app.integrations.archive_github import (
     RepositoryNotFound,
     RepositoryNotPublic,
 )
+from app.integrations.milvus import MilvusOperationError, MilvusUnavailable
 from app.services.archive_retirement import (
     STICKY_REASONS,
     PurgeAborted,
@@ -112,6 +113,7 @@ def sweep(runtime, *, now, limit=1000, remove_ids=()):
         "purged": 0,
         "expired": 0,
         "lifted": 0,
+        "orphans": 0,
         "checked": 0,
         "issues": 0,
         "stop_reason": "finished",
@@ -126,6 +128,7 @@ def sweep(runtime, *, now, limit=1000, remove_ids=()):
         # Retention takes the writer lock and a fenced lease, so it never runs
         # while a refresh/backfill owns a live lease and could reuse a file.
         with publication_writer(connect):
+            _delete_orphan_vectors(runtime, limit, summary)
             summary["files"] = sweep_unreferenced_files(connect, runtime.content, at)
             summary["runs"] = compact_runs(connect, at)
     except _Stop as stop:
@@ -133,6 +136,31 @@ def sweep(runtime, *, now, limit=1000, remove_ids=()):
     except WriterBusy:
         summary["stop_reason"] = "busy"
     return summary
+
+
+def _delete_orphan_vectors(runtime, limit, summary):
+    """Delete up to ``limit`` vectors whose repository has no catalogue row.
+
+    Runs under the publication writer: a repository row is always written
+    before its vectors and removed only by a writer, so a vector without one
+    here can never be served or published again (T30 U24).
+    """
+    with runtime.connect() as db:
+        known = [
+            row[0] for row in db.execute("SELECT repo_id FROM archive_repositories")
+        ]
+    if not known:
+        # A missing or empty catalogue is never proof that every vector is stale.
+        return
+    batch = runtime.settings.milvus_batch_size
+    try:
+        orphans = runtime.vectors.orphan_chunk_ids(known, limit=limit)
+        for start in range(0, len(orphans), batch):
+            ids = orphans[start : start + batch]
+            runtime.vectors.delete(ids)
+            summary["orphans"] += len(ids)
+    except (MilvusUnavailable, MilvusOperationError):
+        summary["issues"] += 1
 
 
 def _purge_suppressed(runtime, summary):

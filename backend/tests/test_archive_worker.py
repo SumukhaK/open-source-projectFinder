@@ -81,6 +81,11 @@ class FakeMilvus:
         for chunk_id in chunk_ids:
             self.rows.pop(chunk_id, None)
 
+    def orphan_chunk_ids(self, known_repo_ids, *, limit):
+        known = set(known_repo_ids)
+        orphans = [k for k, chunk in self.rows.items() if chunk.repo_id not in known]
+        return sorted(orphans)[:limit]
+
     def close(self):
         self.closed = True
 

@@ -73,6 +73,7 @@ KEPT = {
     "last_complete_at",
     "last_completed_boundary",
     "reapplied",
+    "orphans",
     "removed",
     "suppressed",
     "purged",

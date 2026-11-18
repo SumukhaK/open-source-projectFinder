@@ -21,6 +21,9 @@ from pymilvus.client.types import LoadState
 from pymilvus.exceptions import ErrorCode, MilvusException
 from pymilvus.grpc_gen import common_pb2
 
+# Milvus refuses a query whose offset + limit exceeds this window.
+MILVUS_MAX_QUERY_LIMIT = 16384
+
 
 class MilvusContractError(ValueError):
     """The selected collection or input violates the embedding contract."""
@@ -412,6 +415,39 @@ class MilvusAdapter:
         deadline = time.monotonic() + self.settings.milvus_timeout
         self._check_collection(deadline)
         return self._call(deadline, "delete", ids=list(chunk_ids))["delete_count"]
+
+    def orphan_chunk_ids(self, known_repo_ids, *, limit):
+        """List up to ``limit`` chunk IDs whose repository is not in the catalogue.
+
+        The caller must hold the publication writer so no repository row is
+        being created or removed while this runs (T30 U24).
+        """
+        known = sorted(set(known_repo_ids))
+        if not known:
+            raise MilvusContractError("Orphan listing needs the known repositories")
+        for repo_id in known:
+            _integer(repo_id, 1, 2**63 - 1)
+        _integer(limit, 1, MILVUS_MAX_QUERY_LIMIT)
+        deadline = time.monotonic() + self.settings.milvus_timeout
+        self._check_loaded(deadline)
+        rows = self._call(
+            deadline,
+            "query",
+            filter="repo_id not in {known}",
+            filter_params={"known": known},
+            output_fields=["chunk_id"],
+            limit=limit,
+            consistency_level="Strong",
+        )
+        if len(rows) > limit:
+            raise MilvusContractError("Malformed Milvus query response")
+        try:
+            chunk_ids = [row["chunk_id"] for row in rows]
+        except (KeyError, TypeError):
+            raise MilvusContractError("Malformed Milvus query result") from None
+        for chunk_id in chunk_ids:
+            _hash(chunk_id, 64)
+        return chunk_ids
 
 
 def _integer(value, minimum, maximum):
