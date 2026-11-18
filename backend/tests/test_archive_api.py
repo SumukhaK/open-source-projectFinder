@@ -123,10 +123,16 @@ class FakeService:
         self.calls = []
         self.loop_thread = None
 
-    async def search(self, token, idea, *, language=None, license=None):
+    async def search(self, token, idea, *, language=None, license=None, page_size=None):
         self.loop_thread = threading.get_ident()
         self.calls.append(
-            {"token": token, "idea": idea, "language": language, "license": license}
+            {
+                "token": token,
+                "idea": idea,
+                "language": language,
+                "license": license,
+                "page_size": page_size,
+            }
         )
         return self.value
 

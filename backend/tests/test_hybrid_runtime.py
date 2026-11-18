@@ -469,7 +469,7 @@ def test_live_only_target_reports_the_archive_as_failed(monkeypatch):
         live = asyncio.get_running_loop().create_future()
         live.set_result(None)
         deadline = asyncio.get_running_loop().time() + 5
-        return await service._archive("task manager", None, deadline, live)
+        return await service._archive("task manager", None, deadline, live, 20)
 
     outcome = asyncio.run(archive_only())
     assert outcome.status == "failed"

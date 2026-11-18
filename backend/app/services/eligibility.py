@@ -41,10 +41,20 @@ class EligibilityResult:
     live: tuple[dict, ...]
     archive: tuple[ArchiveEvidence, ...]
     issues: tuple[EligibilityIssue, ...] = ()
+    deferred: tuple[ArchiveEvidence, ...] = ()
 
     @property
     def incomplete(self):
         return bool(self.issues)
+
+
+@dataclass(frozen=True)
+class _Candidate:
+    """One catalogue candidate with its best hit and stored card fields."""
+
+    hit: dict
+    full_name: str
+    metadata: dict
 
 
 def _cached_copy(metadata):
@@ -65,6 +75,39 @@ def _within_window(value, now):
     except ValueError:
         return False
     return pushed.tzinfo is not None and now - timedelta(days=365) <= pushed <= now
+
+
+def _catalogue_metadata(candidate):
+    """Build a public card from catalogue fields without a GitHub call.
+
+    Deferred candidates are never shown before a later page re-verifies them,
+    so these fields only have to satisfy the same live-card shape. Name, owner,
+    visibility and archive state come from the catalogue, not the display card.
+    """
+    full_name = candidate.full_name
+    owner, _, name = full_name.partition("/")
+    metadata = candidate.metadata
+    stars = metadata.get("stargazers_count")
+    language = metadata.get("language")
+    license_spdx = metadata.get("license_spdx")
+    return {
+        "id": candidate.hit["repo_id"],
+        "name": name or full_name,
+        "full_name": full_name,
+        "owner": {"login": owner or full_name, "avatar_url": ""},
+        "description": metadata.get("description"),
+        "stargazers_count": stars if type(stars) is int and stars >= 0 else 0,
+        "language": language if isinstance(language, str) else None,
+        "license": (
+            {"spdx_id": license_spdx}
+            if isinstance(license_spdx, str) and license_spdx
+            else None
+        ),
+        "private": False,
+        "archived": False,
+        "visibility": "public",
+        "pushed_at": metadata.get("pushed_at"),
+    }
 
 
 class _Flight:
@@ -249,19 +292,24 @@ class EligibilityService:
     def _candidates(self, hits, now):
         with self.connect() as db:
             active = filter_active_hits(db, hits)
-            names = {}
-            for repo_id in {hit["repo_id"] for hit in active}:
+            records = {}
+            for hit in active:
+                repo_id = hit["repo_id"]
+                if repo_id in records:
+                    continue
                 row = db.execute(
                     "SELECT full_name, metadata_json FROM archive_repositories AS r "
                     "WHERE repo_id=? AND NOT EXISTS (SELECT 1 FROM "
                     "archive_suppressions AS s WHERE s.repo_id=r.repo_id)",
                     (repo_id,),
                 ).fetchone()
-                if row and _within_window(json.loads(row[1]).get("pushed_at"), now):
-                    names[repo_id] = row[0]
-        return [hit for hit in active if hit["repo_id"] in names], names
+                if row:
+                    metadata = json.loads(row[1])
+                    if _within_window(metadata.get("pushed_at"), now):
+                        records[repo_id] = _Candidate(hit, row[0], metadata)
+        return [hit for hit in active if hit["repo_id"] in records], records
 
-    def check(self, archive_hits, *, live=None):
+    def check(self, archive_hits, *, live=None, archive_only_limit=None):
         now = self.now().astimezone(timezone.utc)
         current = {
             repo_id: dict(metadata)
@@ -285,17 +333,22 @@ class EligibilityService:
                     self._suppress(repo_id, "not_public", now)
                 elif metadata.get("archived") is True:
                     self._suppress(repo_id, "archived", now)
-        candidates, names = self._candidates(archive_hits, now)
+        candidates, records = self._candidates(archive_hits, now)
         verified = {}
         validated_at = {}
         issues = []
 
         # Resolve cache hits in candidate order and queue the rest. The fetches
         # run concurrently, but suppressions, issues and cache writes below are
-        # still applied in the original candidate order.
+        # still applied in the original candidate order. ``archive_only_limit``
+        # spends GitHub calls only on uncached, archive-only candidates: cache
+        # hits and live overlaps are free, and candidates past the budget are
+        # deferred for a later page to verify.
         cached = {}
         pending = []
-        for repo_id, full_name in names.items():
+        deferred = {}
+        budget = archive_only_limit
+        for repo_id, record in records.items():
             if repo_id in current:
                 continue
             if live is not None and repo_id in live:
@@ -306,8 +359,13 @@ class EligibilityService:
             hit = self._cached(repo_id, checked)
             if hit is not None:
                 cached[repo_id] = hit
-            else:
-                pending.append((repo_id, full_name, checked))
+                continue
+            if budget is not None:
+                if budget <= 0:
+                    deferred[repo_id] = record
+                    continue
+                budget -= 1
+            pending.append((repo_id, record.full_name, checked))
 
         fetched = {}
         errors = {}
@@ -320,7 +378,11 @@ class EligibilityService:
                     (EligibilityIssue(rejected, "credential_invalid"),),
                 )
 
-        for repo_id in names:
+        for repo_id in records:
+            if repo_id in deferred:
+                # Deferred candidates are re-verified by a later page; this
+                # call neither verifies nor reports them.
+                continue
             metadata = current.get(repo_id)
             checked = now
             if live is not None and repo_id in live and metadata is None:
@@ -376,7 +438,7 @@ class EligibilityService:
             if _within_window(metadata.get("pushed_at"), now):
                 verified[repo_id] = metadata
                 validated_at[repo_id] = checked
-        candidates, _ = self._candidates(candidates, now)
+        candidates, still_active = self._candidates(candidates, now)
         finished = self.now()
         for repo_id, checked in validated_at.items():
             if (
@@ -394,4 +456,9 @@ class EligibilityService:
                 if hit["repo_id"] in verified
             ),
             tuple(issues),
+            tuple(
+                ArchiveEvidence(record.hit, _catalogue_metadata(record))
+                for repo_id, record in deferred.items()
+                if repo_id in still_active
+            ),
         )

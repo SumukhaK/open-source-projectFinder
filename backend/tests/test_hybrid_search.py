@@ -29,6 +29,7 @@ from app.services.keyword_candidates import (
     KeywordCandidate,
     KeywordCandidates,
 )
+from app.services.live_scope import live_eligible
 
 VECTOR = (1.0,) + (0.0,) * 383
 
@@ -47,6 +48,11 @@ def live(repo_id, **changes):
     }
     metadata.update(changes)
     return metadata
+
+
+def live_card(repo_id, **changes):
+    """Call the metadata helper without shadowing ``check``'s ``live`` kwarg."""
+    return live(repo_id, **changes)
 
 
 def keyword(rank, repo_id, **changes):
@@ -138,11 +144,74 @@ class FakeEligibility:
         self.result = result if result is not None else EligibilityResult((), ())
         self.error, self.calls = error, []
 
-    def check(self, hits, *, live=None):
-        self.calls.append({"hits": list(hits), "live": live})
+    def check(self, hits, *, live=None, archive_only_limit=None):
+        self.calls.append(
+            {
+                "hits": list(hits),
+                "live": live,
+                "archive_only_limit": archive_only_limit,
+            }
+        )
         if self.error:
             raise self.error
         return self.result
+
+
+def catalogue_metadata(repo_id):
+    return {
+        "id": repo_id,
+        "name": f"repo-{repo_id}",
+        "full_name": f"owner/repo-{repo_id}",
+        "owner": {"login": "owner", "avatar_url": ""},
+        "description": "An archived repository",
+        "stargazers_count": 1,
+        "language": "Python",
+        "license": {"spdx_id": "MIT"},
+        "private": False,
+        "archived": False,
+        "visibility": "public",
+        "pushed_at": "2026-10-01T00:00:00Z",
+    }
+
+
+class BudgetEligibility:
+    """Emulate ``EligibilityService``'s archive-only fetch budget.
+
+    Uncached, archive-only candidates are verified in rank order until the
+    limit is spent; the rest are returned with a catalogue card instead.
+    """
+
+    def __init__(self, *, drops=()):
+        self.drops = set(drops)
+        self.calls = []
+        self.fetches = 0
+
+    def check(self, hits, *, live=None, archive_only_limit=None):
+        self.calls.append(
+            {
+                "hits": list(hits),
+                "live": live,
+                "archive_only_limit": archive_only_limit,
+            }
+        )
+        verified, deferred, seen = [], [], set()
+        for row in hits:
+            repo_id = row["repo_id"]
+            if repo_id in seen:
+                continue
+            seen.add(repo_id)
+            if live is not None and repo_id in live:
+                metadata = live[repo_id]
+                if live_eligible(repo_id, metadata):
+                    verified.append(ArchiveEvidence(row, dict(metadata)))
+                continue
+            if archive_only_limit is not None and self.fetches >= archive_only_limit:
+                deferred.append(ArchiveEvidence(row, catalogue_metadata(repo_id)))
+                continue
+            self.fetches += 1
+            if repo_id not in self.drops:
+                verified.append(ArchiveEvidence(row, live_card(repo_id)))
+        return EligibilityResult((), tuple(verified), (), tuple(deferred))
 
 
 @pytest.fixture
@@ -578,6 +647,148 @@ def test_archive_overfetch_ceiling_is_incomplete(build, with_live):
     assert result.fused.archive.status == "incomplete"
     assert result.archive_reason == "overfetch_exhausted"
     assert result.status == "degraded"
+
+
+def test_page_one_checks_only_the_archive_slots_it_can_show(build):
+    """T30 U23: 15 keyword results leave five archive slots on page 1."""
+    github = FakeGitHub(
+        KeywordCandidates(tuple(keyword(rank, 1000 + rank) for rank in range(1, 16)))
+    )
+    archive_ids = list(range(1, 51))
+    vectors = FakeVectors(
+        [[hit(repo_id, score=1 - repo_id / 100) for repo_id in archive_ids]]
+    )
+    eligibility = BudgetEligibility()
+    service = build(github, vectors=vectors, eligibility=eligibility)
+
+    result = run(service.search("token", "offline notes", page_size=20))
+
+    # Five archive slots plus the bounded margin of five dropped repositories.
+    assert eligibility.calls[0]["archive_only_limit"] == 10
+    assert eligibility.fetches == 10
+    page_one = result.fused.candidates[:20]
+    assert [card.repo_id for card in page_one[:15]] == list(range(1001, 1016))
+    assert [card.repo_id for card in page_one[15:]] == archive_ids[:5]
+    assert result.fused.archive.status == "ok"
+    assert result.archive_reason is None
+    assert result.status == "ok"
+    # The unverified remainder follows the verified cards for later pages.
+    assert [card.repo_id for card in result.fused.candidates[25:]] == archive_ids[10:]
+
+
+def test_keyword_results_fill_page_one_without_archive_checks(build):
+    """T30 U23: no archive-only repository can reach a page 1 full of keywords."""
+    github = FakeGitHub(
+        KeywordCandidates(tuple(keyword(rank, 1000 + rank) for rank in range(1, 26)))
+    )
+    archive_ids = list(range(1, 51))
+    vectors = FakeVectors(
+        [[hit(repo_id, score=1 - repo_id / 100) for repo_id in archive_ids]]
+    )
+    eligibility = BudgetEligibility()
+    service = build(github, vectors=vectors, eligibility=eligibility)
+
+    result = run(service.search("token", "offline notes", page_size=20))
+
+    assert eligibility.calls[0]["archive_only_limit"] == 0
+    assert eligibility.fetches == 0
+    assert [card.repo_id for card in result.fused.candidates[:20]] == list(
+        range(1001, 1021)
+    )
+    assert result.fused.archive.status == "ok"
+    assert result.archive_reason is None
+
+
+def test_unverified_archive_cards_never_enter_a_short_page_one(build):
+    """Unverified cards are only carried when page 1 is already full."""
+    github = FakeGitHub(
+        KeywordCandidates(tuple(keyword(rank, 1000 + rank) for rank in range(1, 6)))
+    )
+    archive_ids = list(range(1, 51))
+    vectors = FakeVectors(
+        [[hit(repo_id, score=1 - repo_id / 100) for repo_id in archive_ids]]
+    )
+    eligibility = BudgetEligibility(drops=archive_ids)
+    service = build(github, vectors=vectors, eligibility=eligibility)
+
+    result = run(service.search("token", "offline notes", page_size=20))
+
+    assert eligibility.calls[0]["archive_only_limit"] == 20
+    assert eligibility.fetches == 20
+    assert [card.repo_id for card in result.fused.candidates] == list(range(1001, 1006))
+    assert result.fused.archive.status == "ok"
+
+
+def test_deferral_does_not_hide_an_exhausted_overfetch(build):
+    github = FakeGitHub()
+    vectors = FakeVectors(
+        [
+            [hit(1), hit(1, score=0.8)],
+            [hit(1), hit(2), hit(2, score=0.8), hit(2, score=0.7)],
+        ]
+    )
+    eligibility = FakeEligibility(
+        EligibilityResult((), (evidence(1),), (), (evidence(2),))
+    )
+    service = build(
+        github,
+        vectors=vectors,
+        eligibility=eligibility,
+        hybrid_archive_initial_limit=2,
+        hybrid_archive_max_limit=4,
+        hybrid_archive_target_repositories=3,
+    )
+
+    result = run(service.search("token", "offline notes"))
+
+    assert result.fused.archive.status == "incomplete"
+    assert result.archive_reason == "overfetch_exhausted"
+
+
+def test_deferral_is_not_reported_as_a_validation_failure(build):
+    github = FakeGitHub(
+        KeywordCandidates(tuple(keyword(rank, 1000 + rank) for rank in range(1, 16)))
+    )
+    vectors = FakeVectors(
+        [[hit(repo_id, score=1 - repo_id / 100) for repo_id in range(1, 51)]]
+    )
+    eligibility = FakeEligibility(
+        EligibilityResult(
+            (),
+            (evidence(1),),
+            (EligibilityIssue(2, "validation_failed"),),
+            (evidence(3),),
+        )
+    )
+    service = build(github, vectors=vectors, eligibility=eligibility)
+
+    result = run(service.search("token", "offline notes", page_size=20))
+
+    assert result.fused.archive.status == "incomplete"
+    assert result.archive_reason == "validation_failed"
+    assert result.status == "degraded"
+
+
+def test_deferral_is_dropped_when_no_archive_candidate_was_verified(build):
+    github = FakeGitHub(
+        KeywordCandidates(tuple(keyword(rank, 1000 + rank) for rank in range(1, 26)))
+    )
+    vectors = FakeVectors([[hit(1), hit(2)]])
+    eligibility = FakeEligibility(
+        EligibilityResult(
+            (),
+            (),
+            (EligibilityIssue(1, "validation_failed"),),
+            (evidence(2),),
+        )
+    )
+    service = build(github, vectors=vectors, eligibility=eligibility)
+
+    result = run(service.search("token", "offline notes", page_size=20))
+
+    assert result.fused.archive.status == "failed"
+    assert result.archive_reason == "validation_failed"
+    assert {card.repo_id for card in result.fused.candidates} == set(range(1001, 1026))
 
 
 def test_license_conflict_keeps_live_licence_and_drops_archive_snippet(build):

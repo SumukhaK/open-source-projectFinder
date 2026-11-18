@@ -26,6 +26,7 @@ from app.services.eligibility import ArchiveEvidence, EligibilityResult
 from app.services.embeddings import EmbeddingError, UnsupportedInput
 from app.services.keyword_candidates import KeywordCandidate, KeywordCandidates
 from app.services.keyword_query import CandidateFilters
+from app.services.live_scope import live_eligible
 from app.services.rank_fusion import FusedResults, SourceHealth, fuse_candidates
 
 logger = logging.getLogger("reporadar.hybrid")
@@ -33,6 +34,10 @@ logger = logging.getLogger("reporadar.hybrid")
 # A live source that finishes just after archive retrieval can still supply
 # fresh metadata, but a slow live source must never starve archive validation.
 _LIVE_METADATA_GRACE = 0.05
+# T30 U23: page 1 needs only the archive-only repositories that can reach it.
+# A small margin covers repositories the GitHub re-check drops, so a cold search
+# stops after a handful of calls instead of re-checking the whole overfetch.
+_ARCHIVE_VERIFICATION_MARGIN = 5
 
 
 class BusyError(RuntimeError):
@@ -80,6 +85,8 @@ class _ArchiveOutcome:
     evidence: tuple[ArchiveEvidence, ...] = ()
     status: str = "ok"
     reason: str | None = None
+    # Catalogue-only cards whose GitHub re-check was deferred to a later page.
+    deferred: tuple[ArchiveEvidence, ...] = ()
 
 
 class BoundedExecutor:
@@ -205,7 +212,10 @@ class HybridSearchService:
         self._owns_executor = executor is None
         self._admission = asyncio.Semaphore(settings.hybrid_search_max_concurrent)
 
-    async def search(self, token, idea, *, language=None, license=None):
+    async def search(self, token, idea, *, language=None, license=None, page_size=None):
+        page_size = (
+            page_size if page_size is not None else self.settings.search_page_size
+        )
         selection = license_selection(license)
         filters = CandidateFilters(
             language=language, license=selection.github if selection else None
@@ -222,7 +232,7 @@ class HybridSearchService:
         try:
             live_task = asyncio.create_task(self._live(token, idea, filters, deadline))
             archive_task = asyncio.create_task(
-                self._archive(idea, archive_filters, deadline, live_task)
+                self._archive(idea, archive_filters, deadline, live_task, page_size)
             )
             github_result, archive_outcome = await asyncio.gather(
                 live_task, archive_task
@@ -240,6 +250,15 @@ class HybridSearchService:
             archive_outcome.evidence,
             archive_status=archive_outcome.status,
         )
+        # Deferred archive cards may only extend a snapshot whose page 1 is
+        # already full of verified cards; later pages re-verify them before
+        # display. A short page 1 must never contain an unverified card.
+        if archive_outcome.deferred and len(fused.candidates) >= page_size:
+            fused = fuse_candidates(
+                github_result,
+                archive_outcome.evidence + archive_outcome.deferred,
+                archive_status=archive_outcome.status,
+            )
         fused = replace(
             fused,
             archive=SourceHealth(archive_outcome.status, archive_outcome.reason),
@@ -306,7 +325,7 @@ class HybridSearchService:
             return KeywordCandidates(status="failed", reason="invalid_response")
         return result
 
-    async def _archive(self, idea, filters, deadline, live_task):
+    async def _archive(self, idea, filters, deadline, live_task, page_size):
         try:
             embedded = await self.executor.run(
                 lambda: self.embeddings.embed([idea], kind="query"),
@@ -365,13 +384,18 @@ class HybridSearchService:
                 break
             limit = min(limit * 2, ceiling)
 
-        hits = _dedupe_hits(rows)
+        hits = _ranked_hits(rows)
         if not hits:
             return _ArchiveOutcome()
         live_metadata = await self._live_metadata(live_task, deadline)
+        archive_only_limit = _archive_only_limit(page_size, live_metadata)
         try:
             checked = await self.executor.run(
-                lambda: self.eligibility.check(hits, live=live_metadata),
+                lambda: self.eligibility.check(
+                    hits,
+                    live=live_metadata,
+                    archive_only_limit=archive_only_limit,
+                ),
                 timeout=_call_timeout(deadline, self.settings.archive_github_timeout),
             )
         except DeadlineExceeded:
@@ -383,15 +407,21 @@ class HybridSearchService:
         if not isinstance(checked, EligibilityResult):
             return _ArchiveOutcome(status="failed", reason="invalid_response")
         if checked.issues and not checked.archive:
+            # Nothing was verified, so deferred cards have no verified anchor
+            # and are dropped with the failed archive source.
             return _ArchiveOutcome(status="failed", reason="validation_failed")
         if exhausted:
-            return _ArchiveOutcome(checked.archive, "incomplete", "overfetch_exhausted")
+            return _ArchiveOutcome(
+                checked.archive, "incomplete", "overfetch_exhausted", checked.deferred
+            )
         if checked.issues:
-            return _ArchiveOutcome(checked.archive, "incomplete", "validation_failed")
+            return _ArchiveOutcome(
+                checked.archive, "incomplete", "validation_failed", checked.deferred
+            )
         # No issues and no evidence means every hit was definitively dropped
         # (archived, private, suppressed, stale or no longer catalogued). That is
         # a complete answer, not an unverified one.
-        return _ArchiveOutcome(checked.archive, "ok", None)
+        return _ArchiveOutcome(checked.archive, "ok", None, checked.deferred)
 
     async def _live_metadata(self, task, deadline):
         if task is None:
@@ -448,17 +478,66 @@ def _distinct_repositories(rows):
     }
 
 
-def _dedupe_hits(rows):
-    seen = set()
-    unique = []
-    for row in rows:
-        chunk_id = row.get("chunk_id")
-        if isinstance(chunk_id, str):
-            if chunk_id in seen:
-                continue
-            seen.add(chunk_id)
-        unique.append(row)
-    return unique
+def _rankable(hit):
+    """The same row shape fusion can show, so unshowable rows spend no call."""
+    return (
+        type(hit.get("repo_id")) is int
+        and 0 < hit["repo_id"] < 2**63
+        and isinstance(hit.get("chunk_id"), str)
+        and bool(hit["chunk_id"])
+        and isinstance(hit.get("revision"), str)
+        and bool(hit["revision"])
+        and isinstance(hit.get("snippet"), str)
+        and isinstance(hit.get("section"), str)
+        and type(hit.get("ordinal")) is int
+        and hit["ordinal"] >= 0
+        and type(hit.get("score")) in (int, float)
+        and math.isfinite(hit["score"])
+    )
+
+
+def _hit_order(hit):
+    # Best chunk: highest relevance score, then lowest ordinal and chunk ID.
+    return (-hit["score"], hit["ordinal"], hit["chunk_id"])
+
+
+def _ranked_hits(rows):
+    """Keep one best chunk per repository, in fusion rank order.
+
+    The verification budget follows this order, so the repositories most likely
+    to reach page 1 are the ones re-checked first.
+    """
+    best = {}
+    for hit in rows:
+        if not isinstance(hit, dict) or not _rankable(hit):
+            continue
+        repo_id = hit["repo_id"]
+        if repo_id not in best or _hit_order(hit) < _hit_order(best[repo_id]):
+            best[repo_id] = hit
+    return [
+        best[repo_id] for repo_id in sorted(best, key=lambda key: _hit_order(best[key]))
+    ]
+
+
+def _archive_only_limit(page_size, live_metadata):
+    """GitHub calls page 1 may spend on uncached, archive-only repositories.
+
+    Zero when live keyword results already fill the page, otherwise the free
+    slots plus a bounded margin for repositories the check drops. Without live
+    metadata the service cannot know the free slots, so it uses the conservative
+    whole-page bound.
+    """
+    if live_metadata is None:
+        return page_size + _ARCHIVE_VERIFICATION_MARGIN
+    eligible = {
+        repo_id
+        for repo_id, metadata in live_metadata.items()
+        if live_eligible(repo_id, metadata)
+    }
+    slots = max(0, page_size - len(eligible))
+    if slots == 0:
+        return 0
+    return slots + _ARCHIVE_VERIFICATION_MARGIN
 
 
 def _without_conflicting_snippets(fused):
