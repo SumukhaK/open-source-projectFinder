@@ -20,6 +20,7 @@ from app.services.hybrid_search import HybridSearchResult
 from app.services.keyword_candidates import KeywordCandidate, KeywordCandidates
 from app.services.live_scope import live_eligible
 from app.services.rank_fusion import (
+    ArchiveCard,
     FusedCandidate,
     FusedResults,
     SourceHealth,
@@ -69,9 +70,15 @@ class FakeService:
         self.value = value
         self.calls = []
 
-    async def search(self, token, idea, *, language=None, license=None):
+    async def search(self, token, idea, *, language=None, license=None, page_size=None):
         self.calls.append(
-            {"token": token, "idea": idea, "language": language, "license": license}
+            {
+                "token": token,
+                "idea": idea,
+                "language": language,
+                "license": license,
+                "page_size": page_size,
+            }
         )
         return self.value
 
@@ -146,6 +153,82 @@ def test_first_page_returns_snapshot_order_and_a_bound_cursor(build):
     snapshot = pager.store.get(payload["sid"])
     assert snapshot is not None
     assert [item.repo_id for item in snapshot.candidates] == [101, 102, 103, 104, 105]
+
+
+def test_first_page_forwards_page_size_to_the_search(build):
+    service = FakeService(result([card(i, 100 + i) for i in range(1, 6)]))
+    pager = build(service)
+
+    first(pager, page_size=3)
+
+    assert service.calls[0]["page_size"] == 3
+
+
+def deferred_card(rank, repo_id):
+    return FusedCandidate(
+        rank=rank,
+        repo_id=repo_id,
+        metadata={
+            "id": repo_id,
+            "name": f"repo-{repo_id}",
+            "full_name": f"owner/repo-{repo_id}",
+            "owner": {"login": "owner", "avatar_url": ""},
+            "private": False,
+            "archived": False,
+            "visibility": "public",
+            "pushed_at": "2026-10-01T00:00:00Z",
+        },
+        sources=("archive",),
+        rrf_score=1 / (60 + rank),
+        license=None,
+        license_conflict=False,
+        archive=ArchiveCard(
+            snippet="A deferred snippet",
+            section="Features",
+            revision=f"revision-{repo_id}",
+            chunk_id=f"chunk-{repo_id}",
+        ),
+    )
+
+
+def test_a_deferred_archive_card_is_served_on_a_later_page_after_revalidation(build):
+    verified = [card(1, 101), card(2, 102)]
+    checked = []
+
+    def revalidate(candidates):
+        checked.extend(candidate.repo_id for candidate in candidates)
+        return list(candidates)
+
+    pager = build(
+        FakeService(result(verified + [deferred_card(3, 103)])),
+        revalidate=revalidate,
+    )
+    page = first(pager, page_size=2)
+
+    assert [item.repo_id for item in page.items] == [101, 102]
+    assert page.has_more is True
+
+    later = next_page(pager, page.next_cursor, page_size=2)
+
+    assert [item.repo_id for item in later.items] == [103]
+    assert later.items[0].archive is not None
+    assert checked == [103]
+    assert later.has_more is False
+
+
+def test_a_deferred_archive_card_that_fails_revalidation_is_never_served(build):
+    verified = [card(1, 101), card(2, 102)]
+    pager = build(
+        FakeService(result(verified + [deferred_card(3, 103)])),
+        revalidate=lambda candidates: [],
+    )
+
+    page = first(pager, page_size=2)
+    later = next_page(pager, page.next_cursor, page_size=2)
+
+    assert [item.repo_id for item in page.items] == [101, 102]
+    assert later.items == ()
+    assert later.has_more is False
 
 
 def test_pages_cover_the_snapshot_once_without_duplicates_or_rank_splicing(build):

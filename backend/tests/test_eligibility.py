@@ -490,6 +490,159 @@ def test_cached_validation_keeps_the_public_card_fields(connect):
     }
 
 
+def test_archive_only_limit_fetches_only_the_page_one_budget(connect):
+    """T30 U23: a budgeted check fetches only the candidates it can show."""
+    ids = list(range(100, 150))
+    hits = [
+        seed(connect, repo_id=repo_id, full_name=f"owner/repo-{repo_id}")
+        for repo_id in ids
+    ]
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        repo_id = int(request.url.path.rsplit("-", 1)[-1])
+        return httpx.Response(200, json=payload(repo_id))
+
+    result = service(connect, handler).check(hits, archive_only_limit=10)
+
+    assert len(calls) == 10
+    assert [entry.hit["repo_id"] for entry in result.archive] == ids[:10]
+    assert [entry.hit["repo_id"] for entry in result.deferred] == ids[10:]
+    assert not result.incomplete
+    deferred = result.deferred[0].metadata
+    assert deferred["id"] == ids[10]
+    assert deferred["full_name"] == f"owner/repo-{ids[10]}"
+    assert deferred["name"] == f"repo-{ids[10]}"
+    assert deferred["owner"] == {"login": "owner", "avatar_url": ""}
+    assert deferred["description"] is None
+    assert deferred["stargazers_count"] == 0
+    assert deferred["language"] is None
+    assert deferred["license"] is None
+    # A deferred card must satisfy the same live-eligibility shape as a
+    # verified one so fusion can carry it to a later page.
+    assert live_eligible(ids[10], deferred)
+
+
+def test_archive_only_limit_ignores_live_overlaps_and_cached_repositories(connect):
+    ids = list(range(200, 250))
+    hits = [
+        seed(connect, repo_id=repo_id, full_name=f"owner/repo-{repo_id}")
+        for repo_id in ids
+    ]
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        repo_id = int(request.url.path.rsplit("-", 1)[-1])
+        return httpx.Response(200, json=payload(repo_id))
+
+    checker = service(connect, handler)
+    assert len(checker.check(hits[:5]).archive) == 5
+    assert len(calls) == 5
+    live = {
+        repo_id: payload(repo_id, full_name=f"owner/repo-{repo_id}")
+        for repo_id in ids[5:20]
+    }
+
+    result = checker.check(hits, live=live, archive_only_limit=10)
+
+    # Five cached and fifteen live overlaps cost no HTTP; only the ten budgeted
+    # archive-only candidates are fetched.
+    assert len(calls) == 15
+    assert [entry.hit["repo_id"] for entry in result.archive] == ids[:30]
+    assert [entry.hit["repo_id"] for entry in result.deferred] == ids[30:]
+    assert not result.incomplete
+
+
+@pytest.mark.parametrize(
+    "changes, reason",
+    [
+        ({"private": True, "visibility": "private"}, "not_public"),
+        ({"archived": True}, "archived"),
+        ({"id": 99}, "identity_mismatch"),
+    ],
+)
+def test_a_deferred_candidate_that_turned_ineligible_is_dropped_when_checked(
+    connect, changes, reason
+):
+    ids = (42, 43)
+    hits = [
+        seed(connect, repo_id=repo_id, full_name=f"owner/repo-{repo_id}")
+        for repo_id in ids
+    ]
+    first = service(
+        connect,
+        lambda request: httpx.Response(
+            200, json=payload(int(request.url.path.rsplit("-", 1)[-1]))
+        ),
+    ).check(hits, archive_only_limit=1)
+    assert [entry.hit["repo_id"] for entry in first.archive] == [42]
+    assert [entry.hit["repo_id"] for entry in first.deferred] == [43]
+
+    second = service(
+        connect, lambda request: httpx.Response(200, json=payload(43, **changes))
+    ).check([entry.hit for entry in first.deferred])
+
+    assert second.archive == ()
+    with connect() as db:
+        assert (
+            db.execute(
+                "SELECT reason FROM archive_suppressions WHERE repo_id=43"
+            ).fetchone()[0]
+            == reason
+        )
+
+
+def test_a_suppressed_deferred_candidate_is_dropped_without_http(connect):
+    ids = (42, 43)
+    hits = [
+        seed(connect, repo_id=repo_id, full_name=f"owner/repo-{repo_id}")
+        for repo_id in ids
+    ]
+    first = service(
+        connect,
+        lambda request: httpx.Response(
+            200, json=payload(int(request.url.path.rsplit("-", 1)[-1]))
+        ),
+    ).check(hits, archive_only_limit=1)
+    with connect(write=True) as db:
+        db.execute(
+            "INSERT INTO archive_suppressions (repo_id, reason, observed_at) "
+            "VALUES (43, 'not_found', ?)",
+            (NOW.timestamp(),),
+        )
+
+    second = service(connect, no_http).check([entry.hit for entry in first.deferred])
+
+    assert second.archive == ()
+    assert second.deferred == ()
+
+
+def test_a_deferred_candidate_is_verified_when_a_later_page_asks(connect):
+    ids = list(range(100, 106))
+    hits = [
+        seed(connect, repo_id=repo_id, full_name=f"owner/repo-{repo_id}")
+        for repo_id in ids
+    ]
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        repo_id = int(request.url.path.rsplit("-", 1)[-1])
+        return httpx.Response(200, json=payload(repo_id))
+
+    checker = service(connect, handler)
+    first = checker.check(hits, archive_only_limit=2)
+    assert [entry.hit["repo_id"] for entry in first.deferred] == ids[2:]
+
+    second = checker.check([entry.hit for entry in first.deferred])
+
+    assert [entry.hit["repo_id"] for entry in second.archive] == ids[2:]
+    assert second.deferred == ()
+    assert len(calls) == len(ids)
+
+
 def test_migration_three_preserves_v2_published_content(tmp_path):
     with sqlite3.connect(tmp_path / "upgrade.sqlite3") as db:
         db.execute("PRAGMA foreign_keys=ON")

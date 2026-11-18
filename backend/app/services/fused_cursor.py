@@ -276,7 +276,7 @@ class HybridPager:
         page_size = _page_size(page_size, self.settings.hybrid_snapshot_max_candidates)
         binding = _binding(self.codec, account, idea, language, license, generation)
         result = await self.service.search(
-            token, idea, language=language, license=license
+            token, idea, language=language, license=license, page_size=page_size
         )
         snapshot = FusedSnapshot(
             account=account,
