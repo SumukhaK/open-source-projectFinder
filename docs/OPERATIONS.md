@@ -590,11 +590,14 @@ and does not claim the open ones are fixed:
   3.9 s / p95 4.5 s, 10/10 ok (was 6.9 s / 8.0 s with 3 timeouts), about 25
   GitHub visibility calls each (was about 50); hybrid at concurrency 1, 39/39 ok,
   p50 4.4 s / p95 6.2 s, inside the 7 s D8 bound.
-- **U24 (fixed, awaiting the next `retire`):** Milvus held 8 orphan vectors of
+- **U24 (done 2026-11-18):** Milvus held 8 orphan vectors of
   repository 229937405 (the October T09 one-repository pilot) that no catalogue
   row references. Search ignores them. The daily `retire` now deletes vectors
   with no catalogue repository row, up to `--limit` per run, and reports the
   count as `orphans` ([backend README](../backend/README.md#suppression-and-retirement-sweep-t20)).
+  Verified live at `aa23c52`: `retire` finished with `orphans` 8, `issues` 0,
+  980 checked, nothing suppressed or purged; Milvus went from 5,956 to 5,948
+  vectors, equal to the catalogue's 5,948 chunks.
 - **U25 (optional):** the archive branch usually finishes before the keyword
   search, so its page-1 budget falls back to page size + 5 (about 19-25
   visibility calls per cold hybrid search) instead of 0 when keyword results
