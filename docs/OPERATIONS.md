@@ -422,7 +422,8 @@ Milvus and the catalogue need not match one for one. On 2026-11-15 Milvus held
 1,150 vectors across 205 repository IDs, against the catalogue's 1,142 chunks
 across 204 repositories. The extra vectors are retired or old-revision entries:
 search drops them (`filter_active_hits`), and the retire and reconcile jobs
-remove them. Treat it as a problem only if the gap keeps growing across daily
+remove them; since T30 U24, `retire` also deletes vectors whose repository has
+no catalogue row at all. Treat it as a problem only if the gap keeps growing across daily
 runs, or if a search returns a repository that is not in the catalogue.
 
 Section 9 was checked at the same time without changing anything:
@@ -589,10 +590,11 @@ and does not claim the open ones are fixed:
   3.9 s / p95 4.5 s, 10/10 ok (was 6.9 s / 8.0 s with 3 timeouts), about 25
   GitHub visibility calls each (was about 50); hybrid at concurrency 1, 39/39 ok,
   p50 4.4 s / p95 6.2 s, inside the 7 s D8 bound.
-- **U24:** Milvus holds 8 orphan vectors of repository 229937405 (the October
-  T09 one-repository pilot) that no catalogue row references. Search ignores
-  them; no supported command removes them yet (only `restore --activate`
-  deletes orphans). Fix: an orphan-vector sweep in the daily `retire`.
+- **U24 (fixed, awaiting the next `retire`):** Milvus held 8 orphan vectors of
+  repository 229937405 (the October T09 one-repository pilot) that no catalogue
+  row references. Search ignores them. The daily `retire` now deletes vectors
+  with no catalogue repository row, up to `--limit` per run, and reports the
+  count as `orphans` ([backend README](../backend/README.md#suppression-and-retirement-sweep-t20)).
 - **U25 (optional):** the archive branch usually finishes before the keyword
   search, so its page-1 budget falls back to page size + 5 (about 19-25
   visibility calls per cold hybrid search) instead of 0 when keyword results

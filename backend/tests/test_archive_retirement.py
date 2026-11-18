@@ -641,3 +641,86 @@ def test_suppressed_rechecks_rotate_beyond_the_limit(tmp_path):
         )
 
     assert seen == [[11], [12], [13]]
+
+
+class BrokenListing(FakeMilvus):
+    def orphan_chunk_ids(self, known_repo_ids, *, limit):
+        raise MilvusUnavailable("synthetic listing failure")
+
+
+def add_orphan_vectors(state, count, repo_id=REPO_ID + 1):
+    """Vectors left behind with no catalogue row (the T09 pilot case, U24)."""
+    template = next(iter(state.vectors.rows.values()))
+    ids = [f"{index:064x}" for index in range(1, count + 1)]
+    for chunk_id in ids:
+        state.vectors.rows[chunk_id] = replace(
+            template, chunk_id=chunk_id, repo_id=repo_id
+        )
+    return ids
+
+
+def test_sweep_deletes_vectors_with_no_catalogue_row_and_keeps_the_rest(tmp_path):
+    state = published(tmp_path)
+    kept = set(state.vectors.rows)
+    orphans = add_orphan_vectors(state, 3)
+
+    summary, _ = run_sweep(state, make_snapshot())
+
+    assert summary["stop_reason"] == "finished"
+    assert summary["orphans"] == 3
+    assert set(state.vectors.rows) == kept
+    assert not set(orphans) & set(state.vectors.rows)
+    assert catalogue_counts(state)["archive_repositories"] == 1
+
+
+def test_orphan_deletes_are_batched_and_bounded_by_the_limit(tmp_path):
+    state = published(tmp_path)
+    batch = state.runtime.settings.milvus_batch_size
+    add_orphan_vectors(state, batch + 5)
+    state.vectors.deletes.clear()
+
+    summary, _ = run_sweep(state, make_snapshot(), limit=batch + 2)
+
+    assert summary["orphans"] == batch + 2
+    assert [len(ids) for ids in state.vectors.deletes] == [batch, 2]
+    summary, _ = run_sweep(state, make_snapshot())
+    assert summary["orphans"] == 3
+
+
+def test_an_empty_catalogue_never_treats_every_vector_as_orphaned(tmp_path):
+    state = published(tmp_path)
+    orphans = add_orphan_vectors(state, 2)
+    with state.connect(write=True) as db:
+        db.execute("DELETE FROM archive_chunks")
+        db.execute("DELETE FROM archive_documents")
+        db.execute("DELETE FROM archive_repositories")
+
+    summary, _ = run_sweep(state, make_snapshot())
+
+    assert summary["orphans"] == 0
+    assert set(orphans) <= set(state.vectors.rows)
+
+
+def test_an_orphan_listing_failure_is_an_issue_not_a_failed_sweep(tmp_path):
+    settings = make_settings(
+        tmp_path, archive_license_allowlist=list(ARCHIVE_BACKFILL_LICENSES)
+    )
+    state = published(tmp_path, milvus=BrokenListing(settings))
+
+    summary, _ = run_sweep(state, make_snapshot())
+
+    assert summary["stop_reason"] == "finished"
+    assert summary["orphans"] == 0
+    assert summary["issues"] == 1
+    assert "files" in summary and "runs" in summary
+
+
+def test_a_live_writer_lease_leaves_orphan_vectors_for_the_next_sweep(tmp_path):
+    state = published(tmp_path)
+    orphans = add_orphan_vectors(state, 2)
+    live_refresh_lease(state)
+
+    summary, _ = run_sweep(state, make_snapshot())
+
+    assert summary["stop_reason"] == "busy"
+    assert set(orphans) <= set(state.vectors.rows)

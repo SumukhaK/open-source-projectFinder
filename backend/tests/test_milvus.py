@@ -611,3 +611,40 @@ def test_pinned_generation_fingerprint_is_unchanged(adapter):
     assert adapter.generation == (
         "df9cf05b1daae6801246d15bd9655a33b91241a686acc5cdef8e95a9a901ad7c"
     )
+
+
+def test_orphan_listing_excludes_known_repositories_by_parameter(adapter):
+    adapter.client.query.return_value = [{"chunk_id": "b" * 64}]
+    assert adapter.orphan_chunk_ids([7, 3], limit=10) == ["b" * 64]
+    call = adapter.client.query.call_args.kwargs
+    assert call["filter"] == "repo_id not in {known}"
+    assert call["filter_params"] == {"known": [3, 7]}
+    assert call["output_fields"] == ["chunk_id"]
+    assert call["limit"] == 10
+    assert call["consistency_level"] == "Strong"
+
+
+@pytest.mark.parametrize(
+    ("known", "limit"),
+    [([], 10), ([0], 10), ([True], 10), (["1"], 10), ([1], 0), ([1], 16385)],
+)
+def test_orphan_listing_refuses_an_empty_or_unbounded_request(adapter, known, limit):
+    with pytest.raises(MilvusContractError):
+        adapter.orphan_chunk_ids(known, limit=limit)
+    adapter.client.query.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "reply", [[{"chunk_id": "true"}], [{}], [{"chunk_id": "c" * 64}] * 3]
+)
+def test_orphan_listing_rejects_a_malformed_reply(adapter, reply):
+    adapter.client.query.return_value = reply
+    with pytest.raises(MilvusContractError):
+        adapter.orphan_chunk_ids([1], limit=2)
+
+
+def test_orphan_listing_needs_a_loaded_collection(adapter):
+    adapter.client.get_load_state.return_value = {"state": LoadState.NotLoad}
+    with pytest.raises(MilvusUnavailable):
+        adapter.orphan_chunk_ids([1], limit=2)
+    adapter.client.query.assert_not_called()
