@@ -384,3 +384,12 @@ Milvus, model or database call was made.
 Behaviour: only uncached, archive-only candidates consume the budget; cache hits and live keyword overlaps are free. `RANKING_VERSION`, ranking order, concurrency (4), visibility TTL and cache size are unchanged, and no GitHub call happens at start-up. Archive hits are reduced to one best chunk per repository in fusion rank order before the check. When verified cards cannot fill page 1, deferred candidates are left out of the snapshot, so later pages can show fewer archive results; they are never shown without a fresh check. Status stays truthful: `ok` with deferral, `incomplete/overfetch_exhausted` and `incomplete/validation_failed` carry deferred cards, and `failed/validation_failed` drops them.
 
 No latency claim. The laptop re-measurement (`scripts/capacity_bench.py search --mode archive`) against the 7 s D8 bound happens after merge. `docs/CODEMAP.md` is unchanged because no module, route, command or decision changed. [PR #147](https://github.com/SumukhaK/open-source-projectFinder/pull/147).
+
+### U23 review fix — 2026-11-18 (Claude, after OpenCode was closed)
+
+Claude's review of `e34b65e` found one blocking defect: deferred cards were re-fused whenever verified cards *counted* a full page, but `_best_archive` sorts verified and deferred cards together by score and `HybridPager.first_page` serves page 1 with `revalidate=False`. A deferred card that outscored a cheap cached verified card therefore landed on page 1 unchecked (and in the grounded summary, which reads page 1).
+
+- RED: `test_deferred_card_never_lands_on_page_one` (18 keyword results, repo 8 deferred, repo 50 cached) and `test_deferred_card_stays_off_page_one_when_keywords_fail` both failed on `e34b65e`.
+- Fix: after re-fusing, if any deferred repository falls in `candidates[:page_size]`, the verified-only fusion is kept (later pages then carry fewer archive results; nothing is shown unverified).
+- The T27 collector's `_RecordingEligibility` did not accept `archive_only_limit` (the archive branch would have caught the `TypeError` as `validation_failed` on every idea). It now accepts it and verifies every hit, so evaluation scores the archive ranking rather than the page-1 budget (`test_recording_eligibility_verifies_every_archive_hit_for_evaluation`).
+- GREEN: full `backend/tests scripts/tests` 1,500 passed / 9 skipped (Linux); ruff, ruff format, bandit and `git diff --check` clean.

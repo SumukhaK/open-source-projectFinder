@@ -252,13 +252,22 @@ class HybridSearchService:
         )
         # Deferred archive cards may only extend a snapshot whose page 1 is
         # already full of verified cards; later pages re-verify them before
-        # display. A short page 1 must never contain an unverified card.
+        # display. Page 1 is served without revalidation, so it must never
+        # contain an unverified card: a deferred card that would outrank a
+        # verified one (for example a cheap cache hit) keeps the verified order.
         if archive_outcome.deferred and len(fused.candidates) >= page_size:
-            fused = fuse_candidates(
+            extended = fuse_candidates(
                 github_result,
                 archive_outcome.evidence + archive_outcome.deferred,
                 archive_status=archive_outcome.status,
             )
+            deferred_ids = {
+                evidence.hit["repo_id"] for evidence in archive_outcome.deferred
+            }
+            if not any(
+                card.repo_id in deferred_ids for card in extended.candidates[:page_size]
+            ):
+                fused = extended
         fused = replace(
             fused,
             archive=SourceHealth(archive_outcome.status, archive_outcome.reason),

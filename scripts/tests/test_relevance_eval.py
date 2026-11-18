@@ -796,3 +796,22 @@ def test_gate_invalid_judgment_error_does_not_echo_input():
         render_gate(data, marks, owner)
     assert "private@example.test" not in str(caught.value)
     assert "invalid gate judgments" in str(caught.value)
+
+
+def test_recording_eligibility_verifies_every_archive_hit_for_evaluation():
+    """T30 U23: the page-1 budget must not shrink the scored archive ranking."""
+    from scripts.relevance_eval import _RecordingEligibility
+
+    calls = []
+
+    class Inner:
+        def check(self, hits, *, live=None, archive_only_limit=None):
+            calls.append(archive_only_limit)
+            return EligibilityResult(live=(), archive=())
+
+    recording = _RecordingEligibility(Inner())
+    result = recording.check([hit(3, 0.9)], live={}, archive_only_limit=0)
+
+    assert calls == [None]
+    assert recording.result is result
+    assert recording.requested_limit == 0

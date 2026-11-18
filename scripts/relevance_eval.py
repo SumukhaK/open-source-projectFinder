@@ -165,9 +165,13 @@ class _RecordingEligibility:
     """Keeps the checked archive evidence so it can be scored alone."""
 
     def __init__(self, inner):
-        self.inner, self.result = inner, None
+        self.inner, self.result, self.requested_limit = inner, None, None
 
-    def check(self, archive_hits, *, live=None):
+    def check(self, archive_hits, *, live=None, archive_only_limit=None):
+        # Evaluation scores the archive ranking alone, so it verifies every
+        # hit instead of the serving path's page-1 budget (T30 U23). The
+        # requested budget is kept only for inspection.
+        self.requested_limit = archive_only_limit
         self.result = self.inner.check(archive_hits, live=live)
         return self.result
 

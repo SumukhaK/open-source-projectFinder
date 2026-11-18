@@ -699,6 +699,56 @@ def test_keyword_results_fill_page_one_without_archive_checks(build):
     assert result.archive_reason is None
 
 
+def test_deferred_card_never_lands_on_page_one(build):
+    """A deferred card that outscores a cached verified card stays off page 1."""
+    # 18 keyword results leave 2 archive slots. Repo 1 is verified, repos 2-7
+    # were dropped by the check, repo 8 was deferred past the budget and repo 50
+    # was verified for free from the cache at a much lower score.
+    github = FakeGitHub(
+        KeywordCandidates(tuple(keyword(rank, 1000 + rank) for rank in range(1, 19)))
+    )
+    vectors = FakeVectors(
+        [[hit(repo_id, score=1 - repo_id / 100) for repo_id in range(1, 51)]]
+    )
+    eligibility = FakeEligibility(
+        EligibilityResult(
+            (),
+            (evidence(1, score=0.99), evidence(50, score=0.5)),
+            (),
+            (evidence(8, score=0.92),),
+        )
+    )
+    service = build(github, vectors=vectors, eligibility=eligibility)
+
+    result = run(service.search("token", "offline notes", page_size=20))
+
+    page_one = [card.repo_id for card in result.fused.candidates[:20]]
+    assert 8 not in page_one
+    assert page_one[18:] == [1, 50]
+
+
+def test_deferred_card_stays_off_page_one_when_keywords_fail(build):
+    settings = Settings(_env_file=None)
+    github = GitHubKeywordCandidates(FakeProvider(error=ProviderError()), settings)
+    vectors = FakeVectors(
+        [[hit(repo_id, score=1 - repo_id / 100) for repo_id in range(1, 51)]]
+    )
+    verified = tuple(
+        evidence(repo_id, score=1 - repo_id / 100) for repo_id in range(1, 20)
+    ) + (evidence(50, score=0.5),)
+    eligibility = FakeEligibility(
+        EligibilityResult((), verified, (), (evidence(25, score=0.75),))
+    )
+    service = build(github, vectors=vectors, eligibility=eligibility, settings=settings)
+
+    result = run(service.search("token", "offline notes", page_size=20))
+
+    assert result.fused.github.status == "failed"
+    page_one = [card.repo_id for card in result.fused.candidates[:20]]
+    assert 25 not in page_one
+    assert page_one == list(range(1, 20)) + [50]
+
+
 def test_unverified_archive_cards_never_enter_a_short_page_one(build):
     """Unverified cards are only carried when page 1 is already full."""
     github = FakeGitHub(
