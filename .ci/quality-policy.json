@@ -57,6 +57,22 @@
       "version": "10.2.6",
       "expires": "2026-11-30",
       "reason": "Moderate: denial of service via globparts amplification; fixed only in minimatch 11.0.1+ (new major, released 2026-10-27). Reached only via Expo build tooling (glob 13, @expo/fingerprint) and @typescript-eslint at build/lint time. Patterns come from trusted local config, never from users, and the package is absent from the exported iOS/Android/web bundles. Forcing minimatch 11 would break Expo's pinned tooling contract. Owner-approved 2026-10-31; remove once upstream adopts a patched release."
+    },
+    {
+      "ecosystem": "npm",
+      "package": "picomatch",
+      "id": "GHSA-fc5q-39xc-vjpf",
+      "version": "2.3.2",
+      "expires": "2026-12-31",
+      "reason": "High: ReDoS through single-branch repeated extglobs (GHSA-fc5q-39xc-vjpf, affects <=4.0.7); no patched release exists (4.0.7 is latest, checked 2026-11-18) and npm audit's only fix is a react-native semver-major change. Reached only via Jest (jest-util, jest-haste-map/anymatch, micromatch) at test time. Glob patterns come from trusted local config, never from users; picomatch is not referenced by react-native Libraries or expo runtime code and is absent from the exported app bundles. Owner-approved 2026-11-18; remove once a patched picomatch is released and adopted upstream."
+    },
+    {
+      "ecosystem": "npm",
+      "package": "picomatch",
+      "id": "GHSA-fc5q-39xc-vjpf",
+      "version": "4.0.7",
+      "expires": "2026-12-31",
+      "reason": "High: ReDoS through single-branch repeated extglobs (GHSA-fc5q-39xc-vjpf, affects <=4.0.7); no patched release exists (4.0.7 is latest, checked 2026-11-18) and npm audit's only fix is a react-native semver-major change. Reached only via Expo build tooling (@expo/cli, @expo/metro-config) and react-native's tinyglobby/fdir file scanning at build time. Glob patterns come from trusted local config, never from users; picomatch is not referenced by react-native Libraries or expo runtime code and is absent from the exported app bundles. Owner-approved 2026-11-18; remove once a patched picomatch is released and adopted upstream."
     }
   ]
 }
