@@ -500,7 +500,7 @@ measurement.
   deferred it (T28b) on 2026-11-15, and it needs separate approval.
 
 **D8 response-time bound (approved by the owner on 2026-11-15).** Hybrid p95
-must stay at or below **7 s at concurrency 1** — measured 6.6 s — inside the
+must stay at or below **7 s at concurrency 1** — measured 6.6 s at 204 repositories and 6.2 s at 980 (2026-11-18, after U23) — inside the
 server's 8 s `hybrid_search_budget`. Most of that time is GitHub keyword search
 (p95 5.6 s), which hybrid waits for; the semantic part alone is about 0.1 s. This
 replaces the 5 s target proposed in T28a, which the re-measure did not meet.
@@ -584,15 +584,20 @@ The [T30 backlog](../execution-plans/hybrid-search/tasks/T30-upkeep.md) still
 holds these operator-visible items; this handbook records their current state
 and does not claim the open ones are fixed:
 
-- **U23:** fixed in [PR #147](https://github.com/SumukhaK/open-source-projectFinder/pull/147):
-  a cold search now re-checks only the archive-only repositories that can reach
-  page 1, at most the free page-1 slots plus 5 (10 with 15 keyword results and
-  50 archive-only candidates; 0 when 25 keyword results fill the page). Deferred
-  candidates are re-verified before a later page shows them and are left out
-  when page 1 is short. Cold-search latency has not been re-measured since the
-  change; the 7 s D8 bound stays unverified until the owner runs
-  `scripts/capacity_bench.py` on the laptop. Warm searches (15-minute cache) are
-  unaffected.
+- **U23 (done 2026-11-18):** fixed in [PR #147](https://github.com/SumukhaK/open-source-projectFinder/pull/147)
+  and re-measured on the laptop at 980 repositories: cold archive searches p50
+  3.9 s / p95 4.5 s, 10/10 ok (was 6.9 s / 8.0 s with 3 timeouts), about 25
+  GitHub visibility calls each (was about 50); hybrid at concurrency 1, 39/39 ok,
+  p50 4.4 s / p95 6.2 s, inside the 7 s D8 bound.
+- **U24:** Milvus holds 8 orphan vectors of repository 229937405 (the October
+  T09 one-repository pilot) that no catalogue row references. Search ignores
+  them; no supported command removes them yet (only `restore --activate`
+  deletes orphans). Fix: an orphan-vector sweep in the daily `retire`.
+- **U25 (optional):** the archive branch usually finishes before the keyword
+  search, so its page-1 budget falls back to page size + 5 (about 19-25
+  visibility calls per cold hybrid search) instead of 0 when keyword results
+  fill the page. Latency is unaffected (the checks overlap the keyword wait);
+  the cost is API-token REST calls.
 - **U15:** the T25 mobile notices/buttons/refresh/focus/touch-target inspection
   on a phone-sized device in both themes has not run.
 - **U16:** voice device acceptance on a physical phone has not run; the owner
