@@ -581,13 +581,18 @@ archive grows and the gate is re-run, so the archive stays out of the top 10.
 ### Open T30 items that affect operations
 
 The [T30 backlog](../execution-plans/hybrid-search/tasks/T30-upkeep.md) still
-holds these operator-visible items; this handbook does not claim they are fixed:
+holds these operator-visible items; this handbook records their current state
+and does not claim the open ones are fixed:
 
-- **U23:** after the growth to 980 repositories, cold-cache searches re-check
-  about 50 archive repositories each; 10 cold in-process searches measured p50
-  6.9 s and p95 8.0 s, with 3 hitting the 8 s budget. Warm searches (15-minute
-  cache) are unaffected. The 7 s D8 bound is at risk until this is fixed and
-  re-measured.
+- **U23:** fixed in [PR #147](https://github.com/SumukhaK/open-source-projectFinder/pull/147):
+  a cold search now re-checks only the archive-only repositories that can reach
+  page 1, at most the free page-1 slots plus 5 (10 with 15 keyword results and
+  50 archive-only candidates; 0 when 25 keyword results fill the page). Deferred
+  candidates are re-verified before a later page shows them and are left out
+  when page 1 is short. Cold-search latency has not been re-measured since the
+  change; the 7 s D8 bound stays unverified until the owner runs
+  `scripts/capacity_bench.py` on the laptop. Warm searches (15-minute cache) are
+  unaffected.
 - **U15:** the T25 mobile notices/buttons/refresh/focus/touch-target inspection
   on a phone-sized device in both themes has not run.
 - **U16:** voice device acceptance on a physical phone has not run; the owner

@@ -42,7 +42,7 @@ At each post-merge tracker sync, the reviewer adds that task's non-blocking revi
 | ~~U20~~ (closed by [PR #115](https://github.com/SumukhaK/open-source-projectFinder/pull/115), merged as `5b69807`) | T22, [PR #102](https://github.com/SumukhaK/open-source-projectFinder/pull/102) | After `restore --activate` the restored catalogue's `archive_runs` and cleanup tombstones are from the backup era, so `MAX(fence)` and each repository's generation high-water mark can go backwards. Safe today: activation holds the writer and OS locks, deletes orphan vectors and reads every rebuilt vector back | Before the swap, carry the live `MAX(fence)` and each repository's `MAX(generation)` tombstone into the restored catalogue; add a regression test. |
 | ~~U21~~ (closed by [PR #127](https://github.com/SumukhaK/open-source-projectFinder/pull/127), merged as `a47c356`) | Mobile search lock, [PR #124](https://github.com/SumukhaK/open-source-projectFinder/pull/124) | `canRetry` reads `searchContext`, which updates after re-render, so a retryable 503 arriving between a tab press and that re-render still waits and retries (results kept, no stuck lock) instead of showing "interrupted"; and no test pins a retryable 503 that arrives while the user is already off Home | Update `searchContext.current.tab` synchronously on tab press (as `leave()` does for sign-out) and `searchContext.current.selected` when opening details, and add tests for a 503 in the same `act()` as the tab press, one while already off Home, and one as details open; **fixed in PR #127, merged as `a47c356`** |
 | U22 (done 2026-11-15; hybrid p95 6.6 s, D8 bound set to 7 s p95) | T28a, [PR #131](https://github.com/SumukhaK/open-source-projectFinder/pull/131) and the 2026-11-15 diagnosis | Cold archive searches re-checked the same repositories twice: a check abandoned at the search deadline keeps running, and the next search fetched the same uncached repositories again (119 calls for 60 repositories). Rechecks also run one at a time | Share one in-flight visibility call per repository across concurrent checks ([PR #133](https://github.com/SumukhaK/open-source-projectFinder/pull/133), merged 58b4dbb); run a check's uncached fetches concurrently with a small bound ([PR #135](https://github.com/SumukhaK/open-source-projectFinder/pull/135), merged 5df8d1d); re-measure with `scripts/capacity_bench.py` |
-| U23 | The 2026-11-16 archive growth (204 to 980 repositories) | Cold-cache hybrid searches now re-check about 50 archive repositories each (about 0.5 s each, 4 at a time); 10 cold in-process searches: p50 6.9 s, p95 8.0 s, 3 of 10 hit the 8 s budget | Re-check only the repositories that can still reach the shown page, or warm the visibility cache after the API starts; then re-measure hybrid p95 against the 7 s D8 bound |
+| ~~U23~~ (fixed by [PR #147](https://github.com/SumukhaK/open-source-projectFinder/pull/147)) | The 2026-11-16 archive growth (204 to 980 repositories) | Cold-cache hybrid searches re-checked about 50 archive repositories each (about 0.5 s each, 4 at a time); 10 cold in-process searches: p50 6.9 s, p95 8.0 s, 3 of 10 hit the 8 s budget | Re-check only the repositories that can reach the shown page. Fixed in PR #147: a cold search now spends at most the free page-1 slots plus 5 archive-only checks (10 for 15 keyword results and 50 archive-only candidates; 0 when 25 keyword results fill the page), and unverified candidates are re-checked before later pages show them. The laptop latency re-measurement against the 7 s D8 bound is still pending. |
 
 ## Verify closed — notes owned by other tasks
 
@@ -352,3 +352,35 @@ No real restore/activation, network provider, Docker, WSL, restic process, Milvu
 Merged latest main `ff9d6b72dd1146739c5c30277c43fffa9fda556a` (U4) with a merge commit, preserving both evidence sections. Final merged-tree full run: 1,273 passed / 99 skipped / the same 21 WAL failures (135.82 s); coverage 89.47% combined / 85.18% branches, unchanged gate still fails locally. Ruff/format/Bandit/diff remain clean.
 
 [PR #115](https://github.com/SumukhaK/open-source-projectFinder/pull/115). Initial [Linux CI](https://github.com/SumukhaK/open-source-projectFinder/actions/runs/43379447885) passed Backend quality and Dependency audit, but Secret scan detected `generic-api-key` in `scripts/relevance_eval.py:579`, commit `4a8808b9a48cc065fdde6296382f50e281179c31` from the unrelated open T27 [PR #114](https://github.com/SumukhaK/open-source-projectFinder/pull/114). That file/commit is not in the U20 tree. No secret match is reproduced here; no exception, scanner change or edit to T27 was made. This is a required-CI blocker, not waived by implementation completion.
+
+## U23 execution — 2026-11-18
+
+Base `1b2ef13f73a6d11fd6c126f1bf0e6e4928995dcf`; branch
+`opencode/hybrid-t30-u23-cold-recheck`, isolated worktree; one PR then stop.
+Reverified the defect on current main: every cold search passed all archive-only
+hits from the overfetch to `EligibilityService.check`, which re-checked each
+uncached repository on GitHub before fusion knew how many page-1 slots remained.
+
+Plan: thread the requested page size into the archive branch; budget only
+uncached, archive-only visibility calls by the free page-1 slots plus a bounded
+margin; return the rest as catalogue-only deferred evidence; admit deferred
+cards only when verified cards already fill page 1, and let later pages re-verify
+them through `FusedRevalidator`. RED first, then the minimum implementation;
+focused and full fake-only quality checks; docs in the same PR.
+
+### U23 verification and compatibility
+
+2026-11-18, Windows Python 3.11.9 / SQLite 3.45.1, fake providers only. The
+existing worktree venv was absent; `pymilvus==2.6.17` and `bandit` were installed
+into the system Python so the suite imports and the gates run. No real GitHub,
+Milvus, model or database call was made.
+
+- RED: `python -m pytest backend/tests/test_hybrid_search.py backend/tests/test_eligibility.py backend/tests/test_fused_cursor.py -q` -> 14 failed / 156 passed. The failures were the new budget, deferral, status and page-size assertions: `check()` had no `archive_only_limit`, `EligibilityResult` had no `deferred`, `search()` had no `page_size`, and the pager did not forward it.
+- GREEN: same command -> 170 passed. Budget cases: 15 keyword + 50 archive-only -> limit 10, 10 fetches, page 1 = 15 keyword + 5 archive; 25 keyword -> limit 0, 0 fetches. Deferred private/archived/identity-mismatched/suppressed candidates are dropped; a still-eligible deferred candidate is verified and served on page 2.
+- Full required pytest/coverage command from the repository root: 1,386 passed / 99 skipped / 21 failed (146.94 s). The 21 failures are the unchanged `test_archive_restore.py` SQLite/WAL refusals. An untouched detached worktree at the same base reproduced the same 21 failures (1,370 passed / 99 skipped) and the same coverage-gate failure, so this is a local Windows limitation, not this change.
+- `python scripts/quality.py coverage reports/backend-coverage.json`: exit 1 on both trees (89.74% combined / 85.59% branches here; base also below 90%). Untouched-base `archive_restore.py` is at 82% because those tests abort; Linux CI is authoritative. The affected modules are 93.9% (`eligibility.py`), 98.5% (`fused_cursor.py`) and 88.8% (`hybrid_search.py`).
+- `ruff check backend scripts`, `ruff format --check backend scripts`, `bandit -r backend/app`, `git diff --check`: pass (Bandit emits existing comment-parsing warnings).
+
+Behaviour: only uncached, archive-only candidates consume the budget; cache hits and live keyword overlaps are free. `RANKING_VERSION`, ranking order, concurrency (4), visibility TTL and cache size are unchanged, and no GitHub call happens at start-up. Archive hits are reduced to one best chunk per repository in fusion rank order before the check. When verified cards cannot fill page 1, deferred candidates are left out of the snapshot, so later pages can show fewer archive results; they are never shown without a fresh check. Status stays truthful: `ok` with deferral, `incomplete/overfetch_exhausted` and `incomplete/validation_failed` carry deferred cards, and `failed/validation_failed` drops them.
+
+No latency claim. The laptop re-measurement (`scripts/capacity_bench.py search --mode archive`) against the 7 s D8 bound happens after merge. `docs/CODEMAP.md` is unchanged because no module, route, command or decision changed. [PR #147](https://github.com/SumukhaK/open-source-projectFinder/pull/147).
