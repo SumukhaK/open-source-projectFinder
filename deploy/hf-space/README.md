@@ -7,7 +7,7 @@ pinned: false
 
 # RepoRadar API on a Hugging Face Space
 
-Status: **H1 merged, H2 (state sync) in review, not deployed.** The plan and its decisions live in the
+Status: **H1 and H2 merged, H3 (Zilliz profile) in review, not deployed.** The plan and its decisions live in the
 [hosting tracker](../../execution-plans/hf-hosting/TRACKER.md). This folder holds
 what a free CPU basic Docker Space needs to serve the RepoRadar API. The YAML
 block above is the Space card. Hugging Face reads it only when this file is the
@@ -40,8 +40,11 @@ never enters the image.
 - Keeps forwarded headers off. Hugging Face's proxy terminates HTTPS, so
   per-IP limits count the proxy, not each client. That's fine for a single-owner
   app. Revisit it before opening the app to others.
-- Uses the `cpu` Milvus profile (HNSW). Milvus itself isn't in the image:
-  `MILVUS_URI` must point to a managed service (H3).
+- Uses the `zilliz` Milvus profile (HD2, H3): Zilliz Cloud's free cluster with
+  `AUTOINDEX` and the same IP metric, schema and load checks. Only the pinned
+  2.6 server-version check is skipped, because the managed service reports its
+  own version. Milvus itself isn't in the image: `MILVUS_URI` is the cluster's
+  public endpoint and `MILVUS_TOKEN` its API key.
 - SQLite lives in `/home/user/app/data`, which is wiped on every restart.
   `start.sh` (HD1) first restores `auth.sqlite3` and `catalogue.sqlite3` from
   the private dataset named by `STATE_SYNC_REPO`, then runs

@@ -2,7 +2,7 @@
 
 Status (2026-11-23): feasibility agreed, persistence decision approved; H1
 merged ([PR #153](https://github.com/SumukhaK/open-source-projectFinder/pull/153),
-`4e17553`); H2 in review. Nothing is deployed to Hugging Face or Zilliz until the owner gives the
+`4e17553`); H2 merged ([PR #154](https://github.com/SumukhaK/open-source-projectFinder/pull/154), `0c6e686`); H3 in review. Nothing is deployed to Hugging Face or Zilliz until the owner gives the
 go-ahead for H4.
 
 ## Original request (verbatim)
@@ -35,7 +35,7 @@ go-ahead for H4.
 | ID | Decision | Status | Value |
 | --- | --- | --- | --- |
 | HD1 | How the Space keeps logins, favourites and the catalogue across restarts | **Approved 2026-11-23** | Sync SQLite snapshots to a private HF dataset: restore at startup, upload periodically. A restart may lose up to `STATE_SYNC_INTERVAL_SECONDS` (default 300) of changes. A start whose restore download fails exits instead of serving an empty DB. Paid persistent storage and "reset on restart" were declined. |
-| HD2 | Vector store | Proposed | Zilliz Cloud free tier (managed Milvus). Needs owner go-ahead before an account or cluster is created. |
+| HD2 | Vector store | Proposed (code in H3) | Zilliz Cloud free cluster: 1 per organisation, 5 GB, vector index `AUTOINDEX` only, IP supported ([Zilliz limits](https://docs.zilliz.com/docs/limits)). The owner creates the account and cluster; nothing is created for them. |
 | HD3 | Forwarded client IPs | Proposed | Keep `--no-proxy-headers`; per-IP limits count HF's proxy. Acceptable for a single-owner app. |
 
 ## Phases
@@ -43,8 +43,8 @@ go-ahead for H4.
 | Feature | Scope | Verification | Status |
 | --- | --- | --- | --- |
 | H1 | `deploy/hf-space/` Dockerfile and Space card; port 7860, uid 1000, build-time pinned model download, `HF_HUB_OFFLINE=1` | Image builds; container serves `GET /health` on 7860 as uid 1000 | Merged 2026-11-23 (`4e17553`); full image unbuilt, see below |
-| H2 | Private-dataset SQLite sync (HD1): `app/workers/state_sync.py` `restore` before the API starts (never overwrites, fails the start on a failed download), `run` uploads a consistent auth DB copy every interval when changed; catalogue download-only; `deploy/hf-space/start.sh` | Unit tests with a fake hub client; container start paths | In review: see below |
-| H3 | Milvus adapter accepts Zilliz (AUTOINDEX and HNSW) with token auth; one-time copy of the 980-repository archive | Unit tests for the index contract; live search against Zilliz | Not started |
+| H2 | Private-dataset SQLite sync (HD1): `app/workers/state_sync.py` `restore` before the API starts (never overwrites, fails the start on a failed download), `run` uploads a consistent auth DB copy every interval when changed; catalogue download-only; `deploy/hf-space/start.sh` | Unit tests with a fake hub client; container start paths | Merged 2026-11-23 (`0c6e686`); real HF round trip unrun, see below |
+| H3 | `MILVUS_PROFILE=zilliz`: `AUTOINDEX` with no build or search params, same IP metric, schema, index-state and load checks; skips only the pinned 2.6 server-version check. The Space image uses it. Filling the cluster (re-embedding the 980 repositories into it) is an H4 operator step | Unit tests (`test_milvus.py`, 4 new); live `init-collection` and search against Zilliz in H4 | In review |
 | H4 | Deploy: create the Space repo contents, set secrets, update the GitHub OAuth callback and the mobile API URL | Signed-in search from the phone through the Space | Waits for owner go-ahead |
 | H5 | Retarget laptop jobs (retire, refresh, backup) to Zilliz and the dataset catalogue; stop Docker Milvus | One scheduled weekly run against the hosted stack | Not started |
 
@@ -74,4 +74,7 @@ go-ahead for H4.
 
 ## Open questions
 
-- Zilliz free-tier collection and index specifics: confirm before H3.
+- Zilliz: whether `describe_collection` on the free cluster reports
+  `consistency_level` 0 (Strong) and an index `state` of `Finished` exactly as
+  Milvus 2.6 does. The adapter fails closed if not. The first live
+  `init-collection` in H4 answers this.

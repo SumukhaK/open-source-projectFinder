@@ -87,6 +87,25 @@ def _sanitize_sdk_logs():
             logger.addFilter(_SafeSDKLog())
 
 
+INDEX_PARAMS = {
+    "cpu": {"M": 16, "efConstruction": 100},
+    "gpu": {
+        "intermediate_graph_degree": 32,
+        "graph_degree": 16,
+        "build_algo": "NN_DESCENT",
+    },
+    "zilliz": {},  # AUTOINDEX chooses its own build settings
+}
+
+
+def _search_params(profile, limit):
+    if profile == "cpu":
+        return {"ef": max(64, limit)}
+    if profile == "gpu":
+        return {"itopk_size": max(64, 1 << (limit - 1).bit_length())}
+    return {}
+
+
 class MilvusAdapter:
     @classmethod
     def connect(cls, settings, manifest):
@@ -129,7 +148,9 @@ class MilvusAdapter:
         self.generation = hashlib.sha256(
             json.dumps(contract, sort_keys=True).encode()
         ).hexdigest()
-        self.index_type = {"cpu": "HNSW", "gpu": "GPU_CAGRA"}[settings.milvus_profile]
+        self.index_type = {"cpu": "HNSW", "gpu": "GPU_CAGRA", "zilliz": "AUTOINDEX"}[
+            settings.milvus_profile
+        ]
 
     def _call(self, deadline, operation, **kwargs):
         remaining = deadline - time.monotonic()
@@ -224,6 +245,10 @@ class MilvusAdapter:
             raise MilvusUnavailable("Milvus collection is not loaded")
 
     def _check_server(self, deadline):
+        # A managed service reports its own version and upgrades itself; the
+        # schema, index and metric checks still hold it to the same contract.
+        if self.settings.milvus_profile == "zilliz":
+            return
         if not self._call(deadline, "get_server_version").startswith(("2.6.", "2.6-")):
             raise MilvusContractError("Milvus server must match the pinned 2.6 family")
 
@@ -257,13 +282,7 @@ class MilvusAdapter:
                 index_name="vector_index",
                 index_type=self.index_type,
                 metric_type="IP",
-                params={"M": 16, "efConstruction": 100}
-                if self.settings.milvus_profile == "cpu"
-                else {
-                    "intermediate_graph_degree": 32,
-                    "graph_degree": 16,
-                    "build_algo": "NN_DESCENT",
-                },
+                params=INDEX_PARAMS[self.settings.milvus_profile],
             )
             self._call(deadline, "create_index", index_params=params)
         self._load(deadline)
@@ -383,9 +402,7 @@ class MilvusAdapter:
             consistency_level="Strong",
             search_params={
                 "metric_type": "IP",
-                "params": {"ef": max(64, limit)}
-                if self.settings.milvus_profile == "cpu"
-                else {"itopk_size": max(64, 1 << (limit - 1).bit_length())},
+                "params": _search_params(self.settings.milvus_profile, limit),
             },
         )
         if len(hits) != 1 or len(hits[0]) > limit:
