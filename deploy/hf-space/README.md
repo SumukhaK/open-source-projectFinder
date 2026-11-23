@@ -19,13 +19,16 @@ A Space builds from its own git repository. Its root holds:
 
 ```
 Dockerfile        <- deploy/hf-space/Dockerfile
+.dockerignore     <- deploy/hf-space/Dockerfile.dockerignore
 README.md         <- deploy/hf-space/README.md
 backend/          <- backend/ (without .env, .venv or data/)
 scripts/embeddings_smoke.py
 ```
 
 The same layout lets you build locally from this repository's root:
-`docker build -f deploy/hf-space/Dockerfile -t reporadar-api .`
+`docker build -f deploy/hf-space/Dockerfile -t reporadar-api .`. BuildKit
+applies `Dockerfile.dockerignore`, so a local `backend/.env` or `backend/data/`
+never enters the image.
 
 ## What the image does
 
