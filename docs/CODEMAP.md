@@ -61,6 +61,9 @@ hooks, API clients, cache), `features/branding`, shared `components/`,
 - Backend: `ruff check backend scripts`, `ruff format --check backend scripts`,
   `python -m pytest backend/tests scripts/tests`, `bandit -r backend/app`.
 - Mobile (in `mobile/`): `npm run typecheck`, `npm run lint`, `npm test`.
+- Hugging Face Space image (H1, not deployed): `docker build -f
+  deploy/hf-space/Dockerfile -t reporadar-api .` from the repository root; see
+  `deploy/hf-space/README.md`.
 - CI: `.github/workflows/quality.yml` (also coverage gate, dependency audit,
   gitleaks); `reviewed-merge.yml`.
 - Known local noise: `test_embeddings` smoke tests need the embeddings extras;
@@ -75,6 +78,9 @@ hooks, API clients, cache), `features/branding`, shared `components/`,
   candidates qualify.
 - **D4** privacy/removal order (retire sweep); **D5/D6** restic backups to the
   owner's external sync folder; **D3** retention.
+- **HD1** (planned hosting on a free Hugging Face Space): SQLite persists by
+  syncing snapshots to a private HF dataset; Milvus moves to a managed service.
+  Plan in `execution-plans/hf-hosting/TRACKER.md`.
 - **D8** keyword-first ranking; archive may outrank keyword results only via a
   new ranking version that passes the option B gate (T27).
 
@@ -83,7 +89,7 @@ hooks, API clients, cache), `features/branding`, shared `components/`,
 - Running and operating it: `docs/OPERATIONS.md` (setup, jobs, backup/restore,
   limits, rollout).
 - Plans and history: `execution-plans/hybrid-search/TRACKER.md`, task files in
-  `tasks/`, evidence in `T*_EVIDENCE.md`; voice in `execution-plans/voice-assistant/`.
+  `tasks/`, evidence in `T*_EVIDENCE.md`; voice in `execution-plans/voice-assistant/`; hosting in `execution-plans/hf-hosting/`.
 - Product: `README.md`, `REQUIREMENTS.md`, `SCOPE.md`, `PROJECT_TRACKER.md`.
 
 ## Never
