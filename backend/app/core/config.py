@@ -179,6 +179,11 @@ class Settings(BaseSettings):
     archive_schedule_milvus_up: list[str] = Field(default_factory=list)
     archive_schedule_milvus_down: list[str] = Field(default_factory=list)
     archive_schedule_milvus_ready_seconds: int = Field(default=300, ge=10, le=1800)
+    # HD1: a hosted API keeps its auth DB in a private Hugging Face dataset.
+    # Empty repo turns the sync off (the laptop default).
+    state_sync_repo: str = ""
+    state_sync_token: SecretStr = Field(default=SecretStr(""), repr=False)
+    state_sync_interval_seconds: int = Field(default=300, ge=60, le=3600)
     milvus_uri: str = "http://127.0.0.1:19530"
     milvus_token: SecretStr = Field(default=SecretStr(""), repr=False)
     milvus_profile: Literal["cpu", "gpu"] = "gpu"

@@ -1,7 +1,8 @@
 # Hugging Face hosting tracker
 
-Status (2026-11-23): feasibility agreed, persistence decision approved; H1 in
-review. Nothing is deployed to Hugging Face or Zilliz until the owner gives the
+Status (2026-11-23): feasibility agreed, persistence decision approved; H1
+merged ([PR #153](https://github.com/SumukhaK/open-source-projectFinder/pull/153),
+`4e17553`); H2 in review. Nothing is deployed to Hugging Face or Zilliz until the owner gives the
 go-ahead for H4.
 
 ## Original request (verbatim)
@@ -33,7 +34,7 @@ go-ahead for H4.
 
 | ID | Decision | Status | Value |
 | --- | --- | --- | --- |
-| HD1 | How the Space keeps logins, favourites and the catalogue across restarts | **Approved 2026-11-23** | Sync SQLite snapshots to a private HF dataset: restore at startup, upload periodically. A restart may lose the last few minutes of changes. Paid persistent storage and "reset on restart" were declined. |
+| HD1 | How the Space keeps logins, favourites and the catalogue across restarts | **Approved 2026-11-23** | Sync SQLite snapshots to a private HF dataset: restore at startup, upload periodically. A restart may lose up to `STATE_SYNC_INTERVAL_SECONDS` (default 300) of changes. A start whose restore download fails exits instead of serving an empty DB. Paid persistent storage and "reset on restart" were declined. |
 | HD2 | Vector store | Proposed | Zilliz Cloud free tier (managed Milvus). Needs owner go-ahead before an account or cluster is created. |
 | HD3 | Forwarded client IPs | Proposed | Keep `--no-proxy-headers`; per-IP limits count HF's proxy. Acceptable for a single-owner app. |
 
@@ -41,8 +42,8 @@ go-ahead for H4.
 
 | Feature | Scope | Verification | Status |
 | --- | --- | --- | --- |
-| H1 | `deploy/hf-space/` Dockerfile and Space card; port 7860, uid 1000, build-time pinned model download, `HF_HUB_OFFLINE=1` | Image builds; container serves `GET /health` on 7860 as uid 1000 | In review: see limitation below |
-| H2 | Private-dataset SQLite sync (HD1): restore before startup, consistent snapshot upload on a timer and at shutdown | Unit tests with a fake hub client; restore-after-restart check | Not started |
+| H1 | `deploy/hf-space/` Dockerfile and Space card; port 7860, uid 1000, build-time pinned model download, `HF_HUB_OFFLINE=1` | Image builds; container serves `GET /health` on 7860 as uid 1000 | Merged 2026-11-23 (`4e17553`); full image unbuilt, see below |
+| H2 | Private-dataset SQLite sync (HD1): `app/workers/state_sync.py` `restore` before the API starts (never overwrites, fails the start on a failed download), `run` uploads a consistent auth DB copy every interval when changed; catalogue download-only; `deploy/hf-space/start.sh` | Unit tests with a fake hub client; container start paths | In review: see below |
 | H3 | Milvus adapter accepts Zilliz (AUTOINDEX and HNSW) with token auth; one-time copy of the 980-repository archive | Unit tests for the index contract; live search against Zilliz | Not started |
 | H4 | Deploy: create the Space repo contents, set secrets, update the GitHub OAuth callback and the mobile API URL | Signed-in search from the phone through the Space | Waits for owner go-ahead |
 | H5 | Retarget laptop jobs (retire, refresh, backup) to Zilliz and the dataset catalogue; stop Docker Milvus | One scheduled weekly run against the hosted stack | Not started |
@@ -56,6 +57,20 @@ go-ahead for H4.
   `uid=1000(user)`, with SQLite created under `data/`.
 - The full build is first proven by the Space's own build in H4, or on any
   machine that can reach both hosts.
+
+### H2 verification (2026-11-23)
+
+- `backend/tests/test_state_sync.py`: 13 tests with a fake hub client (restore
+  when missing, never overwrite, skip absent, fail closed, no-op without a
+  repo; snapshot consistency, upload only on change, never the catalogue;
+  `run` survives upload errors and never logs the token; `main` exit codes).
+  Full backend suite: 1426 passed, 9 skipped, and the 2 documented
+  `test_embeddings` smoke failures (no embeddings extras locally).
+- Container check, embeddings-free variant: with `STATE_SYNC_REPO` empty, both
+  sync steps log `state_sync_disabled` and `/health` answers. With it set and
+  no hub client importable, the restore exits 1 and the API never starts.
+- Not run: a real upload or download against Hugging Face (the sandbox can't
+  reach it). That's the first H4 check.
 
 ## Open questions
 

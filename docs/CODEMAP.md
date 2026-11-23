@@ -42,7 +42,7 @@ Archive writes never happen in the API; they belong to the workers below.
 | Integrations | `integrations/github.py` (OAuth and the user's own GitHub reads), `archive_github.py` (bounded public-metadata reader: the API's hybrid checks use `API_GITHUB_TOKEN`, workers use `ARCHIVE_GITHUB_TOKEN`), `milvus.py`, `llm.py`, `deepgram.py` | Bounded clients; no provider error text leaks |
 | Search services | `hybrid_runtime.py`, `hybrid_search.py`, `rank_fusion.py`, `fused_cursor.py`, `keyword_*.py`, `live_scope.py`, `eligibility.py`, `embeddings.py` | Deadline-bounded (D8: hybrid p95 ≤ 7 s at c=1) |
 | Archive services | `archive_partitions.py` (search partitioning), `archive_runs.py` (runs, leases, checkpoints), `archive_index.py` (chunking), `archive_content.py` (content-addressed files), `archive_publication.py` (crash-safe publish/reconcile), `archive_retirement.py` (suppression, purge, retention), `archive_backup.py`, `archive_restore.py` | |
-| Workers / CLI | `workers/archive.py` (CLI entry: `python -m app.workers.archive <ingest|backfill|refresh|retire|backup|restore|init-collection>`), `backfill.py`, `refresh.py`, `retire.py`, `schedule.py` (`run daily` = retire at 22:00 IST; `run weekly` = refresh then backup, Sunday 03:30 IST) | Serial, resumable, one fenced writer |
+| Workers / CLI | `workers/archive.py` (CLI entry: `python -m app.workers.archive <ingest|backfill|refresh|retire|backup|restore|init-collection>`), `backfill.py`, `refresh.py`, `retire.py`, `state_sync.py` (HD1: `restore`/`run` the hosted API's SQLite via a private HF dataset), `schedule.py` (`run daily` = retire at 22:00 IST; `run weekly` = refresh then backup, Sunday 03:30 IST) | Serial, resumable, one fenced writer |
 | Prompts | `prompts/*.txt` | Versioned LLM prompts |
 
 Tests: `backend/tests/test_<module>.py`, offline fakes for HTTP, Milvus and the
@@ -61,7 +61,7 @@ hooks, API clients, cache), `features/branding`, shared `components/`,
 - Backend: `ruff check backend scripts`, `ruff format --check backend scripts`,
   `python -m pytest backend/tests scripts/tests`, `bandit -r backend/app`.
 - Mobile (in `mobile/`): `npm run typecheck`, `npm run lint`, `npm test`.
-- Hugging Face Space image (H1, not deployed): `docker build -f
+- Hugging Face Space image (H1; H2 adds `start.sh` state sync; not deployed): `docker build -f
   deploy/hf-space/Dockerfile -t reporadar-api .` from the repository root; see
   `deploy/hf-space/README.md`.
 - CI: `.github/workflows/quality.yml` (also coverage gate, dependency audit,
@@ -78,8 +78,8 @@ hooks, API clients, cache), `features/branding`, shared `components/`,
   candidates qualify.
 - **D4** privacy/removal order (retire sweep); **D5/D6** restic backups to the
   owner's external sync folder; **D3** retention.
-- **HD1** (planned hosting on a free Hugging Face Space): SQLite persists by
-  syncing snapshots to a private HF dataset; Milvus moves to a managed service.
+- **HD1** (hosting on a free Hugging Face Space, not deployed): SQLite persists by
+  syncing snapshots to a private HF dataset (`workers/state_sync.py`); Milvus moves to a managed service.
   Plan in `execution-plans/hf-hosting/TRACKER.md`.
 - **D8** keyword-first ranking; archive may outrank keyword results only via a
   new ranking version that passes the option B gate (T27).
