@@ -27,3 +27,7 @@ reports/
 # Expo prebuild output (continuous native generation; regenerate with `npx expo prebuild`)
 mobile/android/
 mobile/ios/
+
+# Oracle VM deploy: private settings and persistent data
+deploy/oracle-vm/api.env
+deploy/oracle-vm/data/

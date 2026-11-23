@@ -1,0 +1,37 @@
+# RepoRadar API on one Oracle Cloud Always Free VM (HD3 host).
+# From this folder:  docker compose up -d --build
+# Secrets live only in the ignored api.env beside this file (see README.md).
+name: reporadar-api
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/api/Dockerfile
+    env_file: api.env
+    volumes:
+      # Persistent disk: logins, favourites and the archive catalogue survive
+      # restarts and rebuilds. Owned by uid 1000, the image's user.
+      - ./data:/home/user/app/data
+    expose: ["7860"]
+    restart: unless-stopped
+    mem_limit: 4g
+    logging: {driver: json-file, options: {max-size: 10m, max-file: "3"}}
+
+  caddy:
+    image: caddy:2.10-alpine
+    depends_on: [api]
+    environment:
+      API_HOST: ${API_HOST:?Set API_HOST in .env, e.g. 203-0-113-7.sslip.io}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: {driver: json-file, options: {max-size: 10m, max-file: "3"}}
+
+volumes:
+  caddy_data:
+  caddy_config:
