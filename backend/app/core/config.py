@@ -186,7 +186,8 @@ class Settings(BaseSettings):
     state_sync_interval_seconds: int = Field(default=300, ge=60, le=3600)
     milvus_uri: str = "http://127.0.0.1:19530"
     milvus_token: SecretStr = Field(default=SecretStr(""), repr=False)
-    milvus_profile: Literal["cpu", "gpu"] = "gpu"
+    # zilliz: managed Zilliz Cloud (HD2); AUTOINDEX, no pinned server version.
+    milvus_profile: Literal["cpu", "gpu", "zilliz"] = "gpu"
     milvus_collection: str = Field(
         default="repo_chunks_e5small_v1",
         pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,254}$",

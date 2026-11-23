@@ -30,7 +30,7 @@ ENV HF_HUB_OFFLINE=1 \
     DATABASE_PATH=/home/user/app/data/auth.sqlite3 \
     ARCHIVE_DATABASE_PATH=/home/user/app/data/archive/catalogue.sqlite3 \
     ARCHIVE_CONTENT_PATH=/home/user/app/data/archive/content \
-    MILVUS_PROFILE=cpu
+    MILVUS_PROFILE=zilliz
 RUN mkdir -p data/archive/content
 
 COPY --chown=user --chmod=755 deploy/hf-space/start.sh ./start.sh

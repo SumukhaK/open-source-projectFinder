@@ -79,7 +79,8 @@ hooks, API clients, cache), `features/branding`, shared `components/`,
 - **D4** privacy/removal order (retire sweep); **D5/D6** restic backups to the
   owner's external sync folder; **D3** retention.
 - **HD1** (hosting on a free Hugging Face Space, not deployed): SQLite persists by
-  syncing snapshots to a private HF dataset (`workers/state_sync.py`); Milvus moves to a managed service.
+  syncing snapshots to a private HF dataset (`workers/state_sync.py`); **HD2** Milvus
+  moves to Zilliz Cloud via `MILVUS_PROFILE=zilliz` (`AUTOINDEX`, no pinned server version).
   Plan in `execution-plans/hf-hosting/TRACKER.md`.
 - **D8** keyword-first ranking; archive may outrank keyword results only via a
   new ranking version that passes the option B gate (T27).

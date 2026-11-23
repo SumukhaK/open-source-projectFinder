@@ -648,3 +648,48 @@ def test_orphan_listing_needs_a_loaded_collection(adapter):
     with pytest.raises(MilvusUnavailable):
         adapter.orphan_chunk_ids([1], limit=2)
     adapter.client.query.assert_not_called()
+
+
+def zilliz(adapter):
+    managed = MilvusAdapter(
+        settings(milvus_profile="zilliz"), ModelManifest.load(), adapter.client
+    )
+    managed.client.describe_index.return_value["index_type"] = "AUTOINDEX"
+    # Zilliz Cloud reports its own version string, not the pinned Milvus 2.6.
+    managed.client.get_server_version.return_value = "Zilliz Cloud Vector Database"
+    return managed
+
+
+def test_zilliz_profile_creates_an_autoindex_with_the_same_metric(adapter):
+    managed = zilliz(adapter)
+    managed.client.has_collection.return_value = False
+    managed.client.list_indexes.return_value = []
+    managed.ensure_collection()
+    index = managed.client.create_index.call_args.kwargs["index_params"][0].to_dict()
+    assert index["index_type"] == "AUTOINDEX"
+    assert index["metric_type"] == "IP"
+    assert index.get("params", {}) == {}
+
+
+def test_zilliz_profile_searches_without_engine_specific_params(adapter):
+    managed = zilliz(adapter)
+    managed.client.search.return_value = [[]]
+    assert managed.search(chunk().vector, limit=1000) == []
+    assert managed.client.search.call_args.kwargs["search_params"] == {
+        "metric_type": "IP",
+        "params": {},
+    }
+
+
+def test_zilliz_profile_still_rejects_a_wrong_index(adapter):
+    managed = zilliz(adapter)
+    managed.client.list_indexes.return_value = ["vector_index"]
+    managed.client.describe_index.return_value["index_type"] = "HNSW"
+    with pytest.raises(MilvusContractError):
+        managed.verify_collection()
+
+
+def test_self_hosted_profiles_keep_the_pinned_server_check(adapter):
+    adapter.client.get_server_version.return_value = "Zilliz Cloud Vector Database"
+    with pytest.raises(MilvusContractError):
+        adapter.verify_collection()
