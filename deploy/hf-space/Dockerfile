@@ -33,8 +33,11 @@ ENV HF_HUB_OFFLINE=1 \
     MILVUS_PROFILE=cpu
 RUN mkdir -p data/archive/content
 
+COPY --chown=user --chmod=755 deploy/hf-space/start.sh ./start.sh
+
 EXPOSE 7860
 # HF's proxy terminates HTTPS. Forwarded headers stay off (backend README:
 # never accept arbitrary forwarded client IPs), so per-IP limits see the proxy.
-CMD ["python", "-m", "uvicorn", "app.main:create_app", "--factory", \
-     "--host", "0.0.0.0", "--port", "7860", "--no-proxy-headers", "--no-access-log"]
+# start.sh restores SQLite from the private dataset first (HD1) and fails the
+# start if that download fails, so an empty DB never overwrites the snapshot.
+CMD ["./start.sh"]
