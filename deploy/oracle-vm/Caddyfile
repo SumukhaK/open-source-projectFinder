@@ -1,0 +1,16 @@
+# Automatic HTTPS (Let's Encrypt) for API_HOST, then forward to the API.
+{$API_HOST} {
+	# Ingress limits (backend README): voice WAV uploads are at most 4 MiB.
+	request_body {
+		max_size 5MB
+	}
+	reverse_proxy api:7860 {
+		transport http {
+			response_header_timeout 60s
+		}
+	}
+	# No access log: auth callbacks carry codes in the query string.
+	log {
+		output discard
+	}
+}

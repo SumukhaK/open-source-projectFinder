@@ -12,7 +12,8 @@ An Expo mobile app talks to a FastAPI backend. Search is **keyword-first**
 (ranking `keyword-first-v1`, D8 option A): live GitHub keyword results, with a
 private local archive (Milvus vectors over README chunks) fused below them.
 Voice input/output and a grounded LLM summary sit on top. Everything runs on
-the owner's laptop; nothing is deployed elsewhere (Phase 7 not planned).
+the owner's laptop today; moving the API to an Oracle Cloud Always Free VM
+is planned (`execution-plans/hf-hosting/TRACKER.md`, not deployed).
 
 ## Request flow
 
@@ -61,9 +62,9 @@ hooks, API clients, cache), `features/branding`, shared `components/`,
 - Backend: `ruff check backend scripts`, `ruff format --check backend scripts`,
   `python -m pytest backend/tests scripts/tests`, `bandit -r backend/app`.
 - Mobile (in `mobile/`): `npm run typecheck`, `npm run lint`, `npm test`.
-- Hugging Face Space image (H1; H2 adds `start.sh` state sync; not deployed): `docker build -f
-  deploy/hf-space/Dockerfile -t reporadar-api .` from the repository root; see
-  `deploy/hf-space/README.md`.
+- API image (H1/H2; not deployed): `docker build -f deploy/api/Dockerfile -t
+  reporadar-api .` from the repository root. Host: `deploy/oracle-vm/`
+  (`docker compose up -d --build`, Caddy HTTPS); runbook in its `README.md`.
 - CI: `.github/workflows/quality.yml` (also coverage gate, dependency audit,
   gitleaks); `reviewed-merge.yml`.
 - Known local noise: `test_embeddings` smoke tests need the embeddings extras;
@@ -78,8 +79,9 @@ hooks, API clients, cache), `features/branding`, shared `components/`,
   candidates qualify.
 - **D4** privacy/removal order (retire sweep); **D5/D6** restic backups to the
   owner's external sync folder; **D3** retention.
-- **HD1** (hosting on a free Hugging Face Space, not deployed): SQLite persists by
-  syncing snapshots to a private HF dataset (`workers/state_sync.py`); **HD2** Milvus
+- **HD4** host: Oracle Cloud Always Free VM (`deploy/oracle-vm`), chosen after
+  HF made Docker Spaces PRO-only. **HD1** optional off-machine SQLite copy via a
+  private HF dataset (`workers/state_sync.py`); **HD2** Milvus
   moves to Zilliz Cloud via `MILVUS_PROFILE=zilliz` (`AUTOINDEX`, no pinned server version).
   Plan in `execution-plans/hf-hosting/TRACKER.md`.
 - **D8** keyword-first ranking; archive may outrank keyword results only via a

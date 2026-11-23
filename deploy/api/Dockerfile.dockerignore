@@ -1,0 +1,15 @@
+# BuildKit reads this for `-f deploy/api/Dockerfile`. Keeps secrets and local
+# state out of the image.
+**/.env
+**/.env.*
+**/api.env
+!**/.env.example
+**/data
+**/.venv
+**/venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+backend/tests
+.git
+mobile
